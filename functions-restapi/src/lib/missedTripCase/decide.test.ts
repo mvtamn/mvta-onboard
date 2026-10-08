@@ -24,7 +24,7 @@ function stored(overrides: Partial<CaseState> = {}): CaseState {
     trip_id: "T1", service_date: "20260917", route_id: "460", scheduled_departure_at: SCHEDULED, grace_deadline_at: DEADLINE,
     status: "escalated", validation_status: "unreviewed", data_quality_status: "experimental", detection_type: "silent_no_show",
     detector_version: "gtfs-silent-v3", source_system: "gtfs", source_record_id: null, undecided_reason: null,
-    detected_late_arrival_at: null, first_seen_watching_at: new Date("2026-09-17T14:40:00Z"), evidence_json: null, expected_window_end_at: null,
+    detected_late_arrival_at: null, first_seen_watching_at: new Date("2026-09-17T14:40:00Z"), evidence_json: null, expected_window_end_at: null, evidence_conflict_at: null, evidence_conflict_reason: null,
     ...overrides,
   };
 }
@@ -156,4 +156,103 @@ test("review acts by case state", () => {
   assert.equal(refusal(windowOpen, review("record_review", { outcome: "confirmed" })), "awaiting_evidence");
   const windowClosed = { ...windowOpen, expected_window_end_at: new Date(NOW.getTime() - 60_000) };
   assert.equal(refusal(windowClosed, review("record_review", { outcome: "confirmed" })), null);
+});
+
+// ADR-0035: Avail corroborates, contradicts and enriches. It never opens a
+// case, never reopens one, never closes one, and never rewrites a review - so
+// the only state it can change is the Evidence conflict.
+function avail(fact: RunFact, runId = "T1"): RunObservation {
+  return {
+    run: { source: "avail", runId, serviceDate: "20260917", routeId: "460", scheduledStartAt: SCHEDULED, deadlineAt: SCHEDULED },
+    detectorVersion: "avail-retrospective-v1",
+    fact,
+    evidence: { source: "avail", entireTripMissed: true },
+  };
+}
+
+function setOf(decision: RunDecision | null): Partial<CaseState> {
+  return decision?.kind === "update" ? decision.set : {};
+}
+
+test("Avail never opens a case", () => {
+  assert.equal(decideRun(null, [avail({ kind: "retrospective_missed" })], NOW), null);
+  assert.equal(decideRun(null, [avail({ kind: "retrospective_partial", missedDeparture: true, missedArrival: false })], NOW), null);
+});
+
+test("Avail agreeing with an open case records evidence and changes nothing else", () => {
+  const decision = decideRun(stored(), [avail({ kind: "retrospective_missed" })], NOW);
+  const set = setOf(decision);
+  assert.equal(set.status, undefined, "the case is not escalated by a vendor report");
+  assert.equal(set.evidence_conflict_at, undefined);
+  assert.match(String(set.evidence_json), /"avail"/);
+});
+
+test("Avail agreeing with a confirmed review is not a conflict", () => {
+  const decision = decideRun(
+    stored({ validation_status: "confirmed" }),
+    [avail({ kind: "retrospective_missed" })],
+    NOW,
+  );
+  assert.equal(setOf(decision).evidence_conflict_at, undefined);
+});
+
+test("Avail contradicting a case closed as Timely service is an Evidence conflict", () => {
+  // Closed by evidence: resolved and never reviewed.
+  const decision = decideRun(
+    stored({ status: "resolved" }),
+    [avail({ kind: "retrospective_missed" })],
+    NOW,
+  );
+  const set = setOf(decision);
+  assert.deepEqual(set.evidence_conflict_at, NOW);
+  assert.match(String(set.evidence_conflict_reason), /Avail reports this run as missed/);
+  assert.equal(set.status, undefined, "the case is not reopened");
+  assert.equal(set.validation_status, undefined, "no review is rewritten");
+});
+
+test("Avail contradicting a human Timely service review is an Evidence conflict too", () => {
+  for (const reviewed of ["timely_service", "false_positive"]) {
+    const decision = decideRun(stored({ validation_status: reviewed }), [avail({ kind: "retrospective_missed" })], NOW);
+    assert.deepEqual(setOf(decision).evidence_conflict_at, NOW, `validation_status=${reviewed}`);
+  }
+});
+
+test("Avail reporting a partial failure on a confirmed missed trip is a conflict", () => {
+  // The case says it never ran; Avail says it ran and missed a stop.
+  const decision = decideRun(
+    stored({ validation_status: "confirmed" }),
+    [avail({ kind: "retrospective_partial", missedDeparture: true, missedArrival: false })],
+    NOW,
+  );
+  assert.deepEqual(setOf(decision).evidence_conflict_at, NOW);
+  assert.match(String(setOf(decision).evidence_conflict_reason), /operated with a missed stop/);
+});
+
+test("a conflict is recorded once and keeps its first timestamp", () => {
+  const later = new Date(NOW.getTime() + 86_400_000);
+  const decision = decideRun(
+    stored({ status: "resolved", evidence_conflict_at: NOW, evidence_conflict_reason: "already noted" }),
+    [avail({ kind: "retrospective_missed" })],
+    later,
+  );
+  assert.equal(setOf(decision).evidence_conflict_at, undefined, "the existing conflict stands");
+  assert.equal(setOf(decision).evidence_conflict_reason, undefined);
+});
+
+test("Avail evidence sits beside what the live sources recorded, not on top of it", () => {
+  const decision = decideRun(
+    stored({ evidence_json: JSON.stringify({ source: "spare", requestId: "R1" }) }),
+    [avail({ kind: "retrospective_missed" })],
+    NOW,
+  );
+  const merged = JSON.parse(String(setOf(decision).evidence_json));
+  assert.equal(merged.requestId, "R1", "the earlier source's evidence survives");
+  assert.equal(merged.avail.entireTripMissed, true);
+});
+
+test("a Legacy missed-trip record is not touched by Avail either", () => {
+  assert.equal(
+    decideRun(stored({ data_quality_status: "legacy_unverified" }), [avail({ kind: "retrospective_missed" })], NOW),
+    null,
+  );
 });

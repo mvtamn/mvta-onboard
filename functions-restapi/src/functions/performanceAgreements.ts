@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { agreementScopeIn } from "../lib/assessment/schemaScope";
 import { markRulesChanged } from "../lib/assessment/ruleChange";
 import { getPool, sql } from "../lib/db";
@@ -33,7 +33,7 @@ app.http("performanceAgreementsList", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_READ_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();
@@ -59,7 +59,7 @@ app.http("performanceAgreementPut", {
   methods: ["PUT"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "contractor-performance.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid agreement id" } };
@@ -139,7 +139,7 @@ app.http("performanceAgreementStandardsPut", {
   methods: ["PUT"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "contractor-performance.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid agreement id" } };

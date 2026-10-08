@@ -4,10 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../config.js";
 import { FixedRouteDepartures } from "./FixedRouteDepartures.js";
 
-// The departure views read roles to decide whether the reviewer may settle an
+// The departure views ask what the reviewer may do before offering to settle an
 // occurrence from the row. These tests render the view directly, outside the
-// app's provider tree, so the roles come from here.
-vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles: ["OCC.Compliance"] }) }));
+// app's provider tree, so the answer comes from here.
+vi.mock("../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../auth/AccessContext.js")>("../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(["compliance-review.view", "compliance-review.review"]) };
+});
 
 
 const departure: FixedRouteDeparture = {

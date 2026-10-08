@@ -1,5 +1,3 @@
-import type { AppRole } from "../auth/roles.js";
-
 // The one list of Administration pages. The home page's cards, the area
 // switcher in the breadcrumb, the tab strip and quick find all read it, so a
 // page added here appears in all four and cannot be missed by one of them.
@@ -8,14 +6,6 @@ import type { AppRole } from "../auth/roles.js";
 // several pages share a subject none of these covers. When one job is split
 // across routes (Access & Identity, Contractor Performance) the routes are
 // that page's tabs, not pages of their own.
-
-const ADMIN = ["OCC.Admin"] as const;
-// The same roles App.tsx's routes require (ACCESS_MANAGEMENT). The old menu
-// listed these pages to every Operations Administrator, who then met
-// "Restricted" on each one unless the setup-mode fallback was on.
-const ACCESS = import.meta.env.VITE_ACCESS_ADMIN_FALLBACK === "true"
-  ? ["OCC.AccessAdmin", "OCC.Admin"] as const
-  : ["OCC.AccessAdmin"] as const;
 
 export type AdminIconName = "shield" | "mail" | "sliders" | "calendar" | "grid" | "target" | "clock" | "clipboard" | "plug" | "history";
 
@@ -34,7 +24,7 @@ export interface AdminPage {
   label: string;
   desc: string;
   icon: AdminIconName;
-  roles: readonly AppRole[];
+  action: string;
   tabs?: readonly AdminTab[];
 }
 
@@ -56,18 +46,19 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
         label: "Access & Identity",
         desc: "Roles, sign-in, and who can reach which workspace",
         icon: "shield",
-        roles: ACCESS,
+        action: "access-identity.view",
         tabs: [
           { to: "/admin/access", label: "Overview", end: true },
           { to: "/admin/access/people", label: "People & guests" },
           { to: "/admin/access/groups", label: "Access groups" },
           { to: "/admin/access/workloads", label: "Workloads" },
+          { to: "/admin/access/roles", label: "Roles" },
           { to: "/admin/access/approvals", label: "Approvals" },
           { to: "/admin/access/health", label: "Access health" },
           { to: "/admin/access/activity", label: "Activity log" },
         ],
       },
-      { to: "/admin/subscribers", label: "Subscribers", desc: "Rider alert sign-ups and the channels they chose", icon: "mail", roles: ACCESS },
+      { to: "/admin/subscribers", label: "Subscribers", desc: "Rider alert sign-ups and the channels they chose", icon: "mail", action: "subscribers.view" },
     ],
   },
   {
@@ -75,9 +66,9 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
     name: "Service Setup",
     icon: "sliders",
     pages: [
-      { to: "/admin/service", label: "Service Configuration", desc: "Routes, feeds, and service-day configuration", icon: "sliders", roles: ADMIN },
-      { to: "/admin/events", label: "Event Administration", desc: "The event catalog and the resources behind it", icon: "calendar", roles: ADMIN },
-      { to: "/admin/decision-matrix", label: "Decision Matrix", desc: "The thresholds behind suggested alerts", icon: "grid", roles: ADMIN },
+      { to: "/admin/service", label: "Service Configuration", desc: "Routes, feeds, and service-day configuration", icon: "sliders", action: "service-configuration.edit" },
+      { to: "/admin/events", label: "Event Administration", desc: "The event catalog and the resources behind it", icon: "calendar", action: "service-configuration.edit" },
+      { to: "/admin/decision-matrix", label: "Decision Matrix", desc: "The thresholds behind suggested alerts", icon: "grid", action: "decision-matrix.manage" },
     ],
   },
   {
@@ -85,15 +76,16 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
     name: "Standards & Contracts",
     icon: "target",
     pages: [
-      { to: "/admin/service-standards", label: "Service Standards", desc: "The standards on-demand service is measured against", icon: "target", roles: ADMIN },
-      { to: "/admin/otp-compliance", label: "OTP Compliance", desc: "On-time performance rules and tolerances", icon: "clock", roles: ADMIN },
+      { to: "/admin/service-standards", label: "Service Standards", desc: "The standards on-demand service is measured against", icon: "target", action: "service-configuration.edit" },
+      { to: "/admin/otp-compliance", label: "OTP Compliance", desc: "On-time performance rules and tolerances", icon: "clock", action: "service-configuration.edit" },
+      { to: "/admin/missed-trip-detectors", label: "Missed-trip Detectors", desc: "Which detectors count toward an assessment, and since when", icon: "target", action: "service-configuration.edit" },
       {
         to: "/admin/performance/contractors",
         base: "/admin/performance",
         label: "Contractor Performance",
         desc: "Contractors, agreements, the standards catalog and its lists",
         icon: "clipboard",
-        roles: ADMIN,
+        action: "contractor-performance.view",
         tabs: [
           { to: "/admin/performance/contractors", label: "Contractors" },
           { to: "/admin/performance/agreements", label: "Agreements" },
@@ -108,7 +100,7 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
     name: "Data & Integrations",
     icon: "plug",
     pages: [
-      { to: "/admin/integrations", label: "Integrations & Data Health", desc: "Connector status and feed freshness", icon: "plug", roles: ADMIN },
+      { to: "/admin/integrations", label: "Integrations & Data Health", desc: "Connector status and feed freshness", icon: "plug", action: "integrations-health.view" },
     ],
   },
   {
@@ -116,16 +108,23 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
     name: "Governance",
     icon: "history",
     pages: [
-      { to: "/admin/governance", label: "Governance & Audit", desc: "The audit log, retention, and governance settings", icon: "history", roles: ACCESS },
+      { to: "/admin/governance", label: "Governance & Audit", desc: "The audit log, retention, and governance settings", icon: "history", action: "governance-audit.view" },
     ],
   },
 ];
 
-// The areas and pages these roles can open. An area with no such page is left
+// Every action that opens some Administration page. The shell's one
+// Administration link, and the /admin route itself, are for whoever holds any
+// of them.
+export const ADMIN_ACTIONS: readonly string[] = [
+  ...new Set(ADMIN_AREAS.flatMap((area) => area.pages.map((page) => page.action))),
+];
+
+// The areas and pages this access can open. An area with no such page is left
 // out rather than shown empty.
-export function visibleAreas(roles: readonly string[]): AdminArea[] {
+export function visibleAreas(can: (action: string) => boolean): AdminArea[] {
   return ADMIN_AREAS
-    .map((area) => ({ ...area, pages: area.pages.filter((page) => page.roles.some((role) => roles.includes(role))) }))
+    .map((area) => ({ ...area, pages: area.pages.filter((page) => can(page.action)) }))
     .filter((area) => area.pages.length > 0);
 }
 

@@ -147,6 +147,23 @@ export async function storeOnDemandSpareRequest(
   return result.recordset[0]?.applied ? "applied" : "unchanged";
 }
 
+// Which of these request ids the monitor is currently tracking. Used by the
+// webhook receiver to decide whether an ETA delivery is worth an outbound read
+// of the request from Spare.
+export async function monitoredRequestIds(requestIds: readonly string[]): Promise<Set<string>> {
+  if (requestIds.length === 0) return new Set();
+  const request = (await getPool()).request();
+  const names = requestIds.map((id, index) => {
+    request.input(`id${index}`, sql.NVarChar(100), id);
+    return `@id${index}`;
+  });
+  const rows = await request.query<{ trip_id: string }>(`
+    SELECT trip_id FROM dbo.MonitoredOnDemandWaits
+    WHERE monitor_state = 'active' AND trip_id IN (${names.join(", ")})
+  `);
+  return new Set(rows.recordset.map((row) => row.trip_id));
+}
+
 export async function storeSpareDutyVehicle(update: SpareDutyVehicleUpdate): Promise<void> {
   const request = (await getPool()).request();
   request.input("duty_id", sql.NVarChar(100), update.dutyId);

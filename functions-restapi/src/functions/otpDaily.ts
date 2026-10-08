@@ -2,13 +2,14 @@
 // added per OTP-Feed-Evaluation-and-Recommendation (3).md's live-data
 // investigation update. Not the official Attachment G compliance number -
 // see otpMonthly.ts for that. Accepts optional ?start=YYYYMMDD&end=YYYYMMDD
-// (defaults to the trailing 7 days) and an optional ?route_id= filter. No
+// (defaults to the trailing 7 agency-Central service days) and an optional ?route_id= filter. No
 // UI consumes this yet - built for future trending views once this feed's
 // still-unconfirmed field mapping (see otpDailyFeed.ts) has been checked
 // against a real response.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
+import { otpDailyDefaultRange } from "../lib/otpDailyFeed";
 
 interface OtpDailyRow {
   calendar_date: string;
@@ -34,22 +35,12 @@ interface OtpDailyRow {
   updated_at: Date;
 }
 
-function calendarDateNDaysAgo(days: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-function calendarDateToday(): string {
-  return calendarDateNDaysAgo(0);
-}
-
 app.http("otpDailyList", {
   route: "otp-daily",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -57,8 +48,12 @@ app.http("otpDailyList", {
     const startParam = request.query.get("start");
     const endParam = request.query.get("end");
     const routeIdParam = request.query.get("route_id");
-    const start = startParam && /^\d{8}$/.test(startParam) ? startParam : calendarDateNDaysAgo(7);
-    const end = endParam && /^\d{8}$/.test(endParam) ? endParam : calendarDateToday();
+    // The default range is in agency-Central service days, the same thing the
+    // poller stores calendar_date as. It used to be worked out in UTC here,
+    // which shifted the whole window forward by a day every Central evening.
+    const fallback = otpDailyDefaultRange(new Date());
+    const start = startParam && /^\d{8}$/.test(startParam) ? startParam : fallback.start;
+    const end = endParam && /^\d{8}$/.test(endParam) ? endParam : fallback.end;
     const routeId = routeIdParam ? parseInt(routeIdParam, 10) : null;
 
     try {

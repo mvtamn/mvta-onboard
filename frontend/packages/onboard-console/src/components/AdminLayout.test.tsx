@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { AuthContext, type AuthState } from "../auth/AuthContext.js";
+import { AccessContext, accessStateWith } from "../auth/AccessContext.js";
 import { AdminHome } from "./AdminHome.js";
 import { AdminLayout } from "./AdminLayout.js";
 import { ADMIN_AREAS, quickFindEntries, searchQuickFind } from "./adminNav.js";
@@ -10,9 +10,13 @@ function Where() {
   return <output data-testid="where">{useLocation().pathname}</output>;
 }
 
-function renderAt(path: string, roles: AuthState["roles"]) {
+// What each administrator holds, in Module Actions (ADR-0032).
+const OPERATIONS_ADMIN = ["service-configuration.edit", "decision-matrix.manage", "contractor-performance.view", "integrations-health.view"];
+const ACCESS_ADMIN = ["access-identity.view", "subscribers.view", "governance-audit.view"];
+
+function renderAt(path: string, actions: string[]) {
   return render(
-    <AuthContext.Provider value={{ account: { username: "admin@example.com" }, roles, signIn: () => undefined, signOut: () => undefined }}>
+    <AccessContext.Provider value={accessStateWith(actions)}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/admin" element={<AdminLayout />}>
@@ -21,7 +25,7 @@ function renderAt(path: string, roles: AuthState["roles"]) {
           </Route>
         </Routes>
       </MemoryRouter>
-    </AuthContext.Provider>,
+    </AccessContext.Provider>,
   );
 }
 
@@ -33,7 +37,7 @@ describe("Administration home", () => {
   afterEach(cleanup);
 
   it("lists every area and page to someone who holds both administrator roles", () => {
-    renderAt("/admin", ["OCC.Admin", "OCC.AccessAdmin"]);
+    renderAt("/admin", [...OPERATIONS_ADMIN, ...ACCESS_ADMIN]);
 
     for (const area of ADMIN_AREAS) {
       expect(screen.getByRole("heading", { name: area.name })).toBeInTheDocument();
@@ -45,7 +49,7 @@ describe("Administration home", () => {
   });
 
   it("keeps the access pages from an Operations Administrator, whose routes refuse them", () => {
-    renderAt("/admin", ["OCC.Admin"]);
+    renderAt("/admin", OPERATIONS_ADMIN);
 
     expect(screen.getByRole("heading", { name: "Service Setup" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "People & Access" })).not.toBeInTheDocument();
@@ -53,7 +57,7 @@ describe("Administration home", () => {
   });
 
   it("leaves out the pages and areas an Access Administrator cannot open", () => {
-    renderAt("/admin", ["OCC.AccessAdmin"]);
+    renderAt("/admin", ACCESS_ADMIN);
 
     expect(screen.getByRole("heading", { name: "People & Access" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Governance" })).toBeInTheDocument();
@@ -63,7 +67,7 @@ describe("Administration home", () => {
   });
 
   it("shows no breadcrumb on the home page itself", () => {
-    renderAt("/admin", ["OCC.Admin"]);
+    renderAt("/admin", OPERATIONS_ADMIN);
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
   });
 });
@@ -72,7 +76,7 @@ describe("Inside an Administration page", () => {
   afterEach(cleanup);
 
   it("names the area in the breadcrumb and shows Access & Identity's routes as tabs", () => {
-    renderAt("/admin/access/people", ["OCC.AccessAdmin"]);
+    renderAt("/admin/access/people", ACCESS_ADMIN);
 
     const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(hrefOf("Administration", crumbs)).toBe("/admin");
@@ -95,7 +99,7 @@ describe("Inside an Administration page", () => {
   });
 
   it("gives Contractor Performance its four sections as tabs", () => {
-    renderAt("/admin/performance/lists", ["OCC.Admin"]);
+    renderAt("/admin/performance/lists", OPERATIONS_ADMIN);
 
     expect(screen.getByRole("button", { name: "Standards & Contracts" })).toBeInTheDocument();
     const tabs = screen.getByRole("navigation", { name: "Contractor Performance" });
@@ -104,13 +108,13 @@ describe("Inside an Administration page", () => {
   });
 
   it("does not mistake Service Standards for Service Configuration", () => {
-    renderAt("/admin/service-standards", ["OCC.Admin"]);
+    renderAt("/admin/service-standards", OPERATIONS_ADMIN);
     expect(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByText("Service Standards")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Standards & Contracts" })).toBeInTheDocument();
   });
 
   it("opens the area switcher with every area the role can open", () => {
-    renderAt("/admin/decision-matrix", ["OCC.Admin"]);
+    renderAt("/admin/decision-matrix", OPERATIONS_ADMIN);
 
     const toggle = screen.getByRole("button", { name: "Service Setup" });
     fireEvent.click(toggle);
@@ -128,7 +132,7 @@ describe("Quick find", () => {
   afterEach(cleanup);
 
   it("opens on Ctrl+K, finds a tab by name, and goes there on Enter", () => {
-    renderAt("/admin/service", ["OCC.Admin", "OCC.AccessAdmin"]);
+    renderAt("/admin/service", [...OPERATIONS_ADMIN, ...ACCESS_ADMIN]);
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     const input = screen.getByRole("combobox", { name: "Find a page or tab" });
@@ -141,7 +145,7 @@ describe("Quick find", () => {
   });
 
   it("opens from the home page's find field and closes on Escape", () => {
-    renderAt("/admin", ["OCC.Admin"]);
+    renderAt("/admin", OPERATIONS_ADMIN);
 
     fireEvent.click(screen.getByRole("button", { name: /Find a page or tab/ }));
     const input = screen.getByRole("combobox", { name: "Find a page or tab" });
@@ -150,7 +154,7 @@ describe("Quick find", () => {
   });
 
   it("never offers a page the role cannot open", () => {
-    renderAt("/admin/governance", ["OCC.AccessAdmin"]);
+    renderAt("/admin/governance", ACCESS_ADMIN);
 
     fireEvent.keyDown(window, { key: "k", metaKey: true });
     fireEvent.change(screen.getByRole("combobox", { name: "Find a page or tab" }), { target: { value: "service" } });

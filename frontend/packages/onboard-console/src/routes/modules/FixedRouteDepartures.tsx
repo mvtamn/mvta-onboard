@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type FixedRouteDeparture, type FixedRouteDepartureOutcome } from "@mvta/shared";
 import { api } from "../../config.js";
-import { useAuth } from "../../auth/AuthContext.js";
+import { useAccess } from "../../auth/AccessContext.js";
 import {
   agencyTimeLabel,
   DeparturesFeedBanner,
@@ -177,7 +177,7 @@ function columnsFor(groupBy: DepartureGroupBy): string[] {
 // interval. The module head and the service-type switch live in
 // GarageDepartures.tsx.
 export function FixedRouteDepartures() {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const [groupBy, setGroupBy] = useState<DepartureGroupBy>("date");
   const [show, setShow] = useState<Show>("all");
@@ -245,8 +245,7 @@ export function FixedRouteDepartures() {
   const [reviewError, setReviewError] = useState<string | null>(null);
   const review: OccurrenceReviewHandlers = {
     busy: reviewing,
-    canReview: roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager")
-      || roles.includes("OCC.Publisher") || roles.includes("OCC.Admin"),
+    canReview: can("compliance-review.review"),
     onReview: (occurrenceId, attribution) => {
       setReviewing(true);
       setReviewError(null);

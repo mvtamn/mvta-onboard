@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, type OnDemandDeparture, type OnDemandDepartureOutcome } from "@mvta/shared";
 import { api } from "../../config.js";
-import { useAuth } from "../../auth/AuthContext.js";
+import { useAccess } from "../../auth/AccessContext.js";
 import {
   agencyTimeLabel,
   DeparturesFeedBanner,
@@ -205,7 +205,7 @@ export function columnsFor(groupBy: DepartureGroupBy, withDutyIdentifiers: boole
 // its first sighting in the service area. Same growing-log shape as the fixed
 // route view, so it fetches on mount/range-change with a manual refresh.
 export function OnDemandDepartures() {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const [groupBy, setGroupBy] = useState<DepartureGroupBy>("date");
   const [show, setShow] = useState<Show>("all");
@@ -267,8 +267,7 @@ export function OnDemandDepartures() {
   const [reviewError, setReviewError] = useState<string | null>(null);
   const review: OccurrenceReviewHandlers = {
     busy: reviewing,
-    canReview: roles.includes("OCC.Compliance") || roles.includes("OCC.ComplianceManager")
-      || roles.includes("OCC.Publisher") || roles.includes("OCC.Admin"),
+    canReview: can("compliance-review.review"),
     onReview: (occurrenceId, attribution) => {
       setReviewing(true);
       setReviewError(null);

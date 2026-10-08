@@ -43,7 +43,7 @@ describe("parseLegacyCsv", () => {
     expect(() => parseLegacyCsv("foo,bar\n1,2\n")).toThrow(/No closure column/);
   });
 
-  it("round-trips the Detour Reports export without shifting cells", () => {
+  it("round-trips the Detour Register export without shifting cells", () => {
     const d = {
       id: "d1", number: "951", internal_number: "MVTA-DET-2026-0012", closure: 'Bridge "A", closed', start_date: "2026-09-01", end_date: null,
       is_monitor_only: false, riders_directed: null, email_sent: false, expired_email_sent: false, spare_emailed: false, source: "manual",

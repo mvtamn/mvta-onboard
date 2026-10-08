@@ -16,6 +16,7 @@ import {
   type SparePickupSlot,
 } from "../../spareMissedTripEvaluator";
 import type { RunObservation, SpareDetectionType } from "../types";
+import { missedTripDetectionSettings, type MissedTripDetectionSettings } from "../settings";
 
 const GRACE_MS = 30 * 60 * 1000;
 
@@ -41,16 +42,6 @@ interface SlotRow {
   slot_type: string;
   status: string | null;
   scheduled_at: Date | null;
-}
-
-export function spareMissedTripsEnabled(): boolean {
-  return process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
-}
-
-export function contractorFaultValues(): Set<string> {
-  return new Set(
-    (process.env.SPARE_CONTRACTOR_FAULT_VALUES ?? "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),
-  );
 }
 
 export function spareDetectionType(evaluation: SpareMissedTripEvaluation): SpareDetectionType {
@@ -100,7 +91,10 @@ export interface SpareEvaluationTally {
   unknown: number;
 }
 
-export async function spareObservations(pool: sql.ConnectionPool): Promise<{ observations: RunObservation[]; tally: SpareEvaluationTally }> {
+export async function spareObservations(
+  pool: sql.ConnectionPool,
+  settings: MissedTripDetectionSettings = missedTripDetectionSettings(),
+): Promise<{ observations: RunObservation[]; tally: SpareEvaluationTally }> {
   const sourceResult = await pool.request().query<SourceRow>(`
     SELECT request_id, duty_id, service_id, service_name, status, scheduled_pickup_at, pickup_arrived_at,
            pickup_lateness_seconds, dropoff_lateness_seconds,
@@ -122,7 +116,7 @@ export async function spareObservations(pool: sql.ConnectionPool): Promise<{ obs
     slotsByDuty.set(row.duty_id, slots);
   }
 
-  const faultValues = contractorFaultValues();
+  const faultValues = settings.spareContractorFaultValues;
   const tally: SpareEvaluationTally = { evaluated: sourceResult.recordset.length, candidates: 0, unknown: 0 };
   const observations: RunObservation[] = [];
   for (const row of sourceResult.recordset) {

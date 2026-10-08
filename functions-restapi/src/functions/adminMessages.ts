@@ -1,9 +1,9 @@
 // GET /manage/messages?tag=&q=&limit= - staff search across ALL messages
 // (any status, including expired/retracted) for the console's Audit Log tab.
-// Any staff role may read; never exposed publicly.
+// Requires governance-audit.view; never exposed publicly.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { parseStringList } from "../lib/stringList";
 
 const MAX_LIMIT = 200;
@@ -11,9 +11,9 @@ const MAX_LIMIT = 200;
 app.http("adminMessages", {
   route: "manage/messages",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAccess(request, "governance-audit.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

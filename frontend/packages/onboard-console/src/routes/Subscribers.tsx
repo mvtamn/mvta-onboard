@@ -81,7 +81,7 @@ export function Subscribers() {
             )}
           </>
         ) : summary ? (
-          <p className="muted">Recent sign-up detail is visible to Operations Administrators only.</p>
+          <p className="muted">Recent sign-up detail is not part of your access.</p>
         ) : null}
       </div>
     </>

@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { api } from "../config.js";
 import { isDepartureAtRisk } from "@mvta/shared";
 import type { LiveStats } from "../hooks/useLiveStats.js";
-import { hasServiceRiskAccess } from "./ServiceOperations.js";
 
 export function ServiceOperationsOverview({ stats }: { stats: LiveStats }) {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const pendingCount = stats.pending?.length ?? null;
-  const canSeeServiceRisk = hasServiceRiskAccess(roles);
+  const canSeeServiceRisk = can("service-risk.view");
   const [riskSummary, setRiskSummary] = useState<{ fixedRoute: number; onDemand: number } | null>(null);
 
   useEffect(() => {

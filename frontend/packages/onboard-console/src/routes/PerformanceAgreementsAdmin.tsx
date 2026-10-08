@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ContractorRecord, PerformanceAgreementRecord } from "@mvta/shared";
 import { api } from "../config.js";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import "./modules/assessment/assessment.css";
 import "./performanceStandards.css";
 
@@ -20,8 +20,8 @@ const toInputDate = (value: string | null | undefined) => {
 const toServiceDate = (value: string) => value.replace(/-/g, "");
 
 export function PerformanceAgreementsAdmin() {
-  const { roles } = useAuth();
-  const canEdit = roles.includes("OCC.Admin");
+  const { can } = useAccess();
+  const canEdit = can("contractor-performance.edit");
   const [agreements, setAgreements] = useState<PerformanceAgreementRecord[]>([]);
   const [contractors, setContractors] = useState<ContractorRecord[]>([]);
   const [selected, setSelected] = useState("");
@@ -94,7 +94,7 @@ export function PerformanceAgreementsAdmin() {
         {canEdit && <button className="btn-primary" disabled={busy || !contractors.length} onClick={() => edit(null)}>New Agreement</button>}
       </div>
 
-      {!canEdit && <div className="assessment-warning">You can read the Agreements. Changing one requires Administrator access.</div>}
+      {!canEdit && <div className="assessment-warning">You can read the Agreements. Changing one is not part of your access.</div>}
       {!ready && <div className="assessment-warning">Migration 102 has not been applied to this database, so Agreements cannot be edited yet.</div>}
       {!contractors.length && <div className="assessment-warning">No contractor is on record, and an Agreement binds one. Add a contractor first.</div>}
       {error && <div className="assessment-error">{error}</div>}

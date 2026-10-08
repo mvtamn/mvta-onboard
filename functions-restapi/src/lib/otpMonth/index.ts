@@ -9,8 +9,8 @@
 // its own "official" figure from rows it had flagged itself. The Dashboard's
 // "Routes below target · Official departure OTP" card counted raw routes.
 import { sql } from "../db";
-import { otpAssessableJoinsSql, otpAssessableSql, otpRouteCategorySql } from "./rules";
-import type { MeasureOtpMonthOptions, OtpFigure, OtpMonthMeasurement, OtpRouteFigure, OtpTargetSource } from "./types";
+import { otpAssessableCountSql, otpAssessableJoinsSql, otpAssessableSql, otpDateExcludedJoinSql, otpRouteCategorySql } from "./rules";
+import type { MeasureOtpMonthOptions, OtpFigure, OtpMonthMeasurement, OtpRouteFigure, OtpRouteStops, OtpStopFigure, OtpStopMix, OtpTargetSource } from "./types";
 
 export * from "./types";
 export * from "./rules";
@@ -22,7 +22,7 @@ export const OTP_STANDARD_CODE = "OTP_FIXED_ROUTE";
 // hardcode in two places.
 export const DEFAULT_OTP_TARGET = 0.85;
 
-type Executor = sql.ConnectionPool | sql.Transaction;
+export type Executor = sql.ConnectionPool | sql.Transaction;
 const request = (executor: Executor) => executor instanceof sql.Transaction ? new sql.Request(executor) : executor.request();
 
 const figure = (departures: number, ontime: number): OtpFigure => ({
@@ -38,6 +38,9 @@ interface RouteRow {
   route_category: string;
   raw_total: number;
   raw_ontime: number;
+  /** After the category and stop-exclusion rules, before any date exclusion. */
+  before_dates_total: number;
+  before_dates_ontime: number;
   total: number;
   ontime: number;
 }
@@ -45,8 +48,14 @@ interface RouteRow {
 interface Available {
   /** OtpMonthlyRouteStopDay, the feed itself (migration 014). */
   feed: boolean;
-  /** OtpDateExclusions (migration 018): counted, never applied. */
+  /** OtpDateExclusions (migration 018): the dates a reviewer recorded. */
   date_exclusions: boolean;
+  /**
+   * OtpDateExclusionDepartures (migration 140): what an approved date took
+   * out. Absent, the month measures as it did before 140 - the dates are
+   * reported and nothing is subtracted.
+   */
+  date_departures: boolean;
   /** The assessment tables a frozen target comes from. */
   periods: boolean;
   period_target: boolean;
@@ -61,6 +70,7 @@ async function available(executor: Executor): Promise<Available> {
         OR OBJECT_ID('dbo.RouteClassification','U') IS NULL
         OR OBJECT_ID('dbo.OtpStopExclusions','U') IS NULL THEN 0 ELSE 1 END feed,
       CASE WHEN OBJECT_ID('dbo.OtpDateExclusions','U') IS NULL THEN 0 ELSE 1 END date_exclusions,
+      CASE WHEN OBJECT_ID('dbo.OtpDateExclusionDepartures','U') IS NULL THEN 0 ELSE 1 END date_departures,
       CASE WHEN OBJECT_ID('dbo.AssessmentPeriods','U') IS NULL
         OR OBJECT_ID('dbo.AssessmentPeriodStandards','U') IS NULL
         OR OBJECT_ID('dbo.AssessmentPeriodTiers','U') IS NULL THEN 0 ELSE 1 END periods,
@@ -73,12 +83,31 @@ async function available(executor: Executor): Promise<Available> {
 }
 
 /**
+ * The approved-date snapshot join, or a stand-in when migration 140 is absent.
+ */
+function datesJoinSql(dateExclusions: boolean): string {
+  // Without migration 140's snapshot table there is nothing to subtract, and
+  // the join would fail to bind. `dates` is then a constant-null derived table
+  // so one statement serves both shapes and the expressions stay identical.
+  return dateExclusions
+    ? otpDateExcludedJoinSql()
+    : `LEFT JOIN (SELECT CAST(NULL AS CHAR(6)) service_month, CAST(NULL AS INT) route_id,
+         CAST(NULL AS INT) stop_id, CAST(NULL AS NVARCHAR(20)) day_of_week,
+         CAST(NULL AS INT) total, CAST(NULL AS INT) ontime) dates
+  ON dates.service_month = otp.service_month
+ AND dates.route_id = otp.route_id
+ AND dates.stop_id = otp.stop_id
+ AND dates.day_of_week = otp.day_of_week`;
+}
+
+/**
  * Per-route figures from the feed, raw and assessable, for one month
  * (`scope: "month"`, filtered by @month) or every month at once
  * (`scope: "all"`, for the trend). One statement, one rule: the assessable
  * test and its joins come from rules.ts, which the reporting view also uses.
  */
-export function otpRouteFiguresSql(scope: "month" | "all"): string {
+export function otpRouteFiguresSql(scope: "month" | "all", dateExclusions = true): string {
+  const dates = datesJoinSql(dateExclusions);
   return `
     SELECT otp.service_month,
       otp.route_id,
@@ -86,10 +115,13 @@ export function otpRouteFiguresSql(scope: "month" | "all"): string {
       ${otpRouteCategorySql()} route_category,
       SUM(ISNULL(otp.total,0)) raw_total,
       SUM(ISNULL(otp.ontime,0)) raw_ontime,
-      SUM(CASE WHEN ${otpAssessableSql()} = 1 THEN ISNULL(otp.total,0) ELSE 0 END) total,
-      SUM(CASE WHEN ${otpAssessableSql()} = 1 THEN ISNULL(otp.ontime,0) ELSE 0 END) ontime
+      SUM(CASE WHEN ${otpAssessableSql()} = 1 THEN ISNULL(otp.total,0) ELSE 0 END) before_dates_total,
+      SUM(CASE WHEN ${otpAssessableSql()} = 1 THEN ISNULL(otp.ontime,0) ELSE 0 END) before_dates_ontime,
+      SUM(${otpAssessableCountSql("total")}) total,
+      SUM(${otpAssessableCountSql("ontime")}) ontime
     FROM dbo.OtpMonthlyRouteStopDay otp
     ${otpAssessableJoinsSql()}
+    ${dates}
     ${scope === "month" ? "WHERE otp.service_month = @month" : ""}
     GROUP BY otp.service_month, otp.route_id, ${otpRouteCategorySql()}`;
 }
@@ -134,13 +166,20 @@ async function readTarget(executor: Executor, month: string, tables: Available, 
 function routeFigures(rows: RouteRow[], target: number): OtpRouteFigure[] {
   return rows.map((row) => {
     const raw = figure(Number(row.raw_total), Number(row.raw_ontime));
+    const beforeDates = figure(Number(row.before_dates_total), Number(row.before_dates_ontime));
     const assessable = figure(Number(row.total), Number(row.ontime));
     const excluded = figure(raw.departures - assessable.departures, raw.ontime - assessable.ontime);
+    // The two rules, told apart. A reviewer asking why a route moved is owed
+    // the difference between "a stop came out" and "a snow day came out".
+    const stopExcluded = figure(raw.departures - beforeDates.departures, raw.ontime - beforeDates.ontime);
+    const dateExcluded = figure(beforeDates.departures - assessable.departures, beforeDates.ontime - assessable.ontime);
     return {
       route_id: row.route_id,
       route_label: row.route_label,
       route_category: row.route_category,
       raw, excluded, assessable,
+      stop_excluded: stopExcluded,
+      date_excluded: dateExcluded,
       below_target: assessable.pct === null ? null : assessable.pct < target,
     };
   });
@@ -163,18 +202,15 @@ export async function measureOtpMonth(executor: Executor, month: string, options
     return {
       service_month: month, target, target_source: source,
       raw: empty, excluded: empty, assessable: empty,
-      routes: [], routes_below_target: 0, weather_days_recorded: 0, feed_ready: false,
+      stop_excluded: empty, date_excluded: empty,
+      routes: [], routes_below_target: 0,
+      weather_days_recorded: 0, weather_days_applied: 0, feed_ready: false,
     };
   }
 
   const rows = (await request(executor).input("month", sql.Char(6), month)
-    .query<RouteRow>(`${otpRouteFiguresSql("month")} ORDER BY otp.route_id`)).recordset;
-  // Recorded, never applied: the monthly feed is keyed by day of week, not
-  // date, so a single weather date cannot be taken out of it (ADR 0033).
-  const weather = tables.date_exclusions
-    ? Number((await request(executor).input("month", sql.Char(6), month).query<{ n: number }>(
-      `SELECT COUNT(*) n FROM dbo.OtpDateExclusions WHERE LEFT(service_date,6) = @month AND status = 'Approved'`)).recordset[0]?.n ?? 0)
-    : 0;
+    .query<RouteRow>(`${otpRouteFiguresSql("month", tables.date_departures)} ORDER BY otp.route_id`)).recordset;
+  const weather = tables.date_exclusions ? await readWeatherDays(executor, month, tables) : { recorded: 0, applied: 0 };
 
   const routes = routeFigures(rows, target);
   return {
@@ -183,11 +219,40 @@ export async function measureOtpMonth(executor: Executor, month: string, options
     raw: total(routes, (route) => route.raw),
     excluded: total(routes, (route) => route.excluded),
     assessable: total(routes, (route) => route.assessable),
+    stop_excluded: total(routes, (route) => route.stop_excluded),
+    date_excluded: total(routes, (route) => route.date_excluded),
     routes,
     routes_below_target: routes.filter((route) => route.below_target).length,
-    weather_days_recorded: weather,
+    weather_days_recorded: weather.recorded,
+    weather_days_applied: weather.applied,
     feed_ready: true,
   };
+}
+
+/**
+ * The month's weather and emergency dates: how many were recorded at all, and
+ * how many are actually subtracting.
+ *
+ * The two differ for reasons a reviewer needs to see rather than infer. A
+ * Proposed date has not been approved. An Approved one taken before migration
+ * 140, or one whose service date the daily feed could not answer for, carries
+ * no snapshot and subtracts nothing. Reporting only the applied count would
+ * make a date that quietly failed to apply look like a date nobody entered.
+ */
+async function readWeatherDays(executor: Executor, month: string, tables: Available): Promise<{ recorded: number; applied: number }> {
+  const req = request(executor).input("month", sql.Char(6), month);
+  // The snapshot is reached by join, not by EXISTS inside the SUM: SQL Server
+  // refuses an aggregate over an expression containing a subquery.
+  const row = (await req.query<{ recorded: number; applied: number }>(`
+    SELECT COUNT(*) recorded,
+      SUM(CASE WHEN e.status = 'Approved' AND ${tables.date_departures ? "snapshot.exclusion_id IS NOT NULL" : "1 = 0"} THEN 1 ELSE 0 END) applied
+    FROM dbo.OtpDateExclusions e
+    ${tables.date_departures
+      ? "LEFT JOIN (SELECT DISTINCT exclusion_id FROM dbo.OtpDateExclusionDepartures) snapshot ON snapshot.exclusion_id = e.id"
+      : ""}
+    WHERE LEFT(e.service_date,6) = @month
+  `)).recordset[0];
+  return { recorded: Number(row?.recorded ?? 0), applied: Number(row?.applied ?? 0) };
 }
 
 export interface OtpTrendMonth {
@@ -210,7 +275,7 @@ export async function measureOtpTrend(executor: Executor, months: number): Promi
   }>(`
     SELECT TOP (@months) service_month,
       SUM(raw_total) raw_total, SUM(raw_ontime) raw_ontime, SUM(total) total, SUM(ontime) ontime
-    FROM (${otpRouteFiguresSql("all")}) monthly
+    FROM (${otpRouteFiguresSql("all", tables.date_departures)}) monthly
     GROUP BY service_month
     ORDER BY service_month DESC`)).recordset;
   return rows.map((row) => ({
@@ -218,4 +283,87 @@ export async function measureOtpTrend(executor: Executor, months: number): Promi
     raw: figure(Number(row.raw_total), Number(row.raw_ontime)),
     assessable: figure(Number(row.total), Number(row.ontime)),
   })).reverse();
+}
+
+interface StopRow {
+  stop_id: number;
+  stop_name: string | null;
+  raw_total: number; raw_early: number; raw_ontime: number; raw_late: number;
+  mix_total: number; mix_early: number; mix_ontime: number; mix_late: number;
+  total: number;
+  ontime: number;
+  excluded_days: string | null;
+}
+
+/**
+ * Per-stop figures for one route and month (@month, @route). The same joins and
+ * the same assessable count as otpRouteFiguresSql, grouped one level further
+ * down, so the stops on a route sum to the route's own figure.
+ */
+export function otpStopFiguresSql(dateExclusions = true): string {
+  const passes = (column: string) => `SUM(CASE WHEN ${otpAssessableSql()} = 1 THEN ISNULL(otp.${column},0) ELSE 0 END)`;
+  return `
+    SELECT otp.stop_id,
+      MAX(otp.stop_name) stop_name,
+      SUM(ISNULL(otp.total,0)) raw_total,
+      SUM(ISNULL(otp.early,0)) raw_early,
+      SUM(ISNULL(otp.ontime,0)) raw_ontime,
+      SUM(ISNULL(otp.late,0)) raw_late,
+      ${passes("total")} mix_total,
+      ${passes("early")} mix_early,
+      ${passes("ontime")} mix_ontime,
+      ${passes("late")} mix_late,
+      SUM(${otpAssessableCountSql("total")}) total,
+      SUM(${otpAssessableCountSql("ontime")}) ontime,
+      STRING_AGG(CASE WHEN exclusion.id IS NOT NULL THEN otp.day_of_week END, ',') excluded_days
+    FROM dbo.OtpMonthlyRouteStopDay otp
+    ${otpAssessableJoinsSql()}
+    ${datesJoinSql(dateExclusions)}
+    WHERE otp.service_month = @month AND otp.route_id = @route
+    GROUP BY otp.stop_id`;
+}
+
+const DAY_ORDER = ["Mon", "Tues", "Wed", "Thur", "Fri", "Sat", "Sun"];
+
+/** The four counts, with whatever the named three miss carried as `other`. */
+export function stopMix(total: number, early: number, ontime: number, late: number): OtpStopMix {
+  return { total, early, ontime, late, other: Math.max(0, total - early - ontime - late) };
+}
+
+/**
+ * One route's stops for a service month, each with its own share of the
+ * route's Official Departure OTP, beside the route's figure and the month's
+ * target. Read-only: nothing here is a figure the month is judged on that the
+ * route measurement does not already report.
+ */
+export async function measureOtpRouteStops(executor: Executor, month: string, routeId: number, options: MeasureOtpMonthOptions = {}): Promise<OtpRouteStops> {
+  const measurement = await measureOtpMonth(executor, month, options);
+  const base = {
+    service_month: month, route_id: routeId,
+    target: measurement.target, target_source: measurement.target_source,
+    route: measurement.routes.find((route) => route.route_id === routeId) ?? null,
+  };
+  if (!measurement.feed_ready) return { ...base, stops: [], feed_ready: false };
+
+  const tables = await available(executor);
+  const rows = (await request(executor).input("month", sql.Char(6), month).input("route", sql.Int, routeId)
+    .query<StopRow>(otpStopFiguresSql(tables.date_departures))).recordset;
+
+  const stops: OtpStopFigure[] = rows.map((row) => {
+    const mixTotal = Number(row.mix_total);
+    const mixOntime = Number(row.mix_ontime);
+    const assessable = figure(Number(row.total), Number(row.ontime));
+    return {
+      stop_id: row.stop_id,
+      stop_name: row.stop_name,
+      raw: figure(Number(row.raw_total), Number(row.raw_ontime)),
+      raw_mix: stopMix(Number(row.raw_total), Number(row.raw_early), Number(row.raw_ontime), Number(row.raw_late)),
+      mix: stopMix(mixTotal, Number(row.mix_early), mixOntime, Number(row.mix_late)),
+      assessable,
+      date_excluded: figure(mixTotal - assessable.departures, mixOntime - assessable.ontime),
+      excluded_days: (row.excluded_days ?? "").split(",").filter(Boolean)
+        .sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b)),
+    };
+  });
+  return { ...base, stops, feed_ready: true };
 }

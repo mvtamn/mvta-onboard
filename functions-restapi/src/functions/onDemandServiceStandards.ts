@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { ADMIN_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid, validateOnDemandServiceStandard, validateOnDemandZoneServiceStandardOverride } from "../lib/validation";
 
 const policyColumns = "default_minutes, updated_by, updated_at";
@@ -14,7 +14,7 @@ app.http("onDemandServiceStandards", {
   methods: ["GET", "PATCH"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, request.method === "GET" ? STAFF_READ_ROLES : ADMIN_ROLES);
+    const auth = await requireAccess(request, request.method === "GET" ? "service-risk.view" : "service-configuration.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();
@@ -62,7 +62,7 @@ app.http("onDemandZoneServiceStandard", {
   methods: ["PUT", "DELETE"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "service-configuration.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const zoneId = request.params.zoneId;
     if (!isGuid(zoneId)) return { status: 400, jsonBody: { error: "zoneId must be a GUID" } };
@@ -126,7 +126,7 @@ app.http("onDemandServiceStandardAudit", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "service-configuration.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const result = await (await getPool()).request().query(`SELECT TOP 100 action, zone_override_id, detail_json, occurred_by, occurred_at FROM dbo.OnDemandServiceStandardAudit ORDER BY occurred_at DESC`);

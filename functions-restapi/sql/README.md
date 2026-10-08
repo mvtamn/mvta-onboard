@@ -46,6 +46,14 @@ called afterwards:
   with a detail ending `by migration 122` or `Set by migration 122`.
 - `migration-125`: `MissedTripReviewHistory` rows it rewrote from `false_positive`
   carry a note ending `migration 125 names this outcome Timely service.]`.
+- `migration-138`: the `AppSettings` row that stops it running twice is
+  `module = 'avail_pullout'`, `setting_key = 'times_are_utc_since'`,
+  `updated_by = 'migration-138'`. Migration 139 reads that row to tell which
+  reading of `pullout_scheduled` is in force, so neither the module, the key nor
+  the row may be renamed or removed.
+- `migration-139`: dismissed candidates carry
+  `reviewed_by = 'migration-139-garage-departure-placeholder'` and a review note
+  beginning `Dismissed by migration 139:`.
 
 Console output (`PRINT`), error text (`THROW`) and comments describe the file
 and are renamed with it.
@@ -62,6 +70,12 @@ It relies on every migration it lists being re-runnable, since it has no way to
 tell which have already been applied - a second pass has to be a no-op. Say so
 in the header of any migration you add to it, and apply a non-re-runnable one by
 hand instead.
+
+A migration can be safe for it without being naturally idempotent, as long as a
+second pass is a no-op. `migration-138` shifts every Avail pullout time by a
+fixed offset, which applied twice would move them again, so it writes an
+`AppSettings` marker and stops on it. That is the pattern to follow rather than
+leaving such a migration out.
 
 ## Two checks enforce this
 

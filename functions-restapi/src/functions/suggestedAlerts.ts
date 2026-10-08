@@ -1,7 +1,7 @@
 // Suggested Alerts - the human-review queue for predictive alerts.
-//   GET  /suggested-alerts?status=pending        - any staff role
-//   POST /suggested-alerts/{id}/approve          - Publisher/Admin
-//   POST /suggested-alerts/{id}/dismiss          - Publisher/Admin
+//   GET  /suggested-alerts?status=pending        - rider-alerts.view
+//   POST /suggested-alerts/{id}/approve          - rider-alerts.publish
+//   POST /suggested-alerts/{id}/dismiss          - rider-alerts.publish
 //
 // HANDOFF §2.3: predictive/automated decisions stay human-reviewed. NOTHING
 // auto-publishes: detection feeds (Phase 3) only INSERT pending rows; a rider
@@ -10,7 +10,7 @@
 // manually composed announcement.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid, validatePrepareSuggestedAlert } from "../lib/validation";
 import { publishMessageCreated } from "../lib/events";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
@@ -113,7 +113,7 @@ app.http("suggestedAlertsPrepare", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.publish");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -252,9 +252,9 @@ app.http("suggestedAlertsPrepare", {
 app.http("suggestedAlertsList", {
   route: "suggested-alerts",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -295,9 +295,9 @@ app.http("suggestedAlertsList", {
 app.http("suggestedAlertsApprove", {
   route: "suggested-alerts/{id}/approve",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.publish");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -417,9 +417,9 @@ app.http("suggestedAlertsApprove", {
 app.http("suggestedAlertsDismiss", {
   route: "suggested-alerts/{id}/dismiss",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.publish");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

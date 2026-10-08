@@ -5,16 +5,16 @@
 // through the normal POST /messages flow. Gated the same as message
 // creation, since it's part of the same write workflow and spends API calls.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { requireRole, PUBLISH_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { validateDraftSummary } from "../lib/validation";
 import { draftRiderSummary, AnthropicNotConfiguredError } from "../lib/anthropic";
 
 app.http("messagesDraftSummary", {
   route: "messages/draft-summary",
   methods: ["POST"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "rider-alerts.publish");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

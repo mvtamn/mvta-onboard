@@ -7,7 +7,8 @@ const CASE_COLUMNS = `
   m.trip_id, m.service_date, m.route_id, m.scheduled_departure_at, m.grace_deadline_at, m.status,
   m.validation_status, m.data_quality_status, m.detection_type, m.detector_version,
   ISNULL(m.source_system, N'gtfs') AS source_system, m.source_record_id, m.undecided_reason,
-  m.detected_late_arrival_at, m.first_seen_watching_at, m.evidence_json, m.expected_window_end_at`;
+  m.detected_late_arrival_at, m.first_seen_watching_at, m.evidence_json, m.expected_window_end_at,
+  m.evidence_conflict_at, m.evidence_conflict_reason`;
 
 export function caseKey(tripId: string, serviceDate: string): string {
   return `${tripId}|${serviceDate}`;
@@ -51,6 +52,8 @@ const TYPES: Record<string, () => sql.ISqlType> = {
   undecided_reason: () => sql.NVarChar(60),
   detected_late_arrival_at: () => sql.DateTime2(),
   evidence_json: () => sql.NVarChar(sql.MAX),
+  evidence_conflict_at: () => sql.DateTime2(),
+  evidence_conflict_reason: () => sql.NVarChar(300),
 };
 
 // Writes one decision. Returns false when the row was not in the state the

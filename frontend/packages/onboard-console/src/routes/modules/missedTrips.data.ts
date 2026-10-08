@@ -70,6 +70,10 @@ export interface MissedTripAlert {
   heldReason: string | null;
   inQueue: boolean;
   concluded: boolean;
+  // Sources that disagree about this run (ADR-0035). The case keeps its own
+  // outcome; what is blocked is the assessment, until someone settles it.
+  evidenceConflict: boolean;
+  evidenceConflictReason: string | null;
 }
 
 // Preview-only fallback shown when the console can't reach the authenticated
@@ -106,6 +110,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     arrivalDelaySeconds: null,
     occurrenceReviewStatus: null, occurrenceAttribution: null, occurrenceServiceMonth: null, occurrencePeriodStatus: null,
     lifecycle: "ready_for_review", evidenceFinding: "advance_cancellation", reviewOutcome: null, heldReason: null, inQueue: true, concluded: false,
+    evidenceConflict: false, evidenceConflictReason: null,
   },
   {
     id: "preview-440-1",
@@ -137,5 +142,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     arrivalDelaySeconds: null,
     occurrenceReviewStatus: null, occurrenceAttribution: null, occurrenceServiceMonth: null, occurrencePeriodStatus: null,
     lifecycle: "reviewed", evidenceFinding: "late_trip_start", reviewOutcome: "confirmed_missed_trip", heldReason: null, inQueue: false, concluded: true,
+    evidenceConflict: true,
+    evidenceConflictReason: "Avail reports this run as operated with a missed stop; the case is a Confirmed missed trip.",
   },
 ];

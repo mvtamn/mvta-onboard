@@ -1,9 +1,9 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 
 app.http("eventModuleAuditStream", { route: "event-module-audit-stream", methods: ["GET"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, [...STAFF_READ_ROLES, "OCC.Compliance"]); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await requireAccess(req, "event-avl.view"); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool(); const r = pool.request(); r.input("from", sql.DateTime2, req.query.get("from") ? new Date(req.query.get("from")!) : new Date(Date.now() - 7 * 86400000)); r.input("to", sql.DateTime2, req.query.get("to") ? new Date(req.query.get("to")!) : new Date());
   const eventId = req.query.get("event_id"); const servicePlanId = req.query.get("service_plan_id"); if (eventId) r.input("event", sql.UniqueIdentifier, eventId); if (servicePlanId) r.input("plan", sql.UniqueIdentifier, servicePlanId);
   const result = await r.query(`

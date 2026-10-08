@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { parseConnectionString, sql } from "../db";
-import { isOtpRowAssessable, measureOtpMonth, measureOtpTrend, otpAssessableJoinsSql, otpAssessableSql } from "./index";
+import { isOtpRowAssessable, measureOtpMonth, measureOtpRouteStops, measureOtpTrend, otpAssessableJoinsSql, otpAssessableSql } from "./index";
+import { takeDateExclusionSnapshot } from "../otpDateExclusionSnapshot";
 
 // The OTP month measurement module against a real SQL Server. rules.test.ts
 // covers the rule itself and guards the reporting view's copy of it; this file
@@ -14,7 +15,8 @@ import { isOtpRowAssessable, measureOtpMonth, measureOtpTrend, otpAssessableJoin
 //   the SQL test and its TypeScript twin agreeing row for row;
 //   the target coming from the month's frozen rule set, and from the catalog
 //   when the month has no period of its own;
-//   weather days counted and never applied;
+//   weather days counted, and an approved one subtracting what it was
+//     approved with (ADR 0038);
 //   the trend reading the assessable figure, oldest first.
 //
 // Tables come from the real migrations, in a database of its own (see
@@ -23,14 +25,18 @@ const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_otp_month_contract";
 const MIGRATIONS = [
   "014-otp-monthly", "016-route-classification", "018-otp-exclusions-and-settings",
-  "030-contractor-performance-assessment", "032b-governed-performance-assessment",
+  "020-otp-daily", "030-contractor-performance-assessment", "032b-governed-performance-assessment",
   "102-agreement-scoped-standards", "107-penalty-scaling",
+  "123-otp-daily-direction-key", "140-otp-date-exclusion-departures",
 ];
 
 const CONTRACTOR = "c0000000-0000-4000-8000-000000000001";
 const AGREEMENT = "a0000000-0000-4000-8000-000000000001";
 const PERIOD = "b0000000-0000-4000-8000-000000000001";
 const ACTOR = "otp-contract";
+const SNOW_MONDAY = "d0000000-0000-4000-8000-000000000001";
+const SNOW_WEDNESDAY = "d0000000-0000-4000-8000-000000000002";
+const SNOW_JULY = "d0000000-0000-4000-8000-000000000003";
 
 // 460 is fixed route; 1131 is a state-fair shuttle; 4444 is MVTA Connect.
 // Each route has one stop on Mon and one on Tue, so an exclusion can take out
@@ -51,10 +57,20 @@ INSERT RouteClassification(route_id,route_category,route_label,updated_by) VALUE
 INSERT OtpStopExclusions(service_month,route_id,stop_id,day_of_week,reason_code,status,reviewed_by) VALUES
  ('202608',460,101,'Mon','SCHED_RECOVERY','approved','${ACTOR}'),
  ('202608',460,100,'Tue','SCHED_RECOVERY','rejected','${ACTOR}');
-INSERT OtpDateExclusions(scope,service_date,reason_code,status,created_by) VALUES
- ('Agency','20260812','WEATHER_SNOW','Approved','${ACTOR}'),
- ('Agency','20260813','WEATHER_SNOW','Proposed','${ACTOR}'),
- ('Agency','20260712','WEATHER_SNOW','Approved','${ACTOR}');
+-- 2026-08-10 is a Monday, so it can land on the Monday rows above; 2026-08-12
+-- is a Wednesday, which the feed has no rows for at all. Both are recorded, so
+-- the difference between "recorded" and "actually subtracting" is visible.
+INSERT OtpDateExclusions(id,scope,service_date,reason_code,status,created_by) VALUES
+ ('${SNOW_MONDAY}','Agency','20260810','WEATHER_SNOW','Proposed','${ACTOR}'),
+ ('${SNOW_WEDNESDAY}','Agency','20260812','WEATHER_SNOW','Proposed','${ACTOR}'),
+ ('${SNOW_JULY}','Agency','20260712','WEATHER_SNOW','Approved','${ACTOR}');
+-- What the daily feed holds for the Monday: 30 of route 460 stop 100's 100
+-- Monday departures, 12 of them on time. Route 1131 is a fair shuttle and
+-- never reaches the figure; stop 900 is on no monthly row at all.
+INSERT OtpDailyRouteStopHour(calendar_date,hour_of_day,route_id,stop_id,stop_name,route_label,total,ontime) VALUES
+ ('20260810',7,460,100,'Apple Valley','460',20,8),
+ ('20260810',8,460,100,'Apple Valley','460',10,4),
+ ('20260810',7,1131,900,'Fair Gate','St Fair Shuttle',50,10);
 `;
 
 function batches(text: string): string[] {
@@ -124,14 +140,110 @@ test("OTP month measurement against real SQL", { skip: !connectionString && "DEC
       }
     });
 
-    await t.test("weather days are counted for the month and never applied", async () => {
+    await t.test("a route's stops add up to the route, with the stop rule applied per stop", async () => {
+      // Early and late leave the measurement alone; the stop view splits by them.
+      await pool.request().batch(`
+        UPDATE OtpMonthlyRouteStopDay SET early=5, late=15 WHERE service_month='202608' AND route_id=460 AND stop_id=100 AND day_of_week='Mon';
+        UPDATE OtpMonthlyRouteStopDay SET early=2, late=8 WHERE service_month='202608' AND route_id=460 AND stop_id=100 AND day_of_week='Tue';
+        UPDATE OtpMonthlyRouteStopDay SET early=0, late=50 WHERE service_month='202608' AND route_id=460 AND stop_id=101;`);
+      const view = await measureOtpRouteStops(pool, "202608", 460);
+      assert.equal(view.feed_ready, true);
+      assert.equal(view.target, 0.85);
+      const stops = Object.fromEntries(view.stops.map(stop => [stop.stop_id, stop]));
+      assert.deepEqual(Object.keys(stops).sort(), ["100", "101"]);
+
+      // Stop 100: both days count. Its rejected Tuesday exclusion leaves it in.
+      assert.deepEqual(stops[100].excluded_days, []);
+      assert.deepEqual([stops[100].assessable.departures, stops[100].assessable.ontime], [200, 170]);
+      assert.deepEqual(stops[100].mix, { total: 200, early: 7, ontime: 170, late: 23, other: 0 });
+
+      // Stop 101: its only day is excluded, so nothing of it is assessable,
+      // but its raw split is still there to show.
+      assert.deepEqual(stops[101].excluded_days, ["Mon"]);
+      assert.equal(stops[101].assessable.departures, 0);
+      assert.equal(stops[101].assessable.pct, null);
+      assert.deepEqual(stops[101].raw_mix, { total: 100, early: 0, ontime: 40, late: 50, other: 10 });
+      assert.equal(stops[101].mix.total, 0);
+
+      // The stops sum to the route's own figure, raw and assessable.
+      const sum = (pick: (stop: typeof view.stops[number]) => number) => view.stops.reduce((n, stop) => n + pick(stop), 0);
+      assert.deepEqual([sum(stop => stop.raw.departures), sum(stop => stop.assessable.departures), sum(stop => stop.assessable.ontime)],
+        [view.route!.raw.departures, view.route!.assessable.departures, view.route!.assessable.ontime]);
+
+      // A route the standard does not cover has stops, none of them assessable.
+      const shuttle = await measureOtpRouteStops(pool, "202608", 1131);
+      assert.deepEqual(shuttle.stops.map(stop => [stop.stop_id, stop.raw.departures, stop.assessable.departures]), [[900, 50, 0]]);
+      // A route the feed has never heard of is empty, not an error.
+      const unknown = await measureOtpRouteStops(pool, "202608", 9999);
+      assert.deepEqual([unknown.route, unknown.stops], [null, []]);
+    });
+
+    await t.test("a recorded weather day changes nothing until it is approved", async () => {
       const august = await measureOtpMonth(pool, "202608");
-      // Two recorded in August, one of them still Proposed.
-      assert.equal(august.weather_days_recorded, 1);
-      assert.equal((await measureOtpMonth(pool, "202607")).weather_days_recorded, 1);
-      // Applying one would have to remove a day of week, since the feed has no
-      // dates: the figure is the same as it was before any were recorded.
+      // Both August dates are recorded; neither is approved, so neither moves
+      // the figure. A date exclusion is a request until somebody approves it.
+      assert.equal(august.weather_days_recorded, 2);
+      assert.equal(august.weather_days_applied, 0);
       assert.equal(august.assessable.departures, 200);
+      assert.deepEqual([august.date_excluded.departures, august.date_excluded.ontime], [0, 0]);
+      assert.equal((await measureOtpMonth(pool, "202607")).weather_days_recorded, 1);
+    });
+
+    await t.test("a date the feed cannot evidence is refused rather than approved into a no-op", async () => {
+      // 2026-08-12 is a Wednesday and the month has no Wednesday rows.
+      const wednesday = await takeDateExclusionSnapshot(pool, SNOW_WEDNESDAY, "20260812", null);
+      assert.deepEqual(wednesday, { kind: "refused", reason: { kind: "day_of_week_absent", dayOfWeek: "Wed" } });
+      // July's approved date has no daily rows at all - the feed keeps 90 days.
+      const july = await takeDateExclusionSnapshot(pool, SNOW_JULY, "20260712", null);
+      assert.equal(july.kind, "refused");
+      assert.equal(july.kind === "refused" && july.reason.kind, "day_of_week_absent");
+      // Nothing was written by either refusal.
+      const written = (await pool.request().query<{ n: number }>("SELECT COUNT(*) n FROM OtpDateExclusionDepartures")).recordset[0].n;
+      assert.equal(Number(written), 0);
+    });
+
+    await t.test("an approved weather day subtracts exactly what it was approved with", async () => {
+      const snapshot = await takeDateExclusionSnapshot(pool, SNOW_MONDAY, "20260810", null);
+      // Only route 460 stop 100 is frozen. The fair shuttle ran that Monday and
+      // is in the monthly feed, but it is not this standard's service, so a
+      // snapshot row for it could never subtract anything - and 30 is then
+      // exactly what left the figure, which is what the receipt should say.
+      assert.deepEqual(snapshot, { kind: "taken", serviceMonth: "202608", dayOfWeek: "Mon", rows: 1, departures: 30 });
+
+      // Still Proposed, so still subtracting nothing.
+      assert.equal((await measureOtpMonth(pool, "202608")).assessable.departures, 200);
+
+      await pool.request().batch(`UPDATE OtpDateExclusions SET status='Approved' WHERE id='${SNOW_MONDAY}'`);
+      const august = await measureOtpMonth(pool, "202608");
+      assert.equal(august.weather_days_applied, 1);
+      assert.deepEqual([august.date_excluded.departures, august.date_excluded.ontime], [30, 12]);
+      // 200 - 30 assessable departures, 170 - 12 on time.
+      assert.deepEqual([august.assessable.departures, august.assessable.ontime], [170, 158]);
+      // Raw is untouched, and the two subtractions are told apart.
+      assert.deepEqual([august.raw.departures, august.raw.ontime], [370, 224]);
+      assert.deepEqual([august.stop_excluded.departures, august.stop_excluded.ontime], [170, 54]);
+      assert.deepEqual([august.excluded.departures, august.excluded.ontime], [200, 66]);
+
+      // The route carries the same subtraction.
+      const route460 = august.routes.find((route) => route.route_id === 460)!;
+      assert.deepEqual([route460.date_excluded.departures, route460.assessable.departures], [30, 170]);
+
+      // The stop view takes the same 30 from the same stop, and says so.
+      const stopView = await measureOtpRouteStops(pool, "202608", 460);
+      const stop100 = stopView.stops.find((stop) => stop.stop_id === 100)!;
+      assert.deepEqual([stop100.date_excluded.departures, stop100.date_excluded.ontime], [30, 12]);
+      assert.deepEqual([stop100.assessable.departures, stop100.assessable.ontime], [170, 158]);
+      assert.equal(stop100.mix.total, 200);
+
+      // The reporting view publishes the identical figure.
+      const view = (await pool.request().query<{ total: number; ontime: number }>(`
+        SELECT SUM(AssessableTotalDepartures) total, SUM(AssessableOnTimeDepartures) ontime
+        FROM vw_OtpMonthlyRouteStop WHERE ServiceMonth = '202608'
+      `)).recordset[0];
+      assert.deepEqual([Number(view.total), Number(view.ontime)], [170, 158]);
+
+      // Put August back, so the tests after this one see the month they expect.
+      await pool.request().batch(`UPDATE OtpDateExclusions SET status='Proposed' WHERE id='${SNOW_MONDAY}'`);
     });
 
     await t.test("a month with no Assessment Period is judged by the catalog's current band", async () => {

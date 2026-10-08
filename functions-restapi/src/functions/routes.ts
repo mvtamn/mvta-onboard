@@ -1,11 +1,11 @@
 // GET /routes - the authoritative MVTA route registry (GtfsRoutes, migration
 // 010), backing Compose's affected-routes multi-select so staff pick from
-// real route numbers instead of hand-typing free text. Any staff role can
+// real route numbers instead of hand-typing free text. Any OnBoard role can
 // read; this is reference data only, no write path (writes come from the
 // daily gtfsStopsSync timer).
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAnyOnBoardAccess } from "../lib/access/require";
 
 interface RouteRow {
   route_id: string;
@@ -17,9 +17,9 @@ interface RouteRow {
 app.http("routesList", {
   route: "routes",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAnyOnBoardAccess(request);
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

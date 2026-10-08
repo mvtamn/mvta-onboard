@@ -5,8 +5,11 @@ import type { FixedRouteDeparture } from "@mvta/shared";
 import { api } from "../../config.js";
 import { FixedRouteDepartures } from "./FixedRouteDepartures.js";
 
-let roles: string[] = ["OCC.Compliance"];
-vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => ({ roles }) }));
+let actions: string[] = ["compliance-review.view", "compliance-review.review"];
+vi.mock("../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../auth/AccessContext.js")>("../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(actions) };
+});
 vi.mock("../../config.js", () => ({
   api: {
     getFixedRouteDepartures: vi.fn(),
@@ -37,7 +40,7 @@ const diagnostics = {
 
 describe("settling a garage departure from the departure view", () => {
   beforeEach(() => {
-    roles = ["OCC.Compliance"];
+    actions = ["compliance-review.view", "compliance-review.review"];
     vi.mocked(api.getFixedRouteDepartures).mockResolvedValue({ departures: [lateRun()], diagnostics });
   });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -88,7 +91,7 @@ describe("settling a garage departure from the departure view", () => {
   });
 
   it("shows a read-only reader where it went but offers no buttons", async () => {
-    roles = ["OCC.Viewer"];
+    actions = ["compliance-review.view"];
     render(<FixedRouteDepartures />);
     expect(await screen.findByText("Awaiting review")).toBeInTheDocument();
     expect(screen.queryByText("Charge")).not.toBeInTheDocument();

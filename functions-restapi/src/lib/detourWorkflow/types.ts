@@ -35,6 +35,9 @@ export type DetourAct =
   | { act: "manual_fallback"; reason: string }
   | { act: "close"; reason: string }
   | { act: "override_conflict"; reason: string }
+  // Who is carrying this Detour. `owner: null` hands it back to nobody.
+  // Ownership is not a state: it says who acts next, not what the Detour is.
+  | { act: "assign"; owner: string | null }
   // Called before the caller writes the edited fields, so the stored values
   // are still the ones OCC last saw.
   | { act: "record_edit"; proposed: Partial<ReviewedFacts> }
@@ -50,7 +53,9 @@ export type RefusalCode =
   | "conflict_unresolved"
   | "re_review_outstanding"
   | "no_conflicts_to_override"
-  | "no_re_review_outstanding";
+  | "no_re_review_outstanding"
+  | "invalid_owner"
+  | "no_change";
 
 export interface Refusal {
   code: RefusalCode;

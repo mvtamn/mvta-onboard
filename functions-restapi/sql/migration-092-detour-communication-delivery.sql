@@ -23,8 +23,14 @@ BEGIN
     sent_subject NVARCHAR(500) NULL,
     sent_body NVARCHAR(MAX) NULL,
     sent_recipients NVARCHAR(2000) NULL;
-  ALTER TABLE DetourCommunications ADD CONSTRAINT CK_DetourCommunications_DeliveryStatus
-    CHECK (delivery_status IN ('not_requested', 'queued', 'sent', 'partially_sent', 'failed', 'skipped'));
+  -- Through EXEC: this batch is compiled before any of it runs, so naming
+  -- delivery_status here directly fails with "Invalid column name" on a
+  -- database that does not already have it - which is every database this
+  -- migration is for. The whole batch is then abandoned and nothing is added,
+  -- silently enough to look like a clean run. Migration 061 has the same shape
+  -- and the same workaround.
+  EXEC(N'ALTER TABLE DetourCommunications ADD CONSTRAINT CK_DetourCommunications_DeliveryStatus
+    CHECK (delivery_status IN (''not_requested'', ''queued'', ''sent'', ''partially_sent'', ''failed'', ''skipped''))');
 END;
 GO
 

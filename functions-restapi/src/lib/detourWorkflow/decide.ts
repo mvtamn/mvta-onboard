@@ -26,6 +26,8 @@ export interface WorkflowSnapshot {
   fulfillment_mode: DetourFulfillmentMode;
   review_status: "current" | "needs_review";
   review_reason: string | null;
+  // Who is carrying it, so assigning can tell a change from a no-op.
+  workflow_owner: string | null;
   history_count: number;
   facts: ReviewedFacts;
   override_reason: string | null;
@@ -45,6 +47,8 @@ export interface RowPatch {
   closure_reason?: string;
   conflict_override?: { reason: string; ids: string[] };
   review?: { status: "current" | "needs_review"; reason: string | null };
+  // Who is carrying the Detour. `null` is nobody, which is a real answer.
+  owner?: string | null;
 }
 
 export type HistoryEventType = "created" | "state_transition" | "source_observation" | "manual_correction" | "fulfillment_confirmation";
@@ -191,6 +195,27 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
       return {
         patch: { conflict_override: { reason, ids: conflicts.map((c) => c.id) } },
         history: { event_type: "manual_correction", from_state: state, to_state: state, detail: clip(`Conflict override: ${reason} (conflicts: ${conflicts.map((c) => c.label).join(", ")})`) },
+      };
+    }
+
+    case "assign": {
+      // Ownership says who acts next, so it stops mattering once nothing is
+      // left to do. Everything else about the Detour is unchanged: assigning is
+      // not a state transition and never raises a re-review.
+      if (state === "closed") return refuse("not_allowed_from_state", "This Detour is closed, so there is nothing left to own.");
+      const owner = act.owner?.trim() || null;
+      if (owner && owner.length > 200) return refuse("invalid_owner", "That owner name is too long.");
+      if (owner === (snapshot.workflow_owner ?? null)) {
+        return refuse("no_change", owner ? `${owner} already owns this Detour.` : "This Detour is already unassigned.");
+      }
+      return {
+        patch: { owner, workflow: true },
+        history: {
+          event_type: "manual_correction",
+          from_state: state,
+          to_state: state,
+          detail: clip(owner ? `Assigned to ${owner}` : "Owner cleared"),
+        },
       };
     }
 

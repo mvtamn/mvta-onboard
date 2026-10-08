@@ -1,11 +1,11 @@
 // GET /otp-monthly-trend?months=6 - agency-wide OTP % per service month,
 // backing the Dashboard's trend chart (previously a "Power BI" placeholder).
 // No dollar/penalty figure - no Attachment G penalty formula exists in this
-// repo to build one from; this is % only, per the owner's decision. Any
-// staff role, plus OCC.Compliance.
+// repo to build one from; this is % only, per the owner's decision. Requires
+// compliance-review.view.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { measureOtpTrend } from "../lib/otpMonth";
 
 const DEFAULT_MONTHS = 6;
@@ -14,9 +14,9 @@ const MAX_MONTHS = 24;
 app.http("otpMonthlyTrendList", {
   route: "otp-monthly-trend",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

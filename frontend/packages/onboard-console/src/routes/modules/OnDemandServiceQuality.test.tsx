@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../config.js";
 import { OnDemandServiceQuality } from "./OnDemandServiceQuality.js";
 
-const authState = { roles: ["OCC.Admin"] };
+let actions: string[] = ["service-risk.view", "service-risk.resolve"];
 
 const liveRisk: OnDemandRiskRecord = {
   request_id: "req-1",
@@ -46,12 +46,15 @@ vi.mock("../../config.js", () => ({
     getOnDemandServiceStandardAudit: vi.fn().mockResolvedValue({ audit: [] }),
   },
 }));
-vi.mock("../../auth/AuthContext.js", () => ({ useAuth: () => authState }));
+vi.mock("../../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../../auth/AccessContext.js")>("../../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(actions) };
+});
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  authState.roles = ["OCC.Admin"];
+  actions = ["service-risk.view", "service-risk.resolve"];
 });
 
 describe("On-Demand Risk investigation workspace", () => {
@@ -333,7 +336,7 @@ describe("On-Demand Risk investigation workspace", () => {
 
   it("shows the saved standard to a dispatcher without administration controls", async () => {
     vi.mocked(api.getOnDemandRisks).mockRejectedValueOnce(new Error("preview mode"));
-    authState.roles = ["OCC.Viewer"];
+    actions = ["service-risk.view"];
 
     render(<MemoryRouter><OnDemandServiceQuality /></MemoryRouter>);
 

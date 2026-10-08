@@ -5,6 +5,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { runFeedsIngestion } from "../lib/feedRun";
+import { missedTripDetectionSettings } from "../lib/missedTripCase";
 import {
   fetchSpareCollection,
   fetchSpareUpdatedWindow,
@@ -25,19 +26,6 @@ const SLOT_PAGE_SIZE = 200;
 const SLOT_DUTY_CONCURRENCY = 8;
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_MAX_ROWS = 10_000;
-
-function enabled(): boolean {
-  return process.env.SPARE_MISSED_TRIPS_ENABLED?.trim().toLowerCase() === "true";
-}
-
-function scopedServiceIds(): ReadonlySet<string> {
-  return new Set(
-    (process.env.SPARE_MISSED_TRIP_SERVICE_IDS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
-  );
-}
 
 function fetchPickupSlotsForDuty(dutyId: string, maxRows: number): Promise<SpareSlotRecord[]> {
   return fetchSpareCollection<SpareSlotRecord>("/v1/slots", { dutyId, type: "pickup" }, SLOT_PAGE_SIZE, maxRows);
@@ -67,7 +55,7 @@ async function upsertRequest(pool: sql.ConnectionPool, row: SpareRequestRecord):
   const status = spareString(row.status, 32);
   const serviceId = spareString(row.serviceId, 64);
   if (!requestId || !status) return false;
-  const scope = scopedServiceIds();
+  const scope = missedTripDetectionSettings().spareServiceIds;
   if (scope.size > 0 && (!serviceId || !scope.has(serviceId))) return false;
 
   const dutyId = spareString(row.dutyId, 64) ?? spareString(row.lockedToDutyId, 64);
@@ -205,7 +193,7 @@ async function upsertSlot(pool: sql.ConnectionPool, row: SpareSlotRecord): Promi
 app.timer("spareMissedTripsIngest", {
   schedule: "0 2/15 * * * *",
   handler: async (_timer: Timer, context: InvocationContext) => {
-    if (!enabled()) {
+    if (!missedTripDetectionSettings().spareEnabled) {
       context.log("Spare missed-trip ingestion is disabled (SPARE_MISSED_TRIPS_ENABLED is not true).");
       return;
     }

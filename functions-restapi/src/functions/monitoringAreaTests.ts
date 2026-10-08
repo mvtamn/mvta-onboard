@@ -1,6 +1,6 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { EVENT_AVL_NOTIFICATION_ROLES, STAFF_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid } from "../lib/validation";
 import { polygonContains } from "../lib/geofence";
 
@@ -21,7 +21,7 @@ async function listTests() {
 }
 
 app.http("monitoringAreaTests", { route: "monitoring-area-tests", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, req.method === "GET" ? STAFF_READ_ROLES : EVENT_AVL_NOTIFICATION_ROLES);
+  const auth = await requireAccess(req, req.method === "GET" ? "event-avl.view" : "event-avl.notify");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   if (req.method === "GET") return { status: 200, jsonBody: await listTests() };
   if (!process.env.TEAMS_EVENT_WEBHOOK_URL) return { status: 409, jsonBody: { error: "Teams webhook is not configured" } };
@@ -53,7 +53,7 @@ app.http("monitoringAreaTests", { route: "monitoring-area-tests", methods: ["GET
 } });
 
 app.http("monitoringAreaTestDisable", { route: "monitoring-area-tests/{id}", methods: ["DELETE"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, EVENT_AVL_NOTIFICATION_ROLES); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  const auth = await requireAccess(req, "event-avl.notify"); if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   if (!isGuid(req.params.id)) return { status: 400, jsonBody: { error: "Test id must be a valid GUID" } };
   const pool = await getPool(); const request = pool.request(); request.input("id", sql.UniqueIdentifier, req.params.id); request.input("actor", sql.NVarChar, auth.principal.userDetails ?? "system");
   const result = await request.query("UPDATE EventMonitoringAreaTests SET is_enabled=0,updated_by=@actor,updated_at=SYSUTCDATETIME() WHERE id=@id AND is_enabled=1");

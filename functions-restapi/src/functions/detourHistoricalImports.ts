@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { DETOUR_READ_ROLES, DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid, validateDetourHistoricalImport } from "../lib/validation";
 
 app.http("detourHistoricalImport", {
   route: "detours/historical-imports", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_WRITE_ROLES);
+    const auth = await requireAccess(request, "detours.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>;
     try { body = (await request.json()) as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
@@ -34,7 +34,7 @@ app.http("detourHistoricalImport", {
 app.http("detourHistoricalImportList", {
   route: "detours/historical-imports", methods: ["GET"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_READ_ROLES);
+    const auth = await requireAccess(request, "detours.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const batch = request.query.get("import_batch_id");
     if (batch && !isGuid(batch)) return { status: 400, jsonBody: { error: "import_batch_id must be a GUID" } };

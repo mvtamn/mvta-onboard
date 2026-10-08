@@ -1,10 +1,8 @@
-import { ADMIN_ROLES, STAFF_READ_ROLES } from "./auth";
-
 /**
  * Event AVL staff need to read the Event and operating-period lists in order
- * to choose an operational context; changing either resource remains an
- * administrative action.
+ * to choose an operational context, which is the Event AVL module's own view
+ * action; changing either resource is editing the plan behind it.
  */
-export function eventOperatingContextRoles(method: string): string[] {
-  return method === "GET" ? STAFF_READ_ROLES : ADMIN_ROLES;
+export function eventOperatingContextAction(method: string): string {
+  return method === "GET" ? "event-avl.view" : "event-planning.edit";
 }

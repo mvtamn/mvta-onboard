@@ -3,7 +3,7 @@
 // conflating them with the current row state.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { DETOUR_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid } from "../lib/validation";
 
 app.http("detourWorkflowHistory", {
@@ -11,7 +11,7 @@ app.http("detourWorkflowHistory", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_READ_ROLES);
+    const auth = await requireAccess(request, "detours.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };

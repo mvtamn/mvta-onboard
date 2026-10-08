@@ -3,7 +3,7 @@ import { auditSql } from "../lib/assessment/audit";
 import { CAP_MANUAL_TRIGGERS, capTransition, type CapStatus } from "../lib/assessment/capTransitions";
 import { addBusinessDays, assertHolidayCoverage } from "../lib/assessment/businessDays";
 import { randomUUID } from "node:crypto";
-import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { isGuid } from "../lib/validation";
 
@@ -15,13 +15,13 @@ const STATUSES: readonly CapStatus[] = ["required", "submitted", "approved", "in
 app.http("assessmentCapTransition", {
   route: "assessment-caps/{id}", methods: ["PATCH"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.work");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid CAP id" } };
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
     const to = String(body.status) as CapStatus;
     if (!STATUSES.includes(to)) return { status: 400, jsonBody: { error: `status must be one of ${STATUSES.join(", ")}` } };
-    const role = auth.principal.roles.some(r => COMPLIANCE_MANAGER_ROLES.includes(r)) ? "manager" : "writer";
+    const role = auth.access.actions.includes("performance-assessment.decide") ? "manager" : "writer";
     const actor = auth.principal.userDetails ?? "onboard-console";
     const pool = await getPool(); const tx = new sql.Transaction(pool);
     try {
@@ -57,7 +57,7 @@ app.http("assessmentCapTransition", {
 app.http("assessmentCapCreate", {
   route: "assessment-caps", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_MANAGER_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.decide");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
     if (!isGuid(body.period_id) || !CAP_MANUAL_TRIGGERS.includes(body.trigger_reason as never) || typeof body.note !== "string" || !body.note.trim() || (body.standard_id !== undefined && body.standard_id !== null && !isGuid(body.standard_id)))

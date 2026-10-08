@@ -7,7 +7,7 @@ import {
   timeAgo,
   ApiError,
 } from "@mvta/shared";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { api } from "../config.js";
 
 const SOURCE_PILL: Record<string, string> = {
@@ -29,12 +29,12 @@ const SOURCE_LABEL: Record<string, string> = {
 // already renders any status it doesn't special-case as muted, so that shows
 // correctly with no changes here.
 export function SuggestedAlerts({ onChanged }: { onChanged?: () => void }) {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get("focus");
   const focusRow = useRef<HTMLTableRowElement | null>(null);
-  const canReview = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
-  const canSeeProcedure = roles.some((r) => r === "OCC.Viewer" || r === "OCC.Publisher" || r === "OCC.Admin");
+  const canReview = can("rider-alerts.publish");
+  const canSeeProcedure = can("rider-alerts.view");
 
   const [alerts, setAlerts] = useState<SuggestedAlert[] | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -30,12 +30,13 @@ async function bootstrap() {
     return;
   }
 
-  const [{ MsalProvider }, { EventType }, { getMsalInstance }, { MsalAuthProvider }] =
+  const [{ MsalProvider }, { EventType }, { getMsalInstance }, { MsalAuthProvider }, { AccessProvider }] =
     await Promise.all([
       import("@azure/msal-react"),
       import("@azure/msal-browser"),
       import("./auth/msalConfig.js"),
       import("./auth/AuthContext.js"),
+      import("./auth/AccessContext.js"),
     ]);
 
   const msalInstance = getMsalInstance();
@@ -57,9 +58,11 @@ async function bootstrap() {
       <ThemeProvider>
         <MsalProvider instance={msalInstance}>
           <MsalAuthProvider>
-            <BrowserRouter basename="/console">
-              <App />
-            </BrowserRouter>
+            <AccessProvider>
+              <BrowserRouter basename="/console">
+                <App />
+              </BrowserRouter>
+            </AccessProvider>
           </MsalAuthProvider>
         </MsalProvider>
       </ThemeProvider>

@@ -1,4 +1,4 @@
-// Parsing for the Legacy spreadsheet history import on Detour Reports.
+// Parsing for the Legacy spreadsheet history import on Detour Register.
 //
 // The tracker this replaces was an Excel sheet, so the file that arrives
 // here is whatever Excel saved: a UTF-8 BOM, CRLF line endings, and closure
@@ -59,7 +59,7 @@ export function parseCsv(text: string): string[][] {
 }
 
 // Header aliases, normalized to lowercase alphanumerics. Covers the
-// tracker's own headings, the JSON field names, and the Detour Reports CSV
+// tracker's own headings, the JSON field names, and the Detour Register CSV
 // export so an export can be re-imported.
 const COLUMN_ALIASES: Record<keyof Omit<LegacyImportRow, "closure"> | "closure", string[]> = {
   reference: ["reference", "historicalreference", "ref", "number", "internalref", "detournumber", "id"],

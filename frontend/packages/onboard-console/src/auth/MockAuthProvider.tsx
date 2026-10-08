@@ -4,30 +4,34 @@
 // path (and this file's chunk) is eliminated by tree-shaking.
 //
 // Provides a fake signed-in account plus a floating role-switcher widget so
-// the RBAC gating (OCC Tools visibility, Compose access, RequireRole notices)
-// can be exercised without any Entra setup. This only changes what the UI
-// SHOWS — the REST API still enforces roles server-side (auth.js requireRole),
-// so mock mode cannot authorize real writes.
+// the gating (nav visibility, Compose access, RequireAccess notices) can be
+// exercised without any Entra setup. Mock preview has no token, so it cannot
+// ask GET /me/access what a role grants; mockAccess.ts mirrors the seeded
+// roles for that purpose alone. This only changes what the UI SHOWS — the REST
+// API still decides every call (requireAccess), so mock mode cannot authorize
+// real writes.
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { AuthContext, type AuthState } from "./AuthContext.js";
-import type { AppRole } from "./roles.js";
+import { StaticAccessProvider } from "./AccessContext.js";
+import { mockAccessFor } from "./mockAccess.js";
 
 const MOCK_USERNAME = "dev.user.mock@mvta.com"; // grep marker: must NOT appear in prod bundles
 
-const ROLE_PRESETS: { label: string; roles: AppRole[] }[] = [
-  { label: "Admin", roles: ["OCC.Admin"] },
-  { label: "Publisher", roles: ["OCC.Publisher"] },
-  { label: "Viewer", roles: ["OCC.Viewer"] },
-  { label: "Compliance", roles: ["OCC.Compliance"] },
+const ROLE_PRESETS: { label: string; keys: string[] }[] = [
+  { label: "Admin", keys: ["system-administrator"] },
+  { label: "Publisher", keys: ["publisher"] },
+  { label: "Viewer", keys: ["viewer"] },
+  { label: "Compliance", keys: ["compliance-analyst"] },
   // Detour Maintainer: read + create/edit + attachments, no delete. Worth a
   // preset of its own precisely because its boundary is the narrow one - it
   // is the only role where Edit shows but Delete does not.
-  { label: "Detour", roles: ["OCC.Detour"] },
+  { label: "Detour", keys: ["detour-editor"] },
   // SST OCS: the contractor desk that initials the Dispatch Log. Reads the
   // log and records verifications, nothing else - worth a preset because it
   // is the first role held by people outside MVTA's own OCC.
-  { label: "SST OCS", roles: ["OCC.TripStartVerify"] },
-  { label: "No roles", roles: [] },
+  { label: "SST OCS", keys: ["trip-start-verifier"] },
+  { label: "Access Admin", keys: ["access-administrator"] },
+  { label: "No roles", keys: [] },
 ];
 
 const widgetStyle: CSSProperties = {
@@ -65,16 +69,20 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       account: signedIn ? { name: "Dev User (mock)", username: MOCK_USERNAME } : null,
-      roles: signedIn ? ROLE_PRESETS[preset].roles : [],
       signIn: () => setSignedIn(true),
       signOut: () => setSignedIn(false),
     }),
     [signedIn, preset],
   );
 
+  const access = useMemo(
+    () => mockAccessFor(signedIn ? ROLE_PRESETS[preset].keys : [], MOCK_USERNAME, "Dev User (mock)"),
+    [signedIn, preset],
+  );
+
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      <StaticAccessProvider access={access}>{children}</StaticAccessProvider>
       <div style={widgetStyle}>
         <div style={{ fontWeight: 700 }}>
           MOCK AUTH <span style={{ color: "#F78E1E" }}>· dev preview only</span>
@@ -90,7 +98,7 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
           </button>
         </div>
         <div style={{ color: "#aaa" }}>
-          Simulates Entra app roles. The API still enforces roles server-side.
+          Simulates an OnBoard role. The API still decides what a call may do.
         </div>
       </div>
     </AuthContext.Provider>

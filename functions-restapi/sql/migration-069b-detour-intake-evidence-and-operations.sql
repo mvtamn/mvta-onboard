@@ -41,7 +41,12 @@ BEGIN
   -- boolean predicates with <> here, so express the two valid cases.
   IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_DetourImages_Owner' AND parent_object_id = OBJECT_ID('dbo.DetourImages'))
     ALTER TABLE DetourImages DROP CONSTRAINT CK_DetourImages_Owner;
-  ALTER TABLE DetourImages ADD CONSTRAINT CK_DetourImages_Owner CHECK ((detour_id IS NOT NULL AND intake_id IS NULL) OR (detour_id IS NULL AND intake_id IS NOT NULL));
+  -- Through EXEC, for the same reason as migration 061: intake_id is added in
+  -- this batch, so a CHECK naming it is compiled before the column exists and
+  -- the whole batch is abandoned. It only ever applied where the column was
+  -- already there, which hid the defect.
+  EXEC(N'ALTER TABLE DetourImages ADD CONSTRAINT CK_DetourImages_Owner
+    CHECK ((detour_id IS NOT NULL AND intake_id IS NULL) OR (detour_id IS NULL AND intake_id IS NOT NULL))');
 END
 GO
 

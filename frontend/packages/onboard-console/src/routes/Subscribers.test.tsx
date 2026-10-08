@@ -30,6 +30,6 @@ describe("Subscribers", () => {
     });
     render(<Subscribers />);
     await waitFor(() => expect(screen.getByText("1,234")).toBeInTheDocument());
-    expect(screen.getByText("Recent sign-up detail is visible to Operations Administrators only.")).toBeInTheDocument();
+    expect(screen.getByText("Recent sign-up detail is not part of your access.")).toBeInTheDocument();
   });
 });

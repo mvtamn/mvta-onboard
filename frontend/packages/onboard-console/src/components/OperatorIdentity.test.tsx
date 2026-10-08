@@ -1,20 +1,36 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import type { MyAccess, MyAccessRole } from "@mvta/shared";
 import { describe, expect, it, vi } from "vitest";
+import { StaticAccessProvider } from "../auth/AccessContext.js";
 import { OperatorIdentity } from "./OperatorIdentity.js";
+
+function role(key: string, name: string): MyAccessRole {
+  return { key, name, purpose: "", locked: false, source: "onboard", scope: null, expiresAt: null };
+}
+
+const access: MyAccess = {
+  person: { objectId: "1", tenantId: "t", name: "Tyre Fant", email: "tyre.fant@mvta.com" },
+  roles: [role("operations-administrator", "Operations Administrator"), role("viewer", "Viewer"), role("alert-publisher", "Alert Publisher")],
+  actions: [],
+  summary: [],
+  ingestion: false,
+  rolesInOnBoard: true,
+};
 
 describe("OperatorIdentity", () => {
   it("summarizes roles in the trigger and keeps the complete list in the account menu", async () => {
     render(
       <MemoryRouter>
-        <OperatorIdentity
-          name="Tyre Fant"
-          username="tyre.fant@mvta.com"
-          roles={["OCC.Viewer", "OCC.Admin", "OCC.Publisher"]}
-          canManageAccess
-          onSignOut={vi.fn()}
-        />
+        <StaticAccessProvider access={access}>
+          <OperatorIdentity
+            name="Tyre Fant"
+            username="tyre.fant@mvta.com"
+            canManageAccess
+            onSignOut={vi.fn()}
+          />
+        </StaticAccessProvider>
       </MemoryRouter>,
     );
 

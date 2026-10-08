@@ -1,7 +1,7 @@
 // POST /messages/{id}/publish - human review boundary for ingestion drafts.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { PUBLISH_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { publishMessageCreated } from "../lib/events";
 import { isGuid } from "../lib/validation";
 import type { CreateMessageBody } from "../lib/types";
@@ -11,7 +11,7 @@ app.http("messagesPublish", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, PUBLISH_ROLES);
+    const auth = await requireAccess(request, "rider-alerts.publish");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };

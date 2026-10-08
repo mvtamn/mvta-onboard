@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { ADMIN_ROLES, COMPLIANCE_READ_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { RESOLVERS } from "../lib/assessment/resolvers";
 import { KNOWN_SOURCE_SYSTEMS } from "../lib/assessment/measurementSource";
@@ -10,9 +10,9 @@ import { isGuid, validatePerformanceStandard, validateStandardTierLadder } from 
 // The Attachment G standards catalog and its tier ladders.
 //
 // Attachment G reserves the right to amend a threshold by contract amendment,
-// so the bands have to be editable data rather than a migration. Reads are open
-// to the compliance roles - a manager reviewing a scorecard needs to see the
-// band that produced it - and every write is OCC.Admin.
+// so the bands have to be editable data rather than a migration. Reads are
+// performance-assessment.view - a manager reviewing a scorecard needs to see
+// the band that produced it - and every write is contractor-performance.edit.
 //
 // Scoping (migration 102): the catalog is the agency's library. An agreement
 // says which of those standards a contractor is actually held to, and may carry
@@ -25,7 +25,7 @@ app.http("performanceStandardsList", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_READ_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();
@@ -78,7 +78,7 @@ app.http("performanceStandardPut", {
   methods: ["PUT"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "contractor-performance.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid standard id" } };
@@ -192,7 +192,7 @@ app.http("performanceStandardTiersPut", {
   methods: ["PUT"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "contractor-performance.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid standard id" } };
@@ -292,7 +292,7 @@ app.http("performanceStandardDelete", {
   methods: ["DELETE"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, ADMIN_ROLES);
+    const auth = await requireAccess(request, "contractor-performance.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "Invalid standard id" } };

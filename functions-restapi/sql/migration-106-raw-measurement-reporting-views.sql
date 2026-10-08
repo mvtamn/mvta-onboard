@@ -92,6 +92,10 @@ GO
 -- as FixedRoute (so a new route falls under the standard by default rather
 -- than escaping it), and only an 'approved' stop exclusion excludes.
 -- ---------------------------------------------------------------------------
+-- SUPERSEDED by migration 140, which redefines this view to publish the date
+-- subtraction as well (ADR 0038). Migration 140 is the file lib/otpMonth's
+-- rules.test.ts checks against. Re-running 106 after 140 would revert the rule,
+-- so run 140 again if you ever do.
 CREATE OR ALTER VIEW dbo.vw_OtpMonthlyRouteStop AS
 SELECT
   CONVERT(date, CONCAT(LEFT(otp.service_month, 4), '-', RIGHT(otp.service_month, 2), '-01')) ServiceMonthStart,

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { type AdminMessage, CATEGORY_LABELS, formatExpires, ApiError } from "@mvta/shared";
 import { api } from "../config.js";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { useAppDialog } from "../components/AppDialog.js";
 
 const STATUS_PILL: Record<string, string> = {
@@ -15,9 +15,9 @@ const STATUS_PILL: Record<string, string> = {
 // Audit Log - server-side tag/keyword search across ALL messages (any status)
 // via GET /manage/messages. Replaces the earlier client-side active-only filter.
 export function AuditLog() {
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const { confirm } = useAppDialog();
-  const canPublish = roles.includes("OCC.Publisher") || roles.includes("OCC.Admin");
+  const canPublish = can("rider-alerts.publish");
   const [tag, setTag] = useState("");
   const [q, setQ] = useState("");
   const [results, setResults] = useState<AdminMessage[] | null>(null);

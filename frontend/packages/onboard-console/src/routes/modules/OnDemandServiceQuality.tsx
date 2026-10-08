@@ -7,7 +7,7 @@ import {
   type PrepareSuggestedAlertInput,
 } from "@mvta/shared";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../auth/AuthContext.js";
+import { useAccess } from "../../auth/AccessContext.js";
 import { api } from "../../config.js";
 import {
   confidenceClass,
@@ -168,7 +168,7 @@ function onDemandDraft(risk: OnDemandRisk, serviceStandard: number): PrepareSugg
 
 export function OnDemandServiceQuality() {
   const navigate = useNavigate();
-  const { roles } = useAuth();
+  const { can } = useAccess();
   const [selectedId, setSelectedId] = useState(ON_DEMAND_RISKS[0].id);
   const [workflow, setWorkflow] = useState<Record<string, RiskWorkflow>>({});
   const [dataMode, setDataMode] = useState<DataMode>("loading");
@@ -435,7 +435,7 @@ export function OnDemandServiceQuality() {
           serviceStandard={standardFor(selected)}
           onPrepare={() => void prepareUpdate(selected)}
           onWorkflow={(state) => setWorkflow((current) => ({ ...current, [selected.id]: state }))}
-          canResolve={roles.some((role) => role === "OCC.Publisher" || role === "OCC.Admin")}
+          canResolve={can("service-risk.resolve")}
           resolving={resolving}
           onResolve={() => void resolveIntervention(selected)}
         />

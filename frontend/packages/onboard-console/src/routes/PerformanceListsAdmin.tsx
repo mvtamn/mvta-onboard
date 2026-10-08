@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReferenceValue } from "@mvta/shared";
 import { api } from "../config.js";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import "./modules/assessment/assessment.css";
 import "./performanceStandards.css";
 
@@ -182,8 +182,8 @@ function ReferenceValuesPanel({ values, busy, canEdit, onSave, onDelete }: {
 
 
 export function PerformanceListsAdmin() {
-  const { roles } = useAuth();
-  const canEdit = roles.includes("OCC.Admin");
+  const { can } = useAccess();
+  const canEdit = can("contractor-performance.edit");
   const [values, setValues] = useState<ReferenceValue[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -217,7 +217,7 @@ export function PerformanceListsAdmin() {
         </div>
       </div>
 
-      {!canEdit && <div className="assessment-warning">You can read the lists. Changing one requires Administrator access.</div>}
+      {!canEdit && <div className="assessment-warning">You can read the lists. Changing one is not part of your access.</div>}
       {error && <div className="assessment-error">{error}</div>}
       {notice && <div className="standards-notice">{notice}</div>}
 

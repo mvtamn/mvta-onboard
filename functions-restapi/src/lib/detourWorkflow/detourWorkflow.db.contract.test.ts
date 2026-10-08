@@ -53,19 +53,6 @@ const MIGRATIONS = [
   "migration-091-detour-map-geometry.sql",
 ];
 
-// Two applied migrations do not compile on an empty database, because a batch
-// adds a column and then names it: SQL Server compiles the whole batch before
-// the column exists. Neither is edited, since dev has run both.
-//   061 adds review_status and its CHECK together; the CHECK runs via EXEC here.
-//   069b adds DetourImages.intake_id and indexes it; with DetourImages absent
-//   the batch's names resolve at run time and its IF skips it. These tests do
-//   not use DetourImages, so it is dropped before 069b.
-const FRESH_DATABASE_ADJUSTMENTS: Record<string, (text: string) => string> = {
-  "migration-061-detour-rereview-closure.sql": (text) => text.replace(
-    "ALTER TABLE dbo.Detours ADD CONSTRAINT CK_Detours_ReviewStatus CHECK (review_status IN ('current', 'needs_review'));",
-    "EXEC(N'ALTER TABLE dbo.Detours ADD CONSTRAINT CK_Detours_ReviewStatus CHECK (review_status IN (''current'', ''needs_review''))');",
-  ),
-};
 
 async function applyMigration(pool: sql.ConnectionPool, file: string) {
   const text = readFileSync(join(process.cwd(), "sql", file), "utf8");
@@ -77,11 +64,12 @@ async function applyMigration(pool: sql.ConnectionPool, file: string) {
 async function reset(pool: sql.ConnectionPool) {
   await pool.request().batch(DROP);
   for (const file of MIGRATIONS) {
+    // These tests do not use DetourImages, and 069b only touches it when it is
+    // there. Every migration here applies as written now that 061 and 069b
+    // route their CHECKs through EXEC.
     if (file.startsWith("migration-069b")) await pool.request().batch("DROP TABLE dbo.DetourImages;");
-    const raw = readFileSync(join(process.cwd(), "sql", file), "utf8");
-    const adjusted = FRESH_DATABASE_ADJUSTMENTS[file]?.(raw) ?? raw;
-    assert.ok(adjusted !== raw || !FRESH_DATABASE_ADJUSTMENTS[file], `${file} changed; revisit its fresh-database adjustment`);
-    for (const batch of adjusted.split(/^\s*GO\s*$/gim).map((p) => p.trim()).filter(Boolean)) {
+    const migration = readFileSync(join(process.cwd(), "sql", file), "utf8");
+    for (const batch of migration.split(/^\s*GO\s*$/gim).map((part) => part.trim()).filter(Boolean)) {
       await pool.request().batch(batch);
     }
   }

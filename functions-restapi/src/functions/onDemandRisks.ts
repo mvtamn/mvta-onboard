@@ -20,7 +20,7 @@
 // answered by diagnostics.monitored_request_count.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { PUBLISH_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import {
   ON_DEMAND_DEGRADED_AFTER_MINUTES,
@@ -150,7 +150,7 @@ app.http("onDemandRisksList", {
   methods: ["GET"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAccess(request, "service-risk.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }
@@ -209,7 +209,7 @@ app.http("onDemandInterventionResolve", {
   methods: ["POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, PUBLISH_ROLES);
+    const authResult = await requireAccess(request, "service-risk.resolve");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

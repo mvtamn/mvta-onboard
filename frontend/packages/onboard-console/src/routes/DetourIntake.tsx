@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { type CreateDetourIntakeInput, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
+import { type CreateDetourIntakeInput, type DetourChannelOption, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
+import { channelChips, retiredHint, toggleChannel } from "../lib/detourIntakeChannels.js";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
-import { DETOUR_ATTACHMENT_ACCEPT, isImageAttachment } from "../components/DetourAttachments.js";
+import { AttachmentDropzone, isImageAttachment, pasteFilesHandler } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 
 const MODES: { value: DetourFulfillmentMode; label: string; help: string }[] = [
@@ -45,7 +46,6 @@ interface IntakeFormState {
   geometry: string | null;
 }
 
-const KNOWN_CHANNELS = ["email", "radio", "Teams", "dispatch board"];
 
 function splitList(text: string): string[] {
   return text.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
@@ -54,7 +54,7 @@ function splitList(text: string): string[] {
 const BLANK_FORM: IntakeFormState = {
   source: "", description: "", location: "", start: "", end: "", startTime: "", endTime: "", windowStatus: "pending",
   affectedStops: "", operationalImpacts: "", confirmationContact: "", impact: "fixed_route", serviceArea: "", instructions: "",
-  fulfillment: "avail", audiences: ["operators", "operations management"], channels: ["email", "radio"], evidenceNotes: "", evidenceReference: "", segments: [],
+  fulfillment: "avail", audiences: ["operators", "operations management"], channels: ["email"], evidenceNotes: "", evidenceReference: "", segments: [],
   geometry: null,
 };
 
@@ -108,10 +108,16 @@ export function DetourIntake() {
   const [duplicateKind, setDuplicateKind] = useState<"detour" | "intake">("detour");
   const [files, setFiles] = useState<File[]>([]);
   const [savedIntakeId, setSavedIntakeId] = useState<string | null>(null);
+  const [channels, setChannels] = useState<DetourChannelOption[]>([]);
 
   async function load() {
-    try { setRows((await api.getDetourIntake()).intake); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not load intake"); }
+    try {
+      const result = await api.getDetourIntake();
+      setRows(result.intake);
+      // The channels a communication can go out on, named by the server rather
+      // than by this form (see ChannelChips).
+      if (result.channels) setChannels(result.channels);
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not load intake"); }
   }
   useEffect(() => { void load(); }, []);
 
@@ -227,7 +233,7 @@ export function DetourIntake() {
       {error && <p className="error-text" role="alert">{error}</p>}
       {notice && <p className="muted" role="status">{notice}</p>}
       <div className="intake-layout">
-        <div className="intake-form">
+        <div className="intake-form" onPaste={pasteFilesHandler((pasted) => setFiles((current) => [...current, ...pasted]))}>
           <div className="intake-intro">
             <div>
               <span className="eyebrow">{editing ? (resubmitting ? "UPDATE AND RESUBMIT" : "UPDATE DETOUR INTAKE") : "NEW DETOUR INTAKE"}</span>
@@ -337,10 +343,10 @@ export function DetourIntake() {
                 <div className={`intake-field intake-field-wide ${invalid("segments") ? "is-invalid" : ""}`}>
                   <span className="intake-field-label"><span>Impacted route segments <span className="req">*</span> <span className="hint">at least one</span></span>{form.segments.length ? <span className="hint">{form.segments.length} segment{form.segments.length === 1 ? "" : "s"}</span> : null}</span>
                   <div className="segment-table">
-                    <div className="segment-table-head" aria-hidden="true"><span>Routes / stops</span><span>Directions or operating notes</span><span></span></div>
+                    <div className="segment-table-head" aria-hidden="true"><span>Routes / stops</span><span>Directions or operating notes · one turn per line</span><span></span></div>
                     {form.segments.map((segment, index) => <div key={index} className="segment-row">
                       <input value={segment.routes} placeholder="e.g. 440 SB" aria-label={`Segment ${index + 1} routes`} onChange={(e) => set("segments", form.segments.map((item, i) => i === index ? { ...item, routes: e.target.value } : item))} />
-                      <input value={segment.directions ?? ""} placeholder="Turn-by-turn or operating notes" aria-label={`Segment ${index + 1} directions`} onChange={(e) => set("segments", form.segments.map((item, i) => i === index ? { ...item, directions: e.target.value || null } : item))} />
+                      <textarea className="directions-input" rows={4} value={segment.directions ?? ""} placeholder={"Turn-by-turn, one per line, or operating notes"} aria-label={`Segment ${index + 1} directions`} onChange={(e) => set("segments", form.segments.map((item, i) => i === index ? { ...item, directions: e.target.value || null } : item))} />
                       <button type="button" className="btn-icon-sm" aria-label={`Remove segment ${index + 1}`} onClick={() => set("segments", form.segments.filter((_, i) => i !== index))}><IconX /></button>
                     </div>)}
                     <div className="segment-table-foot"><button type="button" className="btn-sm" onClick={() => set("segments", [...form.segments, { routes: "", directions: null }])}>+ Add segment</button></div>
@@ -391,7 +397,7 @@ export function DetourIntake() {
               </div>
               <div className={`intake-field intake-field-wide ${invalid("channels") ? "is-invalid" : ""}`}>
                 <span className="intake-field-label"><span>Required channels <span className="req">*</span></span></span>
-                <ChannelChips values={form.channels} onChange={(values) => set("channels", values)} />
+                <ChannelChips values={form.channels} available={channels} onChange={(values) => set("channels", values)} />
                 <span className={`intake-help ${invalid("channels") ? "is-error" : ""}`}>{invalid("channels") ? <><IconAlert />Pick at least one channel.</> : "Email and Teams can be sent from OnBoard; radio and the dispatch board are recorded when done."}</span>
               </div>
             </div>
@@ -417,11 +423,7 @@ export function DetourIntake() {
               </label>
               <div className="intake-field intake-field-wide">
                 <span className="intake-field-label"><span>Supporting files</span></span>
-                <label className="dropzone">
-                  <IconUpload />
-                  <span>Drop the source email, PDF, maps, or photos here, or <b>browse</b>. Images, PDF, Office, CSV, text · 25 MB each.</span>
-                  <input type="file" accept={DETOUR_ATTACHMENT_ACCEPT} multiple style={{ display: "none" }} onChange={(e) => setFiles((current) => [...current, ...Array.from(e.target.files ?? [])])} />
-                </label>
+                <AttachmentDropzone onFiles={(picked) => setFiles((current) => [...current, ...picked])} />
                 {files.length ? <div className="file-tiles">{files.map((file, index) => <span key={`${file.name}-${index}`} className="file-tile"><span className="file-tile-kind">{fileKind(file.name)}</span><span><b>{file.name}</b><small>{sizeLabel(file.size)} · will upload on submit</small></span><button type="button" className="btn-icon-sm" aria-label={`Remove ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><IconX /></button></span>)}</div> : null}
                 {editing ? <IntakeImages intakeId={editing.id} /> : null}
                 <span className="intake-help">{editing ? "Files already attached stay with the record; add more here if needed." : ""}</span>
@@ -502,19 +504,27 @@ function LikelyDuplicates({ row, onPick }: { row: DetourIntake; onPick: (match: 
   </div>;
 }
 
-// Chips for a fixed set of channels with an escape hatch for anything else.
-// Selection is the console's tab-switch anatomy so it reads the same everywhere.
-function ChannelChips({ values, onChange }: { values: string[]; onChange: (values: string[]) => void }) {
-  const [other, setOther] = useState<string | null>(null);
-  const has = (channel: string) => values.some((v) => v.toLowerCase() === channel.toLowerCase());
-  const toggle = (channel: string) => onChange(has(channel) ? values.filter((v) => v.toLowerCase() !== channel.toLowerCase()) : [...values, channel]);
-  const custom = values.filter((v) => !KNOWN_CHANNELS.some((k) => k.toLowerCase() === v.toLowerCase()));
+// Chips for the channels a communication can actually go out on. The list comes
+// from the server with the intake rows, so this form and the composer in
+// Detours & Closures cannot disagree about what exists. A value the record
+// already carries that is no longer offered stays visible and removable -
+// "radio" and "dispatch board" were both offered here once.
+function ChannelChips({ values, available, onChange }: {
+  values: string[];
+  available: DetourChannelOption[];
+  onChange: (values: string[]) => void;
+}) {
+  const chips = channelChips(available, values);
   return <div className="chip-toggles" role="group" aria-label="Required channels">
-    {KNOWN_CHANNELS.map((channel) => <button key={channel} type="button" className="chip-toggle" aria-pressed={has(channel)} onClick={() => toggle(channel)}>{channel === "email" ? "Email" : channel === "radio" ? "Radio" : channel}</button>)}
-    {custom.map((channel) => <button key={channel} type="button" className="chip-toggle" aria-pressed="true" onClick={() => toggle(channel)}>{channel}</button>)}
-    {other === null
-      ? <button type="button" className="chip-toggle is-add" onClick={() => setOther("")}>+ Other</button>
-      : <input autoFocus value={other} placeholder="Channel name, then Enter" aria-label="Other channel" style={{ maxWidth: 200 }} onChange={(e) => setOther(e.target.value)} onBlur={() => { if (other.trim()) toggle(other.trim()); setOther(null); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (other.trim()) toggle(other.trim()); setOther(null); } if (e.key === "Escape") setOther(null); }} />}
+    {chips.map((chip) => <button
+      key={chip.channel}
+      type="button"
+      className={chip.retired ? "chip-toggle is-retired" : "chip-toggle"}
+      aria-pressed={chip.selected}
+      title={chip.retired ? retiredHint(chip.label) : undefined}
+      onClick={() => onChange(toggleChannel(values, chip))}
+    >{chip.retired ? `${chip.label} · no longer offered` : chip.label}</button>)}
+    {available.length === 0 && <small>Loading the channels this environment can use.</small>}
   </div>;
 }
 
@@ -540,7 +550,6 @@ const IconAlert = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="no
 const IconPin = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z" /><circle cx="12" cy="10" r="2.5" /></svg>;
 const IconBus = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="2" /><path d="M4 11h16M8 18v2M16 18v2" /><circle cx="8" cy="14.5" r="1" /><circle cx="16" cy="14.5" r="1" /></svg>;
 const IconVan = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17h2l2-6h10l2 6h2" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /><path d="M9 11V7h6v4" /></svg>;
-const IconUpload = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" /></svg>;
 
 function IntakeImages({ intakeId }: { intakeId: string }) {
   const [images, setImages] = useState<DetourImage[] | null>(null);

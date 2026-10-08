@@ -628,6 +628,11 @@ export interface MissedTrip {
   held_reason: string | null;
   in_queue: boolean;
   concluded: boolean;
+  // Two exact-matched sources support incompatible findings (ADR-0035). It
+  // blocks the performance assessment and waits for a reviewer; it never
+  // changes the case's own outcome.
+  evidence_conflict: boolean;
+  evidence_conflict_reason: string | null;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";
@@ -918,31 +923,6 @@ export type OnDemandDepartureOutcome =
   | "no_schedule"
   | "not_settled";
 
-// Avail's OTP Monthly By Route/Stop/Day of Week feed - real Attachment G
-// departure-adherence numbers, backing the OTP Compliance module's Route
-// Summary/Review Queue/Monthly Assessments pages (replacing that module's
-// mock data). See OTP-Feed-Evaluation-and-Recommendation.md.
-export interface OtpMonthlyStopRow {
-  service_month: string;
-  route_id: number;
-  stop_id: number;
-  day_of_week: string;
-  stop_name: string | null;
-  route_label: string | null;
-  pct_early: number | null;
-  pct_ontime: number | null;
-  pct_late: number | null;
-  pct_not_ontime: number | null;
-  pct_missed: number | null;
-  early: number | null;
-  ontime: number | null;
-  late: number | null;
-  missed: number | null;
-  actual_departures: number | null;
-  total: number | null;
-  updated_at: string;
-}
-
 /**
  * The OTP month measurement (functions-restapi/src/lib/otpMonth, ADR 0033).
  * The server decides what counts - fixed-route service, minus approved Stop
@@ -960,7 +940,12 @@ export interface OtpRouteFigure {
   route_label: string | null;
   route_category: RouteCategory | string;
   raw: OtpFigure;
+  /** What every rule took out: raw less assessable. */
   excluded: OtpFigure;
+  /** Of that, the category filter and approved stop exclusions. */
+  stop_excluded: OtpFigure;
+  /** Of that, approved weather and emergency dates (ADR 0038). */
+  date_excluded: OtpFigure;
   /** Official Departure OTP for the route. */
   assessable: OtpFigure;
   /** Null when the route has no assessable departures to judge. */
@@ -976,12 +961,87 @@ export interface OtpMonthMeasurement {
   target_source: OtpTargetSource;
   raw: OtpFigure;
   excluded: OtpFigure;
+  stop_excluded: OtpFigure;
+  date_excluded: OtpFigure;
   assessable: OtpFigure;
   routes: OtpRouteFigure[];
   routes_below_target: number;
-  /** Weather days recorded for the month. They are NOT applied (ADR 0033). */
+  /** Weather days recorded for the month, whatever their state. */
   weather_days_recorded: number;
+  /**
+   * How many of those are actually subtracting: approved, and holding the
+   * snapshot of what the date took out (ADR 0038). ADR 0033 recorded this as
+   * impossible, because the monthly feed is keyed by day of week; the daily
+   * feed carries a real date and reconciles with it exactly.
+   */
+  weather_days_applied: number;
   feed_ready: boolean;
+}
+
+/** How one stop's departures split. `other` (missed, mostly) makes the four sum to `total`. */
+export interface OtpStopMix {
+  total: number;
+  early: number;
+  ontime: number;
+  late: number;
+  other: number;
+}
+
+/**
+ * One stop on one route for a service month, all days summed - the stop's own
+ * share of the route's Official Departure OTP, by the same server rule, so a
+ * route's stops add up to the route row.
+ */
+export interface OtpStopFigure {
+  stop_id: number;
+  stop_name: string | null;
+  raw: OtpFigure;
+  /** Every departure, rules aside: what an excluded stop shows. */
+  raw_mix: OtpStopMix;
+  /** After the route-category and stop-exclusion rules, before weather days. */
+  mix: OtpStopMix;
+  assessable: OtpFigure;
+  /** What approved weather and emergency dates took from this stop. */
+  date_excluded: OtpFigure;
+  /** Days of the week an approved Stop Exclusion covers, in Avail's spelling. */
+  excluded_days: string[];
+}
+
+/** GET /api/otp-monthly/routes/{routeId}/stops. */
+export interface OtpRouteStops {
+  service_month: string;
+  route_id: number;
+  target: number;
+  target_source: OtpTargetSource;
+  route: OtpRouteFigure | null;
+  stops: OtpStopFigure[];
+  feed_ready: boolean;
+}
+
+/**
+ * A Flagged Stop: a stop, on one route, on one day of the week, whose early or
+ * late share of departures exceeds the Early/Late Bias Threshold for a service
+ * month, putting it in front of a reviewer (CONTEXT "Flagged Stop").
+ *
+ * The server decides this - fixed-route service only, at the stored threshold
+ * or a trial one - and the console renders the list rather than deriving it
+ * (functions-restapi/src/lib/otpFlaggedStops.ts, ADR 0034). Being flagged
+ * decides nothing; only an approved Stop Exclusion changes a figure.
+ *
+ * Shares are 0-1, as the feed stores them. The monthly feed carries no
+ * direction and no average-seconds variance, so neither travels.
+ */
+export interface FlaggedStop {
+  route_id: number;
+  route_label: string | null;
+  stop_id: number;
+  stop_name: string | null;
+  day_of_week: string;
+  total: number;
+  pct_early: number;
+  pct_ontime: number;
+  pct_late: number;
+  pct_missed: number;
 }
 
 export interface OtpMonthlyRouteRollup {
@@ -994,8 +1054,8 @@ export interface OtpMonthlyRouteRollup {
 
 // Sub-monthly OTP trending (OtpDailyRouteStopHour) - added per
 // OTP-Feed-Evaluation-and-Recommendation (3).md's 2026-08-05 live-data
-// investigation update. Never the official Attachment G number - that's
-// OtpMonthlyStopRow above. No UI reads this yet; the field mapping itself
+// investigation update. Never the official Attachment G number - that's the
+// OTP month measurement above. No UI reads this yet; the field mapping itself
 // is unconfirmed (see functions-restapi/src/lib/otpDailyFeed.ts).
 export interface OtpDailyRow {
   calendar_date: string;
@@ -1083,6 +1143,21 @@ export interface DetourCommunicationReceipt {
   reported_at: string | null;
   updated_at: string;
 }
+/**
+ * A channel a Detour communication can go out on, as the server defines it
+ * (migration 132). `sent` channels have a delivery port behind them; `recorded`
+ * ones are things a person does elsewhere - a road sign, an Avail message -
+ * and OnBoard only writes down that they happened.
+ */
+export type DetourChannel = "email" | "sms" | "teams" | "digital_signage" | "avl_messaging";
+
+export interface DetourChannelOption {
+  channel: DetourChannel;
+  label: string;
+  kind: "sent" | "recorded";
+  needs_recipients: boolean;
+}
+
 export interface DetourCommunication {
   id: string; detour_id: string; audience: string; channel: string;
   recipients: string | null; content: string; status: DetourCommunicationStatus;
@@ -1098,6 +1173,8 @@ export interface DetourCommunication {
   sent_subject?: string | null;
   sent_body?: string | null;
   sent_recipients?: string | null;
+  /** When a recorded message actually went out, which may precede published_at. */
+  occurred_at?: string | null;
   receipts?: DetourCommunicationReceipt[];
 }
 // Contractor notification settings as GET /detours reports them
@@ -1159,7 +1236,7 @@ export const DETOUR_SEVERITY_LABELS: Record<DetourSeverity, string> = {
   major: "Major",
 };
 
-// Admin-editable reason categories - Part B6. Mirrors OtpReasonCode minus
+// Admin-editable reason categories - Part B6. Mirrors ReasonCode minus
 // `applies_to`; this vocabulary only ever serves the detour module.
 export interface DetourReasonCode {
   id: string;
@@ -1186,6 +1263,33 @@ export interface DetourReportFields {
   dispatch_board_notified?: boolean;
   social_media_notified?: boolean;
   resolution_notes?: string | null;
+}
+
+/**
+ * Why a Detour communication may not be sent (functions-restapi/src/lib/
+ * detourCommunication, CONTEXT "Detour communication eligibility"). The server
+ * decides; the console renders the decision and never re-derives it.
+ */
+export type DetourEligibilityRefusalCode =
+  | "detour_closed"
+  | "re_review_outstanding"
+  | "fulfillment_pending"
+  | "fulfillment_failed"
+  | "conflict_unresolved"
+  | "no_recipients";
+
+export interface DetourCommunicationEligibility {
+  /** Wording may be prepared: everything except a closed Detour. */
+  may_draft: boolean;
+  may_send: boolean;
+  refusal: { code: DetourEligibilityRefusalCode; sentence: string } | null;
+  /** Telling someone extra is allowed, but it never clears "needs communication". */
+  audience_not_required: boolean;
+}
+
+export interface DetourAudienceEligibility {
+  audience: string;
+  eligibility: DetourCommunicationEligibility;
 }
 
 export interface Detour extends DetourReportFields {
@@ -1226,6 +1330,8 @@ export interface Detour extends DetourReportFields {
   // Absent from an API older than the Detour workflow module.
   available_acts?: Record<DetourOfferedAct, DetourActAvailability>;
   communication_status?: "published" | "draft" | "needs_communication" | "not_available";
+  /** Detour communication eligibility per required audience, from the server. */
+  audience_eligibility?: DetourAudienceEligibility[];
   workflow_label?: string;
   next_action?: string;
   next_owner?: string;
@@ -1291,6 +1397,8 @@ export interface CreateDetourInput extends DetourReportFields {
   segments?: DetourSegmentInput[];
   fulfillment_mode?: DetourFulfillmentMode;
   lifecycle_state?: DetourLifecycleState;
+  /** Audiences this Detour must reach; an added one joins the list. */
+  notification_audiences?: string[];
 }
 
 export type DetourIntakeStatus = "draft" | "pending_review" | "needs_information" | "accepted" | "rejected" | "duplicate" | "withdrawn";
@@ -1624,7 +1732,34 @@ export interface OtpDateExclusion {
   acknowledged: boolean;
   created_by: string;
   created_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  /** What this exclusion is subtracting from the month, in departures. */
+  excluded_departures: number;
 }
+
+/**
+ * What approving a weather day froze: the departures that left the month's
+ * official figure, at the moment the reviewer approved it (ADR 0038).
+ *
+ * `departures` is what actually came out - fixed-route service only - so it is
+ * the number to show a reviewer, not the raw size of the day.
+ */
+export interface DateExclusionSnapshot {
+  service_month: string;
+  day_of_week: string;
+  /** Route/stop rows frozen. */
+  stops: number;
+  departures: number;
+}
+
+export interface ApproveDateExclusionResult {
+  exclusion: OtpDateExclusion;
+  snapshot: DateExclusionSnapshot;
+}
+
+/** Why an approval was refused, when the date could not be evidenced. */
+export type DateExclusionRefusal = "no_daily_data" | "day_of_week_absent" | "nothing_to_subtract";
 
 export interface CreateDateExclusionInput {
   scope: DateExclusionScope;
@@ -1634,18 +1769,40 @@ export interface CreateDateExclusionInput {
   notes?: string | null;
 }
 
-export interface OtpAuditEntry {
-  type: "stop_exclusion" | "date_exclusion";
-  title: string;
-  desc: string;
-  timestamp: string;
-}
+/**
+ * One thing that happened in exclusion review, as data rather than as a
+ * sentence. The server used to word these; it is the console that resolves a
+ * reason code to its label, so the Audit Stream showed a raw code where the
+ * Review Queue showed "Recovery point" for the same decision.
+ *
+ * Worded by otpAuditEntries.ts, beside the rest of the OTP display code.
+ */
+export type OtpAuditEntry =
+  | {
+      kind: "stop_exclusion";
+      at: string;
+      actor: string;
+      reason_code: string | null;
+      route_id: number;
+      stop_id: number;
+      day_of_week: string;
+      status: "approved" | "rejected";
+    }
+  | {
+      kind: "weather_day";
+      at: string;
+      actor: string;
+      reason_code: string;
+      scope: "Agency" | "Route";
+      route_id: number | null;
+      service_date: string;
+    };
 
 // "missed_trip" added by migration-023 - the same admin-editable table now
 // also backs Missed Trips' investigation-outcome dropdown.
 export type ReasonCodeAppliesTo = "stop" | "date" | "missed_trip";
 
-export interface OtpReasonCode {
+export interface ReasonCode {
   id: string;
   code: string;
   label: string;
@@ -1655,6 +1812,9 @@ export interface OtpReasonCode {
   updated_by: string | null;
   updated_at: string;
 }
+
+/** @deprecated renamed to ReasonCode - three modules read these, not just OTP. */
+export type OtpReasonCode = ReasonCode;
 
 export interface CreateReasonCodeInput {
   code: string;
@@ -1789,6 +1949,25 @@ export interface OnBoardAccessAuditEntry {
   correlation_id: string | null;
   occurred_at: string;
   details?: Record<string, unknown>;
+}
+
+/**
+ * One administrative act on OnBoard's own access tables (ADR-0032): a grant, a
+ * removal, a privileged request or its decision, or an edit to a role. Read
+ * from those tables rather than written a second time, which is why it carries
+ * the role and the person's name instead of a correlation id.
+ */
+export interface AccessActivityEntry {
+  id: string;
+  /** Who did it, as recorded: a name, or an object id when that is all there was. */
+  actor_name: string | null;
+  action: string;
+  target_id: string | null;
+  target_name: string | null;
+  role: string | null;
+  reason: string | null;
+  outcome: string;
+  occurred_at: string;
 }
 
 export interface OnBoardAccessMetadata {
@@ -2119,3 +2298,44 @@ export interface OnDemandZoneFeedStatus {
   next_check_at: string | null;
 }
 
+
+/**
+ * Missed-trip detector promotion: which detectors count toward an assessment,
+ * and since which service date. See functions-restapi promotion.ts and ADR-0035.
+ */
+export type MissedTripDetectorName = "gtfs_cancellation" | "gtfs_silent_no_show" | "spare";
+
+export interface DetectorPromotionEntry {
+  detector: MissedTripDetectorName;
+  /** Service date key (YYYYMMDD) the decision takes effect from. */
+  effective_service_date: string;
+  promoted: boolean;
+  reason: string;
+  measured_precision: number | null;
+  sample_size: number | null;
+  decided_by: string;
+  decided_at: string;
+}
+
+export interface DetectorStanding {
+  detector: MissedTripDetectorName;
+  promoted: boolean;
+  since: string | null;
+}
+
+export interface DetectorPromotionView {
+  standings: DetectorStanding[];
+  history: DetectorPromotionEntry[];
+  /** Names in the stored history this build does not know; they promote nothing. */
+  ignored: string[];
+}
+
+export interface DetectorPromotionInput {
+  detector: MissedTripDetectorName;
+  effective_service_date: string;
+  promoted: boolean;
+  reason: string;
+  measured_precision?: number | null;
+  sample_size?: number | null;
+  on_demand_conditions_met?: boolean;
+}

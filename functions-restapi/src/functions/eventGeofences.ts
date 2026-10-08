@@ -1,6 +1,6 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, ADMIN_ROLES, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid } from "../lib/validation";
 import { validatePolygon } from "../lib/geofence";
 import { validateDirectionRule, type DirectionRule } from "../lib/eventDirectionRules";
@@ -34,7 +34,7 @@ async function readRules(pool: Awaited<ReturnType<typeof getPool>>, geofenceId: 
 }
 
 app.http("eventGeofencePurposes", { route: "event-geofence-purposes", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, req.method === "GET" ? [...STAFF_READ_ROLES, "OCC.Compliance"] : ADMIN_ROLES);
+  const auth = await requireAccess(req, req.method === "GET" ? "event-avl.view" : "event-avl.configure");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool();
   if (req.method === "GET") return { status: 200, jsonBody: { purposes: (await pool.request().query("SELECT code,label,sort_order,is_system FROM EventGeofencePurposes ORDER BY sort_order,label")).recordset } };
@@ -49,7 +49,7 @@ app.http("eventGeofencePurposes", { route: "event-geofence-purposes", methods: [
 } });
 
 app.http("eventGeofencePurposeUpdate", { route: "event-geofence-purposes/{code}", methods: ["PATCH", "DELETE"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, ADMIN_ROLES);
+  const auth = await requireAccess(req, "event-avl.configure");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const code = purposeCode(req.params.code);
   if (!code) return { status: 400, jsonBody: { error: "Purpose code is invalid" } };
@@ -74,7 +74,7 @@ app.http("eventGeofencePurposeUpdate", { route: "event-geofence-purposes/{code}"
 } });
 
 app.http("eventGeofences", { route: "event-geofences", methods: ["GET", "POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, req.method === "GET" ? [...STAFF_READ_ROLES, "OCC.Compliance"] : ADMIN_ROLES);
+  const auth = await requireAccess(req, req.method === "GET" ? "event-avl.view" : "event-avl.configure");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const pool = await getPool();
   if (req.method === "GET") {
@@ -95,7 +95,7 @@ app.http("eventGeofences", { route: "event-geofences", methods: ["GET", "POST"],
 } });
 
 app.http("eventGeofenceRuleUpdate", { route: "event-geofences/{id}/rules/{ruleId}", methods: ["PATCH", "DELETE"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, ADMIN_ROLES);
+  const auth = await requireAccess(req, "event-avl.configure");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   if (!isGuid(req.params.id) || !isGuid(req.params.ruleId)) return { status: 400, jsonBody: { error: "Geofence and rule ids must be valid GUIDs" } };
   const pool = await getPool(); const request = pool.request();
@@ -118,7 +118,7 @@ app.http("eventGeofenceRuleUpdate", { route: "event-geofences/{id}/rules/{ruleId
 } });
 
 app.http("eventGeofenceUpdate", { route: "event-geofences/{id}", methods: ["PATCH"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, ADMIN_ROLES);
+  const auth = await requireAccess(req, "event-avl.configure");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   if (!isGuid(req.params.id)) return { status: 400, jsonBody: { error: "Geofence id must be a valid GUID" } };
   let body: Record<string, unknown>;
@@ -136,7 +136,7 @@ app.http("eventGeofenceUpdate", { route: "event-geofences/{id}", methods: ["PATC
 } });
 
 app.http("eventGeofenceRules", { route: "event-geofences/{id}/rules", methods: ["POST"], authLevel: "anonymous", handler: async (req: HttpRequest) => {
-  const auth = requireRole(req, ADMIN_ROLES);
+  const auth = await requireAccess(req, "event-avl.configure");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   if (!isGuid(req.params.id)) return { status: 400, jsonBody: { error: "Geofence id must be a valid GUID" } };
   let body: Record<string, unknown>;

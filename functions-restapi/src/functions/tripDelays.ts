@@ -1,9 +1,9 @@
 // GET /trip-delays - the currently-monitored trips and their live delay,
-// backing the console's Live Delays view. Any staff role can read; this is
+// backing the console's Live Delays view. service-risk.view can read; this is
 // visibility only, no write path (writes come from gtfsDelaysPoll.ts).
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { FEED_POLL_INTERVAL_MINUTES } from "../lib/feedFreshness";
 import { resolveKpiTrust } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
@@ -52,9 +52,9 @@ interface TripDelayRow {
 app.http("tripDelaysList", {
   route: "trip-delays",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, STAFF_READ_ROLES);
+    const authResult = await requireAccess(request, "service-risk.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

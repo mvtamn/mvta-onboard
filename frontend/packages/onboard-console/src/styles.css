@@ -104,7 +104,7 @@ body {
 
 /* ---------- collapsed (icon-only) rail ---------- */
 /* Desktop affordance for reclaiming ~170px of width on map/table-heavy pages
-   (Event AVL, Detour Reports). Labels are replaced by native title tooltips
+   (Event AVL, Detour Register). Labels are replaced by native title tooltips
    rather than shrunk, and every group's links stay rendered while collapsed so
    no destination becomes unreachable behind a hidden group heading. */
 .nav-sidebar { transition: width .18s ease; }
@@ -343,23 +343,50 @@ body {
 .dashboard-metric.attention strong { color: var(--pill-warning-fg); }
 .dashboard-metric.healthy strong { color: var(--success-text); font-size: 18px; }
 .dashboard-triage-grid { align-items: start; display: grid; gap: 20px; grid-template-columns: minmax(0, 1.5fr) minmax(240px, .75fr); margin-bottom: 20px; }
-.dashboard-queue { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); padding: 16px; }
+.dashboard-queue { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); padding: 12px 16px 10px; }
+.dashboard-queue .dashboard-section-heading { border-bottom: 1px solid var(--border-soft); margin-bottom: 0; padding-bottom: 8px; }
+.dashboard-queue-heading { align-items: baseline; display: flex; gap: 8px; min-width: 0; }
+.dashboard-queue .dashboard-section-heading h2 { font-size: 14px; font-weight: 700; margin: 0; }
+.dashboard-queue-count { background: var(--surface-alt-bg); border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); font-size: 11px; font-weight: 700; line-height: 18px; padding: 0 7px; }
 .dashboard-section-heading { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 10px; }
 .dashboard-section-heading h2 { color: var(--text); font-size: 17px; margin: 3px 0 0; }
-.dashboard-eyebrow { color: var(--brand-green); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+/* --brand-green is a fill token that stays constant across themes, so as text
+   it sits at ~1.9:1 on the dark surface; --brand-green-text lightens there. */
+.dashboard-eyebrow { color: var(--brand-green-text); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
 .dashboard-queue-list { display: grid; }
-.dashboard-queue-row { align-items: center; border-bottom: 1px solid var(--border-soft); display: grid; gap: 10px; grid-template-columns: 7px minmax(0, 1fr) auto; min-width: 0; padding: 11px 0; }
+.dashboard-queue-row { align-items: stretch; border-bottom: 1px solid var(--border-soft); display: grid; gap: 12px; grid-template-columns: 3px minmax(0, 1fr) auto; min-width: 0; padding: 8px 0; }
 .dashboard-queue-row:last-child { border-bottom: 0; }
-.dashboard-queue-row strong, .dashboard-queue-row > div > span { display: block; overflow: hidden; text-overflow: ellipsis; }
-.dashboard-queue-row strong { color: var(--text); white-space: nowrap; }
-.dashboard-queue-row > div > span { color: var(--text-muted); font-size: 11px; margin-top: 2px; white-space: nowrap; }
-.dashboard-queue-signal { background: var(--highlight-border); border-radius: 4px; height: 34px; width: 7px; }
+.dashboard-queue-text { min-width: 0; }
+/* Two lines, not one ellipsised line: a Suggested Alert's draft text is ~220
+   characters and the facts that tell two of them apart sit past a one-line cut.
+   Dashboard.tsx has already shortened the string; this is the backstop. */
+/* One line on desktop: the full text is in the tooltip and one click away, and a
+   two-line title made every row ~80px tall. Narrow screens get three lines back. */
+.dashboard-queue-title { -webkit-box-orient: vertical; -webkit-line-clamp: 1; color: var(--text); display: -webkit-box; font-size: 13px; font-weight: 600; line-height: 1.3; margin: 0; overflow: hidden; overflow-wrap: anywhere; }
+.dashboard-queue-meta { align-items: center; color: var(--text-dim); display: flex; flex-wrap: wrap; font-size: 11px; gap: 2px 6px; line-height: 16px; margin: 2px 0 0; min-width: 0; }
+.dashboard-queue-facts { min-width: 0; overflow-wrap: anywhere; }
+.dashboard-queue-kind { border-radius: 3px; flex-shrink: 0; font-size: 9px; font-weight: 800; letter-spacing: .05em; line-height: 14px; padding: 0 4px; text-transform: uppercase; }
+.dashboard-queue-kind.alert { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.dashboard-queue-kind.suggested { background: var(--pill-accent-bg); color: var(--pill-accent-fg); }
+.dashboard-queue-kind.feed { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+/* Detour requests (1.5.283) shipped without a rule, so the chip rendered as bare text. */
+.dashboard-queue-kind.intake { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.dashboard-queue-signal { background: var(--highlight-border); border-radius: 2px; width: 3px; }
 .dashboard-queue-signal.critical { background: var(--danger-text); }
 .dashboard-queue-signal.attention { background: var(--highlight-border); }
 .dashboard-queue-signal.info { background: var(--pill-accent-fg); }
-.dashboard-queue-action { color: var(--text-dim); font-size: 13px; font-weight: 800; text-align: right; text-decoration: none; white-space: nowrap; }
+.dashboard-queue-rail { align-items: flex-end; display: flex; flex-direction: column; gap: 1px; justify-content: center; text-align: right; }
+.dashboard-queue-status { color: var(--text-dim); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.dashboard-queue-status.critical { color: var(--danger-text); }
+.dashboard-queue-status.attention { color: var(--pill-warning-fg); }
+.dashboard-queue-action { color: var(--brand-green-text); font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
 .dashboard-queue-action:hover { text-decoration: underline; }
-.dashboard-queue-action.critical, .dashboard-queue-action.attention { color: var(--danger-text); }
+.dashboard-queue-footer { align-items: center; border-top: 1px solid var(--border-soft); color: var(--text-dim); display: flex; font-size: 11px; gap: 12px; justify-content: space-between; padding-top: 8px; }
+.dashboard-queue-footer a { color: var(--brand-green-text); font-size: 11.5px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.dashboard-queue-footer a:hover { text-decoration: underline; }
+.dashboard-queue-empty { padding: 12px 0; }
+.dashboard-queue-empty strong { color: var(--text); display: block; font-size: 13.5px; font-weight: 600; }
+.dashboard-queue-empty span { color: var(--text-dim); display: block; font-size: 11.5px; margin-top: 3px; }
 .dashboard-published-card { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .04); margin-top: 20px; padding: 16px; }
 .dashboard-published-header { align-items: center; display: flex; gap: 16px; justify-content: space-between; margin-bottom: 14px; }
 .dashboard-published-header h2 { color: var(--text); font-size: 21px; margin: 3px 0 0; }
@@ -755,7 +782,7 @@ textarea.compose { width: 100%; min-height: 56px; padding: 10px 12px; border: 1p
 .field-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .field-label { font-size: 11px; color: var(--text-dim); margin: 0 0 3px; font-weight: bold; }
 .field-label .hint { font-weight: normal; color: var(--text-muted); }
-select.f, input.f { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 12.5px; font-family: inherit; background: var(--surface-bg); color: var(--text); }
+select.f, input.f, textarea.directions-input { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 12.5px; font-family: inherit; background: var(--surface-bg); color: var(--text); }
 .channels-row { display: flex; flex-wrap: wrap; margin-bottom: 14px; }
 .channels-row label { display: flex; align-items: center; font-size: 12px; color: var(--text); margin-right: 16px; margin-bottom: 4px; }
 .channels-row input { margin-right: 5px; }
@@ -886,9 +913,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-triage-grid { grid-template-columns: 1fr; }
-  .dashboard-queue-row { align-items: start; grid-template-columns: 7px minmax(0, 1fr); }
-  .dashboard-queue-row .dashboard-queue-action { grid-column: 2; justify-self: start; }
-  .dashboard-queue-row > div > span { white-space: normal; }
+  .dashboard-queue-row { grid-template-columns: 3px minmax(0, 1fr); row-gap: 6px; }
+  /* A third line: the column is narrow enough here that two lines cut an
+     On-Demand draft before its wait time. */
+  .dashboard-queue-row .dashboard-queue-title { -webkit-line-clamp: 3; }
+  .dashboard-queue-row .dashboard-queue-signal { grid-row: 1 / -1; }
+  .dashboard-queue-row .dashboard-queue-rail { align-items: center; flex-direction: row; grid-column: 2; justify-content: space-between; min-width: 0; text-align: left; width: 100%; }
+  /* Thumb-sized target once the action is the row's own line. */
+  .dashboard-queue-row .dashboard-queue-action { align-items: center; display: inline-flex; min-height: 44px; }
   .messages-toolbar { align-items: stretch; flex-direction: column; }
   .messages-toolbar label, .messages-toolbar .f { width: 100%; }
   .messages-result-count { margin-left: 0; }
@@ -1073,6 +1105,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* Generic stat-card row, reused wherever a handful of stat-cards sit side by
    side (Subscribers tab, OTP dashboard, etc). */
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+/* The card itself. Without this the grid laid out three unstyled divs, and
+   the per-card borderLeftColor that Subscribers and the OTP Dashboard pass
+   inline had no border to colour - inert since it was written. */
+.stat-card { padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 10px; background: var(--surface-bg); }
+.stat-card .stat-label { color: var(--text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.stat-card .stat-value { margin-top: 4px; color: var(--text); font-size: 26px; font-weight: 800; line-height: 1.1; }
+.stat-card .stat-sub { margin-top: 2px; color: var(--text-muted); font-size: 12px; }
+@media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Light normalization so embedded OCC modules sit inside the shell without
    fighting it: kill their page-level backgrounds, inherit the console font. */
@@ -1160,6 +1200,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .segment-row { border-bottom: 1px solid var(--border-soft); }
 .intake-field .segment-row input { padding: 8px 10px; }
 .segment-table-foot { padding: 8px 12px; }
+.segment-table .segment-row { align-items: start; }
+textarea.directions-input { line-height: 1.45; min-height: 84px; resize: vertical; }
+.directions-text { white-space: pre-line; }
 .btn-icon-sm { align-items: center; background: transparent; border: 0; border-radius: 7px; color: var(--text-muted); cursor: pointer; display: inline-flex; height: 32px; justify-content: center; width: 32px; }
 .btn-icon-sm:hover { background: var(--surface-alt-bg); color: var(--danger-text); }
 .token-input { align-items: center; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; padding: 7px 8px; }
@@ -1174,10 +1217,32 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .chip-toggle { align-items: center; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-dim); cursor: pointer; display: inline-flex; font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1; gap: 6px; padding: 8px 12px; }
 .chip-toggle[aria-pressed="true"] { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
 .chip-toggle.is-add { border-style: dashed; color: var(--text-muted); }
+/* A channel this record still names that OnBoard no longer offers: selected,
+   removable, and visibly not one of the choices. */
+.chip-toggle.is-retired[aria-pressed="true"] { background: var(--surface-bg); border-color: var(--border-strong); border-style: dashed; color: var(--text-muted); font-weight: 600; text-decoration: line-through; }
 .chip-toggle:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+/* Per-channel progress on one required audience: the wording differs per
+   channel, so each is drafted, published and shown separately. */
+.comm-channel-marks { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }
+.comm-channel-mark { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; padding: 5px 8px; }
+.comm-channel-mark.is-published { border-color: var(--brand-green); color: var(--brand-green); }
+.comm-channel-mark.is-none { border-style: dashed; color: var(--text-muted); }
+.comm-channel-mark:disabled { cursor: default; opacity: 0.6; }
+.comm-add-audience { display: flex; gap: 8px; margin-top: 10px; }
+.comm-add-audience input { flex: 1 1 auto; max-width: 320px; }
+/* Where a Detour is managed. Outside Avail is the one that changes what OCC
+   can do with it, so it is the one that stands out. */
+.detour-managed { font-weight: 700; }
+.detour-managed.is-outside { color: #9a6b2a; }
+/* Taking or handing on a Detour, under its owner. */
+.detour-assign { display: flex; gap: 10px; margin-top: 2px; }
+.detour-assign .btn-link { background: none; border: 0; color: var(--brand-green); cursor: pointer; font: inherit; font-size: 0.8em; padding: 0; text-decoration: underline; }
+/* Work waiting on a page, so it says so without being opened. */
+.nav-count { background: var(--brand-green); border-radius: 999px; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; margin-left: auto; padding: 3px 7px; }
 .dropzone { align-items: center; background: var(--surface-alt-bg); border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-dim); cursor: pointer; display: flex; font-size: 12px; font-weight: 400; gap: 10px; justify-content: center; padding: 18px; }
 .dropzone svg { color: var(--text-muted); }
-.dropzone:focus-within { border-color: var(--brand-green); }
+.dropzone:focus-within, .dropzone.is-over { border-color: var(--brand-green); }
+.dropzone.is-over { background: color-mix(in srgb, var(--brand-green) 8%, var(--surface-alt-bg)); }
 .file-tiles { display: flex; flex-wrap: wrap; gap: 8px; }
 .file-tile { align-items: center; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); display: inline-flex; font-size: 12px; font-weight: 400; gap: 8px; padding: 6px 10px; }
 .file-tile-kind { align-items: center; background: var(--surface-alt-bg); border-radius: 6px; color: var(--text-dim); display: inline-flex; font-size: 10px; font-weight: 700; height: 28px; justify-content: center; width: 28px; }

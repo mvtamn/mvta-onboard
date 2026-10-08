@@ -1,19 +1,19 @@
 // DELETE /detours/{id} - soft delete (is_deleted=1), never a hard delete,
 // matching this repo's existing retract-not-delete convention
-// (messagesRetract.ts). Publisher/Admin only - DETOUR_DELETE_ROLES. Note
-// OCC.Detour can create and edit but deliberately cannot delete, as a
-// retention safeguard on the people doing daily entry.
+// (messagesRetract.ts). detours.delete is deliberately its own action, so a
+// role can allow creating and editing without deleting - a retention
+// safeguard on the people doing daily entry.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, DETOUR_DELETE_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid } from "../lib/validation";
 
 app.http("detoursDelete", {
   route: "detours/{id}",
   methods: ["DELETE"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, DETOUR_DELETE_ROLES);
+    const authResult = await requireAccess(request, "detours.delete");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

@@ -1,6 +1,6 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { DETOUR_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { isGuid } from "../lib/validation";
 import { actorFrom, performDetourAct } from "../lib/detourWorkflow";
 import { refusalResponse } from "../lib/detourWorkflowResponse";
@@ -8,7 +8,7 @@ import { refusalResponse } from "../lib/detourWorkflowResponse";
 app.http("detoursClosure", {
   route: "detours/{id}/close", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, DETOUR_WRITE_ROLES);
+    const auth = await requireAccess(request, "detours.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const id = request.params.id;
     if (!isGuid(id)) return { status: 400, jsonBody: { error: "id must be a GUID" } };

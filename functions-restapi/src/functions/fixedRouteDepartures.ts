@@ -1,7 +1,7 @@
 // GET /fixed-route-departures - Avail Pullout compliance history, backing
-// the console's Fixed Route Departures view (Compliance tab). Any staff
-// role, plus the dedicated OCC.Compliance role, can read; this is visibility
-// only - all writes come from fixedRouteDeparturesPoll.ts. Accepts an
+// the console's Fixed Route Departures view (Compliance tab). compliance-review.view
+// can read; this is visibility only - all writes come from
+// fixedRouteDeparturesPoll.ts. Accepts an
 // optional ?days= query param to scope the trend window (default 14).
 //
 // Every row carries an outcome judged by the same rule the compliance
@@ -12,7 +12,7 @@
 // numbers without re-deriving either.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
-import { requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { agencyServiceDate } from "../lib/missedTripTime";
 import { fixedRouteDepartureOutcome, type FixedRouteDepartureOutcome } from "../lib/fixedRouteDepartureOutcome";
 import { garageDepartureVarianceSeconds, occurrenceSourceRefSql, settledServiceDateExclusive } from "../lib/occurrenceIntake/sources";
@@ -64,9 +64,9 @@ interface FixedRouteDepartureDiagnostics {
 app.http("fixedRouteDeparturesList", {
   route: "fixed-route-departures",
   methods: ["GET"],
-  authLevel: "anonymous", // authorization enforced via requireRole below
+  authLevel: "anonymous", // authorization enforced via requireAccess below
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const authResult = requireRole(request, [...STAFF_READ_ROLES, "OCC.Compliance"]);
+    const authResult = await requireAccess(request, "compliance-review.view");
     if (!authResult.authorized) {
       return { status: authResult.status, jsonBody: { error: authResult.message } };
     }

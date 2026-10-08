@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { DecisionMatrix } from "./modules/DecisionMatrix.js";
 import { DecisionMatrixReaderPrototype } from "./modules/DecisionMatrixReaderPrototype.js";
 import { SpeedAlerts } from "./modules/SpeedAlerts.js";
@@ -16,8 +16,8 @@ type ToolKey = (typeof TOOLS)[number]["key"];
 // and On-Demand monitoring live under Service Operations (see
 // ServiceOperations.tsx), with links back here carrying operational context.
 export function OccTools() {
-  const { roles } = useAuth();
-  const isAdmin = roles.includes("OCC.Admin");
+  const { can } = useAccess();
+  const isAdmin = can("speed-alerts.view");
   const [searchParams] = useSearchParams();
   const [tool, setTool] = useState<ToolKey>("decision-matrix");
   const showReaderPrototype = import.meta.env.DEV && searchParams.get("prototype") === "reader";

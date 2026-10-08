@@ -4,7 +4,7 @@ import { assessPeriod } from "../lib/assessment/assess";
 import { finalizePeriod } from "../lib/assessment/finalizePeriod";
 import { openPeriodSql } from "../lib/assessment/openPeriod";
 import { agreementScope, assignedStandardCountSql, periodStandardSnapshotColumns, periodTierCopyColumns } from "../lib/assessment/schemaScope";
-import { COMPLIANCE_MANAGER_ROLES, COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { loadKpiTrust } from "../lib/kpiTrustStore";
 import { isGuid, isServiceMonth } from "../lib/validation";
@@ -14,7 +14,7 @@ import { reviewedItemsSha256Sql } from "../lib/assessment/reviewedItems";
 app.http("assessmentPeriodsList", {
   route: "assessment-periods", methods: ["GET"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_READ_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();
@@ -32,7 +32,7 @@ app.http("assessmentPeriodsList", {
 app.http("assessmentPeriodsOpen", {
   route: "assessment-periods", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.work");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>;
     try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
@@ -71,7 +71,7 @@ app.http("assessmentPeriodsOpen", {
 app.http("assessmentPeriodCompute", {
   route: "assessment-periods/{id}/compute", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.work");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid period id" } };
     const pool = await getPool(); const tx = new sql.Transaction(pool);
@@ -83,7 +83,7 @@ app.http("assessmentPeriodCompute", {
 app.http("assessmentPeriodFinalize", {
   route: "assessment-periods/{id}/finalize", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_MANAGER_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.decide");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid period id" } };
     try {
@@ -102,7 +102,7 @@ app.http("assessmentPeriodFinalize", {
 app.http("assessmentPeriodReopen", {
   route: "assessment-periods/{id}/reopen", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_MANAGER_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.decide");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid period id" } };
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AssessmentCap, AssessmentCapStatus, AssessmentPeriod, PeriodKpiAssessment } from "@mvta/shared";
 import { api } from "../../../config.js";
-import { useAuth } from "../../../auth/AuthContext.js";
+import { useAccess } from "../../../auth/AccessContext.js";
 import { useAppDialog } from "../../../components/AppDialog.js";
 import { Empty, formatDate } from "./assessmentFormat.js";
 
@@ -21,8 +21,8 @@ const NEXT: Record<string, Array<{ to: string; label: string; manager: boolean; 
 };
 
 export function Caps({ rows, period }: { rows: PeriodKpiAssessment[]; period: AssessmentPeriod | undefined }) {
-  const { roles } = useAuth(); const { prompt, confirm } = useAppDialog();
-  const manager = roles.includes("OCC.ComplianceManager") || roles.includes("OCC.Admin");
+  const { can } = useAccess(); const { prompt, confirm } = useAppDialog();
+  const manager = can("performance-assessment.decide"); const writer = can("performance-assessment.work");
   const [records, setRecords] = useState<AssessmentCap[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -47,7 +47,7 @@ export function Caps({ rows, period }: { rows: PeriodKpiAssessment[]; period: As
       {cap.root_cause && <dl className="assessment-cap-fields">{SUBMISSION.map(s => <div key={s.field}><dt>{s.label}</dt><dd>{String(cap[s.field] ?? "—")}</dd></div>)}{cap.closure_note && <div><dt>Closure note</dt><dd>{cap.closure_note}</dd></div>}</dl>}
       {submitting === cap.id
         ? <div className="assessment-cap-form">{SUBMISSION.map(s => <label key={s.field}><span>{s.label}</span><textarea aria-label={s.label} value={form[s.field] ?? ""} onChange={e => setForm(f => ({ ...f, [s.field]: e.target.value }))} /></label>)}<div><button className="btn-primary" disabled={SUBMISSION.some(s => !(form[s.field] ?? "").trim())} onClick={() => void move(cap, "submitted", form)}>Submit plan</button> <button onClick={() => { setSubmitting(null); setForm({}); }}>Cancel</button></div></div>
-        : <div>{(NEXT[cap.status] ?? []).filter(n => !n.manager || manager).map(n => <button key={n.to} onClick={() => n.to === "submitted" ? setSubmitting(cap.id) : n.note ? void close(cap, n.to) : void move(cap, n.to)}>{n.label}</button>)}</div>}
+        : <div>{(NEXT[cap.status] ?? []).filter(n => n.manager ? manager : writer).map(n => <button key={n.to} onClick={() => n.to === "submitted" ? setSubmitting(cap.id) : n.note ? void close(cap, n.to) : void move(cap, n.to)}>{n.label}</button>)}</div>}
     </div>)}
     {!records.length && pending.map(row => <div className="assessment-card" key={row.id}><strong>{row.name}</strong><p>{row.cap_reason || `${row.tier_label} outcome requires CAP review.`}</p><span className="assessment-tier tier2">Pending issuance</span></div>)}
     {!records.length && !pending.length && <Empty>No CAP Determinations exist for the selected Assessment Period.</Empty>}

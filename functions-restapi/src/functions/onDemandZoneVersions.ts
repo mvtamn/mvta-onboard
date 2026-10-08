@@ -8,7 +8,7 @@
 // than a timer's side effect.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
-import { ADMIN_ROLES, requireRole, STAFF_READ_ROLES } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import { ZONE_FEED_NAME, zoneFeedStatus } from "../lib/onDemandZoneFeedStatus";
 import { activateOperationalZoneVersion, activationAuditSupported, zoneVersionIdentitySupported } from "../lib/onDemandZoneImport";
@@ -19,7 +19,7 @@ app.http("onDemandZoneVersions", {
   methods: ["GET", "POST"],
   authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, request.method === "GET" ? STAFF_READ_ROLES : ADMIN_ROLES);
+    const auth = await requireAccess(request, request.method === "GET" ? "service-risk.view" : "service-configuration.edit");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();

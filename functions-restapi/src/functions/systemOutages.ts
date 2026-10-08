@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { auditSql } from "../lib/assessment/audit";
-import { COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { agencyDate } from "../lib/assessment/relief";
 import { isGuid, isServiceMonth } from "../lib/validation";
@@ -15,7 +15,7 @@ const SYSTEMS = ["Avail_CAD_AVL", "ITMS", "MDT", "Spare", "Other"] as const;
 app.http("systemOutagesList", {
   route: "system-outages", methods: ["GET"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_READ_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.view");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const month = request.query.get("service_month");
     try {
@@ -32,7 +32,7 @@ app.http("systemOutagesList", {
 app.http("systemOutagesCreate", {
   route: "system-outages", methods: ["POST"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.work");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }
     const started = new Date(String(body.started_at)); const ended = body.ended_at ? new Date(String(body.ended_at)) : null;
@@ -50,7 +50,7 @@ app.http("systemOutagesCreate", {
 app.http("systemOutagePatch", {
   route: "system-outages/{id}", methods: ["PATCH"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    const auth = await requireAccess(request, "performance-assessment.work");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid outage id" } };
     let body: Record<string, unknown>; try { body = await request.json() as Record<string, unknown>; } catch { return { status: 400, jsonBody: { error: "Request body must be valid JSON" } }; }

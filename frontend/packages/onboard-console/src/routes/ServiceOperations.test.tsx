@@ -8,8 +8,13 @@ import { ServiceRiskQuality } from "./ServiceRiskQuality.js";
 import type { LiveStats } from "../hooks/useLiveStats.js";
 
 const authState = { roles: ["OCC.Admin"], account: { name: "Test User", username: "test@mvta.com" }, signIn: vi.fn(), signOut: vi.fn() };
+const held = vi.hoisted(() => ({ actions: [] as string[] }));
 
 vi.mock("../auth/AuthContext.js", () => ({ useAuth: () => authState }));
+vi.mock("../auth/AccessContext.js", async () => {
+  const actual = await vi.importActual<typeof import("../auth/AccessContext.js")>("../auth/AccessContext.js");
+  return { ...actual, useAccess: () => actual.accessStateWith(held.actions) };
+});
 vi.mock("../config.js", () => ({
   api: {
     getTripDelays: vi.fn().mockResolvedValue({ delays: [], diagnostics: { state: "current" } }),
@@ -51,7 +56,7 @@ function renderShell(initialEntry = "/service-operations") {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  authState.roles = ["OCC.Admin"];
+  held.actions = ["rider-alerts.view", "service-risk.view", "dispatch-log.view"];
 });
 afterEach(() => cleanup());
 
@@ -75,7 +80,7 @@ describe("Service Operations", () => {
   });
 
   it("shows Service Risk & Quality to dispatch viewers", () => {
-    authState.roles = ["OCC.Viewer"];
+    held.actions = ["rider-alerts.view", "service-risk.view", "dispatch-log.view"];
     renderShell();
 
     expect(screen.getByRole("link", { name: "Service Risk & Quality" })).toBeInTheDocument();
@@ -83,7 +88,7 @@ describe("Service Operations", () => {
   });
 
   it("shows the SST desk role only the Dispatch Log, and no communications tabs it cannot use", () => {
-    authState.roles = ["OCC.TripStartVerify"];
+    held.actions = ["dispatch-log.view", "dispatch-log.verify"];
     renderShell();
 
     expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();
@@ -96,7 +101,7 @@ describe("Service Operations", () => {
   });
 
   it("hides the communications tabs from a Compliance-only reader as well", () => {
-    authState.roles = ["OCC.Compliance"];
+    held.actions = ["compliance-review.view", "dispatch-log.view"];
     renderShell();
 
     expect(screen.queryByRole("link", { name: "Compose" })).not.toBeInTheDocument();
@@ -104,7 +109,7 @@ describe("Service Operations", () => {
   });
 
   it("shows the Dispatch Log, but not Service Risk, to a Compliance reader", () => {
-    authState.roles = ["OCC.Compliance"];
+    held.actions = ["compliance-review.view", "dispatch-log.view"];
     renderShell();
 
     expect(screen.getByRole("link", { name: "Dispatch Log" })).toBeInTheDocument();

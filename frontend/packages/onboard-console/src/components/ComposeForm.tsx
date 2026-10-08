@@ -10,8 +10,7 @@ import {
   type GtfsRouteOption,
   ApiError,
 } from "@mvta/shared";
-import { useAuth } from "../auth/AuthContext.js";
-import { roleLabel } from "../auth/roles.js";
+import { useAccess } from "../auth/AccessContext.js";
 import { api } from "../config.js";
 
 const ALL_CHANNELS = ["Website", "Mobile app", "Digital signage", "Social media", "SMS", "Push", "Email"];
@@ -38,8 +37,8 @@ const AUTO_DRAFT_DEBOUNCE_MS = 1500;
 // the category's default TTL is applied (expiration_source=category_default),
 // fetched from /manage/expiration-defaults.
 export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
-  const { roles } = useAuth();
-  const canPublish = roles.some((r) => r === "OCC.Publisher" || r === "OCC.Admin");
+  const { can } = useAccess();
+  const canPublish = can("rider-alerts.publish");
 
   const [rawText, setRawText] = useState("");
   const [summary, setSummary] = useState("");
@@ -151,8 +150,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
   if (!canPublish) {
     return (
       <p className="error-text">
-        You need the {roleLabel("OCC.Publisher")} or {roleLabel("OCC.Admin")} access level to publish alerts. Ask an administrator to add
-        you to the appropriate group.
+        Publishing alerts is not part of your access. Ask an Access Administrator for it.
       </p>
     );
   }

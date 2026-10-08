@@ -22,7 +22,12 @@ export interface DashboardFeedSpec {
 
 export const DASHBOARD_FEEDS: readonly DashboardFeedSpec[] = [
   { key: "gtfs-realtime", label: "GTFS-Realtime", detail: "Fixed-route trip updates", stream: "fixed_route_delay", feed: "gtfs_trip_updates" },
-  { key: "mvta-connect", label: "MVTA Connect", detail: "On-demand reconciliation", stream: "on_demand", feed: "spare_on_demand_reconciliation" },
+  // Named for the dependency it reports, not for the vendor. The row reads one
+  // feed - the hourly reconciliation - and MVTA Connect delivers three others
+  // (requests, slots, duties) that it never looks at. Labelling it "MVTA
+  // Connect" made a reconciliation that had never run read as a vendor outage,
+  // on a console that was showing fresh Spare deliveries at the same moment.
+  { key: "mvta-connect", label: "On-demand reconciliation", detail: "MVTA Connect wait-time monitor", stream: "on_demand", feed: "spare_on_demand_reconciliation" },
 ];
 
 // How the feed-health request itself went, separate from what it said.
@@ -39,10 +44,15 @@ export interface DashboardFeed {
   lastDeliveryAt: string | null;
 }
 
-function judge(stream: KpiTrustStream): { state: OperationalDataState; label: string } {
+function judge(stream: KpiTrustStream, lastDeliveryAt: string | null): { state: OperationalDataState; label: string } {
   if (stream.state === "current") return { state: "live", label: "Current" };
   if (stream.state === "current_but_empty") return { state: "live", label: "Current · no records" };
   if (stream.state === "stale") return { state: "stale", label: "Stale" };
+  // A feed that has never delivered has not failed - it has not been switched
+  // on, or has never completed a first run. "Unavailable" claims a working
+  // ingestion has gone down, which sends OCC to the vendor instead of to the
+  // configuration.
+  if (!lastDeliveryAt) return { state: "unavailable", label: "Not received" };
   return { state: "unavailable", label: "Unavailable" };
 }
 
@@ -62,7 +72,7 @@ export function dashboardFeeds(streams: KpiTrust | null, load: FeedHealthLoad): 
     // A stream the deployed API does not report is unknown, not current.
     if (!stream) return { ...base, state: "unavailable", stateLabel: "Not reported", lastDeliveryAt: null };
 
-    const judged = judge(stream);
+    const judged = judge(stream, lastDeliveryAt);
     // A failed re-check leaves the last answer on screen, but it can no longer
     // be vouched for - a feed that was current a minute ago is not claimed to
     // be current now.

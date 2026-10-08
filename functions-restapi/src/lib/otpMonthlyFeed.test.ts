@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert";
 import {
   mapOtpMonthlyReport,
+  otpRowDiffersSql,
   serviceMonthOf,
   subtractMonths,
   monthsBetween,
@@ -78,4 +79,27 @@ test("monthsBetween returns an inclusive chronological list within a year", () =
 test("monthsBetween handles a single month and a year boundary", () => {
   assert.deepStrictEqual(monthsBetween("202608", "202608"), ["202608"]);
   assert.deepStrictEqual(monthsBetween("202511", "202602"), ["202511", "202512", "202601", "202602"]);
+});
+
+test("the row-differs test compares every stored value, NULL-safely", () => {
+  const sql = otpRowDiffersSql();
+  // EXCEPT, not <>: a column going from NULL to a number is exactly the change
+  // worth catching, and every <> against NULL is unknown.
+  assert.match(sql, /^EXISTS \(SELECT .* EXCEPT SELECT .*\)$/);
+  for (const column of ["total", "ontime", "early", "late", "missed", "actual_departures", "pct_ontime", "stop_name", "route_label"]) {
+    assert.match(sql, new RegExp(`target\\.${column}\\b`), `compares ${column}`);
+    assert.match(sql, new RegExp(`@${column}\\b`), `against @${column}`);
+  }
+  // Key columns are what the MERGE matched on; comparing them would be circular.
+  for (const key of ["service_month", "route_id", "stop_id", "day_of_week"]) {
+    assert.doesNotMatch(sql, new RegExp(`target\\.${key}\\b`), `does not compare the key ${key}`);
+  }
+  // Both sides must list the same number of columns or EXCEPT will not parse.
+  const [left, right] = sql.replace(/^EXISTS \(SELECT /, "").replace(/\)$/, "").split(" EXCEPT SELECT ");
+  assert.equal(left.split(",").length, right.split(",").length);
+});
+
+test("the differs test is aliasable and refuses anything that is not an identifier", () => {
+  assert.match(otpRowDiffersSql("t"), /t\.total/);
+  assert.throws(() => otpRowDiffersSql("target; DROP"), TypeError);
 });

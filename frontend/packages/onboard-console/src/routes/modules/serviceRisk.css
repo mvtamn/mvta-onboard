@@ -547,6 +547,32 @@
   top: 0;
 }
 
+/* An Evidence conflict (ADR-0035): two exact-matched sources support
+   incompatible findings. Warning tones, not danger - nothing is broken and the
+   case keeps its outcome; what is held is the performance assessment, until a
+   reviewer settles it. */
+.missed-trip-conflict {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--pill-warning-fg) 25%, transparent);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--pill-warning-bg);
+  color: var(--pill-warning-fg);
+}
+
+.missed-trip-conflict strong {
+  display: block;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
+.missed-trip-conflict p {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .missed-trip-detail {
   max-height: calc(100vh - 110px);
   overflow-y: auto;

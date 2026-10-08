@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { parseConnectionString, sql } from "../db";
+import { forgetPromotionCache } from "../missedTripCase/promotion";
+import {
+  fixedRouteDepartureOutcome,
+  fixedRouteRule,
+  isCandidateOutcome,
+  onDemandDepartureOutcome,
+  onDemandRule,
+} from "../garageDeparture";
 import {
   parseOccurrenceSource,
   raiseCandidates,
@@ -35,6 +43,17 @@ const DATABASE = "mvta_occurrence_intake_contract";
 const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn"];
 
 const SOURCES = `
+-- Migration 134's promotion history, with the silent no-show detector out of
+-- Shadow detection from before these cases: only a promoted detector raises a
+-- candidate, and only for the service dates it was promoted for.
+CREATE TABLE dbo.MissedTripDetectorPromotions (
+  id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+  detector NVARCHAR(40) NOT NULL, effective_service_date CHAR(8) NOT NULL, promoted BIT NOT NULL,
+  reason NVARCHAR(1000) NOT NULL, measured_precision DECIMAL(5,4) NULL, sample_size INT NULL,
+  decided_by NVARCHAR(200) NOT NULL, decided_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+INSERT dbo.MissedTripDetectorPromotions (detector, effective_service_date, promoted, reason, decided_by)
+  VALUES (N'gtfs_silent_no_show', N'20260101', 1, N'contract test', N'test@example.com');
 CREATE TABLE dbo.MonitoredMissedTrips (
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL, route_id NVARCHAR(50) NOT NULL,
   scheduled_departure_at DATETIME2 NOT NULL, grace_deadline_at DATETIME2 NOT NULL,
@@ -43,6 +62,9 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   detector_version NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'legacy_unverified',
   source_system NVARCHAR(20) NOT NULL DEFAULT 'gtfs', source_record_id NVARCHAR(100) NULL,
   undecided_reason NVARCHAR(60) NULL, expected_window_end_at DATETIME2 NULL,
+  -- Migration 135: an unresolved Evidence conflict keeps a case out of intake,
+  -- so the classification reads these and this table has to carry them.
+  evidence_conflict_at DATETIME2 NULL, evidence_conflict_reason NVARCHAR(300) NULL,
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date)
 );
 CREATE TABLE dbo.FixedRouteDepartures (
@@ -120,8 +142,7 @@ const refusalCode = (outcome: IntakeOutcome) => outcome.ok ? "ok" : outcome.refu
 
 test("occurrence intake against real SQL", { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" }, async t => {
   const pool = await ownDatabase(connectionString!);
-  const promoted = process.env.MISSED_TRIP_PROMOTED_DETECTORS;
-  process.env.MISSED_TRIP_PROMOTED_DETECTORS = "gtfs_silent_no_show";
+  forgetPromotionCache();
   try {
     for (const m of MIGRATIONS) {
       for (const b of batches(readFileSync(join(process.cwd(), "sql", `migration-${m}.sql`), "utf8"))) await pool.request().batch(b);
@@ -237,6 +258,92 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       assert.ok(refs.every(r => r.contractor_id.toLowerCase() === CONTRACTOR));
     });
 
+    await t.test("the derived predicate raises exactly the rows the ladder calls candidates", async () => {
+      // The garage-departure rule is declared once in lib/garageDeparture and
+      // rendered two ways: the ladder the console judges a row with, and the
+      // WHERE clause this pass raises candidates with. Nothing in TypeScript
+      // can prove the rendered SQL means what the ladder means - only SQL
+      // Server can. So: one row per arm of each ladder, raised for real, and
+      // the result compared against what the ladder says about the same rows.
+      //
+      // A disagreement here is the failure this module exists to prevent: an
+      // occurrence charged to a contractor for a departure the console shows
+      // as fine, which intake never withdraws.
+      //
+      // March 2026 - covered by the Agreement, settled well before
+      // settledBefore, and untouched by the other subtests.
+      await period(pool, "202603", "open");
+      const midnightCst = "2026-03-02T06:00:00"; // midnight agency time; DST starts 8 March
+      const frRows: { block: number; scheduled: string | null; actual: string | null; status: string | null; date?: string }[] = [
+        { block: 9101, scheduled: "2026-09-20T10:00:00", actual: null, status: "Missed Pullout", date: "20260920" }, // not_settled
+        { block: 9102, scheduled: null, actual: null, status: "Missed Pullout" },                                    // no_schedule
+        { block: 9103, scheduled: midnightCst, actual: null, status: "Missed Pullout" },                             // no_schedule (placeholder)
+        { block: 9104, scheduled: "2026-03-02T10:00:00", actual: null, status: "Missed Pullout" },                   // no_departure  -> candidate
+        { block: 9105, scheduled: "2026-03-02T10:00:00", actual: null, status: "On Route No Pullout" },              // unresolved
+        { block: 9106, scheduled: "2026-03-02T10:00:00", actual: "2026-03-02T10:20:00", status: "Late Pullout" },    // late         -> candidate
+        { block: 9107, scheduled: "2026-03-02T10:00:00", actual: "2026-03-02T10:05:00", status: "Late Pullout" },    // departed
+        { block: 9108, scheduled: "2026-03-02T10:00:00", actual: "2026-03-02T11:00:00", status: "On Route No Pullout" }, // departed (unclassified)
+        { block: 9109, scheduled: "2026-03-02T10:00:00", actual: "2026-03-02T10:10:00", status: "Late Pullout" },    // departed (exactly the allowance)
+      ];
+      const odRows: { duty: string; scheduled: string | null; actual: string | null; status: string | null; date?: string }[] = [
+        { duty: "arm-1", scheduled: "2026-09-20T12:00:00", actual: null, status: "completed", date: "20260920" }, // not_settled
+        { duty: "arm-2", scheduled: "2026-03-02T12:00:00", actual: null, status: "Cancelled" },                   // cancelled
+        { duty: "arm-3", scheduled: null, actual: null, status: "completed" },                                    // no_schedule
+        { duty: "arm-4", scheduled: "2026-03-02T12:00:00", actual: null, status: "completed" },                   // no_departure -> candidate
+        { duty: "arm-5", scheduled: "2026-03-02T12:00:00", actual: "2026-03-02T12:20:00", status: "completed" },  // late         -> candidate
+        { duty: "arm-6", scheduled: "2026-03-02T12:00:00", actual: "2026-03-02T12:05:00", status: "completed" },  // departed
+        { duty: "arm-7", scheduled: "2026-03-02T12:00:00", actual: "2026-03-02T12:10:00", status: "completed" },  // departed (exactly the allowance)
+      ];
+      const lit = (value: string | null) => (value === null ? "NULL" : `'${value}'`);
+      await pool.request().batch(`
+        INSERT FixedRouteDepartures(service_date,block,run,pullout_scheduled,pullout_actual,pullout_status) VALUES
+          ${frRows.map(r => `('${r.date ?? "20260302"}',${r.block},1,${lit(r.scheduled)},${lit(r.actual)},${lit(r.status)})`).join(",\n          ")};
+        INSERT OnDemandDepartures(duty_id,service_date,duty_status,departure_scheduled,departure_actual) VALUES
+          ${odRows.map(r => `('${r.duty}','${r.date ?? "20260302"}',${lit(r.status)},${lit(r.scheduled)},${lit(r.actual)})`).join(",\n          ")};`);
+
+      const gates = params({ fixed_route_departures: true, on_demand_departures: true });
+      await raiseCandidates(pool, gates);
+
+      // What the ladder says about the same rows, judged in TypeScript.
+      const seconds = (from: string | null, to: string | null) =>
+        from === null || to === null ? null : Math.round((Date.parse(`${to}Z`) - Date.parse(`${from}Z`)) / 1000);
+      const ladderFr = frRows
+        .filter(r => isCandidateOutcome(fixedRouteRule, fixedRouteDepartureOutcome({
+          service_date: r.date ?? "20260302",
+          pullout_status: r.status,
+          // The column is read back as a UTC instant, which is what migration
+          // 138 made it; the fixtures above are written in that same reading.
+          pullout_scheduled: r.scheduled === null ? null : new Date(`${r.scheduled}Z`),
+          pullout_actual: r.actual === null ? null : new Date(`${r.actual}Z`),
+          pullout_delta_seconds: seconds(r.scheduled, r.actual),
+        }, gates.varianceSeconds, gates.settledBefore)))
+        .map(r => `${r.date ?? "20260302"}|${r.block}|1`);
+      const ladderOd = odRows
+        .filter(r => isCandidateOutcome(onDemandRule, onDemandDepartureOutcome({
+          service_date: r.date ?? "20260302",
+          duty_status: r.status,
+          departure_scheduled: r.scheduled === null ? null : new Date(`${r.scheduled}Z`),
+          departure_actual: r.actual === null ? null : new Date(`${r.actual}Z`),
+          departure_delta_seconds: seconds(r.scheduled, r.actual),
+        }, gates.varianceSeconds, gates.settledBefore)))
+        .map(r => r.duty);
+
+      // The ladder must actually exercise both candidate arms, or this test
+      // would pass by agreeing that nothing is a candidate.
+      assert.deepEqual(ladderFr, ["20260302|9104|1", "20260302|9106|1"]);
+      assert.deepEqual(ladderOd, ["arm-4", "arm-5"]);
+
+      // What the predicate raised, for real, in SQL Server.
+      const raised = (await pool.request().query<{ source_ref: string }>(`
+        SELECT source_ref FROM ComplianceOccurrences
+        WHERE source='auto_candidate' AND (source_ref LIKE '%|91__|1' OR source_ref LIKE '%:arm-_')
+        ORDER BY source_ref`)).recordset.map(r => r.source_ref);
+      assert.deepEqual(raised, [
+        ...ladderFr.map(key => `FixedRouteDepartures:avail_pullout:${key}`),
+        ...ladderOd.map(duty => `OnDemandDepartures:spare_duties:${duty}`),
+      ], "the rendered predicate and the ladder disagree about which rows are candidates");
+    });
+
     await t.test("the review hand-off restates the candidate the pass raised", async () => {
       const review = (reviewStatus: "confirmed" | "dismissed") => ({ kind: "missed_trip_review" as const, tripId: "trip-9", serviceDate: "20260905", reviewStatus, attribution: "contractor_error" as const, note: "reviewed" });
       const confirmed = await inTx(pool, tx => recordOccurrence(tx, review("confirmed"), ACTOR));
@@ -268,7 +375,7 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       assert.equal(refusalCode(await inTx(pool, tx => setAssessedAmount(tx, occurrence.occurrence.id, null, ACTOR))), "ok");
     });
   } finally {
-    if (promoted === undefined) delete process.env.MISSED_TRIP_PROMOTED_DETECTORS; else process.env.MISSED_TRIP_PROMOTED_DETECTORS = promoted;
+    forgetPromotionCache();
     await pool.close();
     await dropDatabase(connectionString!);
   }

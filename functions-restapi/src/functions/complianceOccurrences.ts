@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { COMPLIANCE_READ_ROLES, COMPLIANCE_WRITE_ROLES, requireRole } from "../lib/auth";
+import { requireAccess } from "../lib/access/require";
 import { rangedPenaltyBoundsSql } from "../lib/assessment/rangedPenalty";
 import { agreementScope } from "../lib/assessment/schemaScope";
 import { getPool, sql } from "../lib/db";
@@ -7,7 +7,7 @@ import { parseOccurrenceSource, recordOccurrence, resolveOccurrence, setAssessed
 import { isGuid, isServiceMonth, validateComplianceOccurrence } from "../lib/validation";
 
 app.http("complianceOccurrencesList", { route:"compliance-occurrences",methods:["GET"],authLevel:"anonymous",handler:async(request:HttpRequest,context:InvocationContext)=>{
-  const auth=requireRole(request,COMPLIANCE_READ_ROLES);if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
+  const auth=await requireAccess(request,"compliance-review.view");if(!auth.authorized)return{status:auth.status,jsonBody:{error:auth.message}};
   try{const pool=await getPool();const check=await pool.request().query<{ready:number}>(`SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL THEN 0 ELSE 1 END ready`);if(!check.recordset[0]?.ready)return{status:200,jsonBody:{occurrences:[],diagnostics:{table_ready:false}}};const scope=await agreementScope(pool);const q=pool.request();const contractor=request.query.get("contractor_id"),month=request.query.get("service_month"),status=request.query.get("review_status");const limit=Math.min(2000,Math.max(1,Number(request.query.get("limit")??500)||500)),offset=Math.max(0,Number(request.query.get("offset")??0)||0);q.input("contractor",sql.UniqueIdentifier,isGuid(contractor)?contractor:null);q.input("month",sql.Char(6),isServiceMonth(month)?month:null);q.input("status",sql.NVarChar(20),["candidate","confirmed","dismissed"].includes(String(status))?status:null);q.input("limit",sql.Int,limit);q.input("offset",sql.Int,offset);const result=await q.query(`SELECT o.*,s.code standard_code,s.name standard_name,c.name contractor_name,bounds.penalty_amount_min,bounds.penalty_amount_max FROM ComplianceOccurrences o JOIN ContractorPerformanceStandards s ON s.id=o.standard_id JOIN Contractors c ON c.id=o.contractor_id ${rangedPenaltyBoundsSql("o",scope.scoped)} WHERE (@contractor IS NULL OR o.contractor_id=@contractor) AND (@month IS NULL OR o.service_month=@month) AND (@status IS NULL OR o.review_status=@status) ORDER BY o.service_date DESC,o.created_at DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`);return{status:200,jsonBody:{occurrences:result.recordset.map(o=>({...o,observation:parseOccurrenceSource(o.source_ref)})),diagnostics:{table_ready:true}}};}
   catch(error){context.error("GET compliance occurrences failed",error);return{status:500,jsonBody:{error:"Internal server error"}};}
 }});
@@ -45,7 +45,7 @@ async function jsonBody(request: HttpRequest): Promise<Record<string, unknown> |
 const actorOf = (auth: { principal: { userDetails?: string | null } }) => auth.principal.userDetails ?? "onboard-console";
 
 const create: Handler = async (request, context) => {
-  const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+  const auth = await requireAccess(request, "compliance-review.review");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   const body = await jsonBody(request);
   if (!body) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
@@ -67,7 +67,7 @@ const REVIEW_STATUSES = ["candidate", "confirmed", "dismissed"] as const;
 const ATTRIBUTIONS = ["contractor_error", "excusable", "mvta_directed", "undetermined"] as const;
 
 const resolve: Handler = async (request, context) => {
-  const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+  const auth = await requireAccess(request, "compliance-review.review");
   if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
   if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid occurrence id" } };
   const body = await jsonBody(request);
@@ -99,7 +99,7 @@ app.http("complianceOccurrencePatch", { route: "compliance-occurrences/{id}", me
 app.http("complianceOccurrenceAmount", {
   route: "compliance-occurrences/{id}/assessed-amount", methods: ["PUT"], authLevel: "anonymous",
   handler: async (request: HttpRequest, context: InvocationContext) => {
-    const auth = requireRole(request, COMPLIANCE_WRITE_ROLES);
+    const auth = await requireAccess(request, "compliance-review.review");
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid occurrence id" } };
     const body = await jsonBody(request);

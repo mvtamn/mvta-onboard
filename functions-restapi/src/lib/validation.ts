@@ -2,6 +2,7 @@
 // (sql/phase1-schema.sql), so bad input fails fast with a clear 400 error
 // instead of an opaque SQL constraint violation.
 import { validateDetourGeometry } from "./geoNearby";
+import { detourChannel, DETOUR_CHANNELS, needsRecipients } from "./detourCommunication/channels";
 import {
   VALID_CATEGORIES,
   VALID_SEVERITIES,
@@ -406,6 +407,7 @@ export const MAX_DETOUR_RIDERS_DIRECTED_LENGTH = 500;
 export const MAX_DETOUR_SEGMENT_ROUTES_LENGTH = 200;
 // Reporting fields - column-size ceilings from
 // migration-025-detour-reporting-fields.sql (Part B6).
+/** @deprecated the same limit as every other reason code; use MAX_REASON_CODE_LENGTH. */
 export const MAX_DETOUR_REASON_CODE_LENGTH = 30;
 export const MAX_DETOUR_PERSON_LENGTH = 200;
 export const MAX_DETOUR_RESOLUTION_NOTES_LENGTH = 1000;
@@ -583,8 +585,18 @@ export function validateDetourCommunication(body: UnknownBody, publishing = fals
   for (const field of ["audience", "channel", "content"] as const) {
     if (typeof body[field] !== "string" || body[field].trim() === "") errors.push(`${field} is required and must be a non-empty string`);
   }
+  // The channel must be one OnBoard knows (migration 132). detourChannel
+  // accepts the older spellings a stored row or an open console tab may carry.
+  const channel = typeof body.channel === "string" ? detourChannel(body.channel) : null;
+  if (typeof body.channel === "string" && body.channel.trim() !== "" && !channel) {
+    errors.push(`channel must be one of: ${DETOUR_CHANNELS.join(", ")}`);
+  }
   if (typeof body.recipients !== "undefined" && body.recipients !== null && typeof body.recipients !== "string") errors.push("recipients must be a string if provided");
-  if (publishing && (typeof body.recipients !== "string" || body.recipients.trim() === "")) errors.push("recipients are required before publishing");
+  // Only a channel that carries an address needs one. A recorded channel - a
+  // road sign, an Avail message - has no recipients to give.
+  if (publishing && channel && needsRecipients(channel) && (typeof body.recipients !== "string" || body.recipients.trim() === "")) {
+    errors.push("recipients are required before publishing on this channel");
+  }
   return errors;
 }
 
@@ -799,48 +811,16 @@ export function validateUpdateDetour(body: UnknownBody): string[] {
   return errors;
 }
 
-// POST /detour-reason-codes. Separate from validateCreateReasonCode (which
-// serves OtpReasonCodes) because DetourReasonCodes has no `applies_to` -
-// sharing the validator would mean requiring a field this table lacks.
+// The detour reason codes follow exactly the same rules as every other one,
+// minus applies_to, so they are the shared validator under a scope. They used
+// to be a second copy of it 500 lines away, with their own MAX_..._LENGTH
+// constant that happened to hold the same 30.
 export function validateCreateDetourReasonCode(body: UnknownBody): string[] {
-  const errors: string[] = [];
-  if (typeof body.code !== "string" || body.code.trim() === "") {
-    errors.push("code is required and must be a non-empty string");
-  } else if (body.code.length > MAX_DETOUR_REASON_CODE_LENGTH) {
-    errors.push(`code must be at most ${MAX_DETOUR_REASON_CODE_LENGTH} characters`);
-  }
-  if (typeof body.label !== "string" || body.label.trim() === "") {
-    errors.push("label is required and must be a non-empty string");
-  } else if (body.label.length > 100) {
-    errors.push("label must be at most 100 characters");
-  }
-  return errors;
+  return validateCreateReasonCode(body, "detour");
 }
 
-// PATCH /detour-reason-codes/{id}. `code` is intentionally not editable -
-// Detours.reason_code is a soft (non-FK) reference to it, so renaming a code
-// would silently orphan every historical detour citing it. Retire it with
-// is_active = 0 and add a new one instead.
 export function validateUpdateDetourReasonCode(body: UnknownBody): string[] {
-  const errors: string[] = [];
-  const editable = ["label", "is_active", "sort_order"];
-  if (!editable.some((f) => body[f] !== undefined)) {
-    errors.push(`At least one of ${editable.join(", ")} must be provided`);
-  }
-  if (body.label !== undefined) {
-    if (typeof body.label !== "string" || body.label.trim() === "") {
-      errors.push("label must be a non-empty string if provided");
-    } else if (body.label.length > 100) {
-      errors.push("label must be at most 100 characters");
-    }
-  }
-  if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
-    errors.push("is_active must be a boolean if provided");
-  }
-  if (body.sort_order !== undefined && !Number.isInteger(body.sort_order)) {
-    errors.push("sort_order must be an integer if provided");
-  }
-  return errors;
+  return validateUpdateReasonCode(body);
 }
 
 // PUT /route-classification/{routeId}
@@ -959,8 +939,14 @@ export function validateDateExclusion(body: UnknownBody): string[] {
 // standing up a separate reason-code table for one more use case.
 const VALID_REASON_CODE_APPLIES_TO = ["stop", "date", "missed_trip"] as const;
 
-// POST /otp-reason-codes
-export function validateCreateReasonCode(body: UnknownBody): string[] {
+/**
+ * POST /otp-reason-codes and /detour-reason-codes.
+ *
+ * `applies_to` is required for the OTP scope, whose table keys on it, and
+ * refused for the detour scope, whose table has no such column - accepting it
+ * there would let a caller believe a sub-kind had been recorded.
+ */
+export function validateCreateReasonCode(body: UnknownBody, scope: "otp" | "detour" = "otp"): string[] {
   const errors: string[] = [];
 
   if (typeof body.code !== "string" || body.code.trim() === "") {
@@ -973,8 +959,14 @@ export function validateCreateReasonCode(body: UnknownBody): string[] {
   } else if (body.label.length > MAX_REASON_LABEL_LENGTH) {
     errors.push(`label must be at most ${MAX_REASON_LABEL_LENGTH} characters`);
   }
-  if (!includes(VALID_REASON_CODE_APPLIES_TO, body.applies_to)) {
+  if (scope === "otp" && !includes(VALID_REASON_CODE_APPLIES_TO, body.applies_to)) {
     errors.push(`applies_to must be one of: ${VALID_REASON_CODE_APPLIES_TO.join(", ")}`);
+  }
+  if (scope === "detour" && body.applies_to !== undefined) {
+    errors.push("applies_to is not a detour reason code field");
+  }
+  if (body.sort_order !== undefined && !Number.isInteger(body.sort_order)) {
+    errors.push("sort_order must be an integer if provided");
   }
 
   return errors;
