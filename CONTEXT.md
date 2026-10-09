@@ -788,8 +788,8 @@ The share of departures, above which a stop's early or late running makes it a F
 _Avoid_: OTP threshold, tolerance
 
 **Weather Day Exclusion**:
-A recorded weather or emergency service date. Recording one changes nothing; approving it subtracts the departures it carried from Official Departure OTP, frozen at the moment of approval so the figure cannot drift afterwards (ADR 0038). Raw OTP is left as the source published it. ADR 0033 held that a single date could not be removed at all, because the monthly feed is grouped by day of week rather than by date; that premise no longer holds, the daily and monthly feeds having been shown to reconcile exactly.
-_Avoid_: excluded day, relief day
+A recorded weather or emergency service date. Recording one changes nothing; approving it subtracts the departures it carried from Official Departure OTP, frozen at the moment of approval so the figure cannot drift afterwards (ADR 0038). Raw OTP is left as the source published it. ADR 0033 held that a single date could not be removed at all, because the monthly feed is grouped by day of week rather than by date; that premise no longer holds, the daily and monthly feeds having been shown to reconcile exactly. An approved date can be **withdrawn** by a Compliance reviewer with a stated reason, which stops it subtracting while keeping the row and its frozen departures as evidence of what it once took; withdrawal is not deletion, because a dispute is about what was removed and who decided it.
+_Avoid_: excluded day, relief day, deleting an exclusion
 
 **Monetary Adjustment**:
 An Assessment Reviewer's reasoned recommendation to change a computed monetary amount without rewriting its source measurement or tier.

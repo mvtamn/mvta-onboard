@@ -1718,6 +1718,19 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
      * into a no-op, so the caller shows the server's reason rather than a
      * generic failure.
      */
+    /**
+     * Withdraw an approved weather day, so it stops subtracting. The row and
+     * its frozen snapshot are kept - a dispute is about what was taken out and
+     * who decided it - so this is not a delete, and it needs a reason.
+     */
+    withdrawDateExclusion(id: string, reason: string) {
+      return request<{ exclusion: OtpDateExclusion }>(
+        `/api/otp-date-exclusions/${encodeURIComponent(id)}/withdraw`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+        true,
+      );
+    },
+
     approveDateExclusion(id: string) {
       return request<ApproveDateExclusionResult>(
         `/api/otp-date-exclusions/${encodeURIComponent(id)}/approve`,

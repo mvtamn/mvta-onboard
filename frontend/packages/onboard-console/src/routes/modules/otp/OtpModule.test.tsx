@@ -40,6 +40,7 @@ const getOtpMonthly = vi.fn();
 const getDateExclusions = vi.fn();
 const getOtpMonthlyTrend = vi.fn();
 const approveDateExclusion = vi.fn();
+const withdrawDateExclusion = vi.fn();
 
 const dateExclusion = (over: Record<string, unknown> = {}) => ({
   id: "de-1", scope: "Agency", route_id: null, service_date: "20260907",
@@ -57,6 +58,7 @@ vi.mock("../../../config.js", () => ({ api: {
   ] }),
   getDateExclusions: (...args: unknown[]) => getDateExclusions(...args),
   approveDateExclusion: (...args: unknown[]) => approveDateExclusion(...args),
+  withdrawDateExclusion: (...args: unknown[]) => withdrawDateExclusion(...args),
   getStopExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
   getOtpAuditStream: vi.fn().mockResolvedValue({ entries: [] }),
   getOtpMonthlyTrend: (...args: unknown[]) => getOtpMonthlyTrend(...args),
@@ -74,6 +76,7 @@ describe("the OTP Review Queue", () => {
     getOtpMonthly.mockReset();
     getDateExclusions.mockReset();
     approveDateExclusion.mockReset();
+    withdrawDateExclusion.mockReset();
     getDateExclusions.mockResolvedValue({ exclusions: [] });
   });
 
@@ -190,6 +193,62 @@ describe("approving a weather day", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/no departures for 20260907/);
     // Still offered, because nothing was approved.
     expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+  });
+
+  // An approved date subtracts departures from the official figure (ADR 0038),
+  // and until now nothing could undo that: list, create and approve were the
+  // only operations, so a date approved in error permanently inflated the
+  // month and the only way back was a hand edit against the database.
+  it("offers Withdraw on an approved day, and asks why before acting", async () => {
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [dateExclusion({
+      status: "Approved", approved_by: "rob@example.com", approved_at: "2026-09-22T17:00:00Z",
+    })] });
+    withdrawDateExclusion.mockResolvedValue({ exclusion: dateExclusion({ status: "Withdrawn" }) });
+
+    await openWeatherPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    // One click does not move a published figure.
+    expect(withdrawDateExclusion).not.toHaveBeenCalled();
+    const confirm = screen.getByRole("button", { name: "Confirm withdrawal" });
+    expect(confirm).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText(/Reason for withdrawing/), "Approved against the wrong route scope");
+    await userEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
+    expect(withdrawDateExclusion).toHaveBeenCalledWith("de-1", "Approved against the wrong route scope");
+  });
+
+  it("re-reads the month, because withdrawing gives the departures back", async () => {
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [dateExclusion({ status: "Approved", approved_by: "rob@example.com" })] });
+    withdrawDateExclusion.mockResolvedValue({ exclusion: dateExclusion({ status: "Withdrawn" }) });
+
+    await openWeatherPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    await userEvent.type(screen.getByLabelText(/Reason for withdrawing/), "Not a weather day");
+    const before = getOtpMonthly.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Confirm withdrawal" }));
+    await screen.findByText(/no longer subtracts/);
+
+    expect(getOtpMonthly.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it("shows a withdrawn day as withdrawn, with who and why, and does not offer it again", async () => {
+    // The row and its frozen snapshot are kept deliberately: a dispute is
+    // about what was taken out and who decided it, so this is not a delete.
+    getOtpMonthly.mockResolvedValue(monthly());
+    getDateExclusions.mockResolvedValue({ exclusions: [dateExclusion({
+      status: "Withdrawn", approved_by: "rob@example.com",
+      withdrawn_by: "maurice@example.com", withdrawn_at: "2026-10-08T15:00:00Z",
+      withdrawal_reason: "Approved against the wrong route scope",
+    })] });
+
+    await openWeatherPage();
+    expect(await screen.findByText("Withdrawn")).toBeTruthy();
+    expect(screen.getByText(/maurice@example.com/)).toBeTruthy();
+    expect(screen.getByText("Approved against the wrong route scope")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Withdraw" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
   it("does not offer Approve on a day already approved, and shows what it removed", async () => {
