@@ -13,6 +13,7 @@
 // API offered no route to change it. Every weather day ever recorded sat in a
 // state nothing read.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
+import { withdrawalReason, withdrawalRecordable } from "../lib/otpDateExclusionWithdrawal";
 import { getPool, sql } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateDateExclusion } from "../lib/validation";
@@ -232,6 +233,84 @@ app.http("otpDateExclusionsApprove", {
     } catch (err) {
       try { await tx.rollback(); } catch { /* the transaction is already gone */ }
       context.error("POST /otp-date-exclusions/{id}/approve failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+// Withdrawing an approved date.
+//
+// Since migration 140 an approved date genuinely subtracts its departures from
+// the official monthly figure, and nothing could undo that: the table had
+// list, create and approve, with no reject, no delete and no un-approve. A
+// date approved by mistake - wrong day, wrong route scope, or a day that turns
+// out not to have been weather-affected - permanently inflated that month's
+// OTP, and the only way back was a hand edit against the database.
+//
+// This is deliberately NOT a delete. The row and its frozen
+// OtpDateExclusionDepartures stay, because a dispute is about what was taken
+// out and who decided it; moving the status to 'Withdrawn' is enough to stop
+// the subtraction, since lib/otpMonth/rules.ts joins on status = 'Approved'.
+//
+// A reason is required. An approved figure that moves without one is exactly
+// what a reviewer would later be unable to explain.
+app.http("otpDateExclusionsWithdraw", {
+  route: "otp-date-exclusions/{id}/withdraw",
+  methods: ["POST"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const authResult = await requireAccess(request, "compliance-review.review");
+    if (!authResult.authorized) {
+      return { status: authResult.status, jsonBody: { error: authResult.message } };
+    }
+    const id = request.params.id;
+    if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) {
+      return { status: 400, jsonBody: { error: "A date exclusion id is required" } };
+    }
+    let raw: unknown;
+    try {
+      raw = ((await request.json()) as { reason?: unknown })?.reason;
+    } catch {
+      raw = undefined;
+    }
+    const checked = withdrawalReason(raw);
+    if (!checked.ok) return { status: 400, jsonBody: { error: checked.error } };
+    const reason = checked.reason;
+    const withdrawnBy = authResult.principal.userDetails || "system";
+
+    try {
+      const pool = await getPool();
+      if (!(await withdrawalRecordable(pool))) {
+        return { status: 503, jsonBody: { error: "Migration 142 has not been applied, so a withdrawal could not be recorded." } };
+      }
+      // Guarded on status rather than read-then-write: only an Approved date
+      // is subtracting anything, so only an Approved date can be withdrawn,
+      // and two reviewers withdrawing at once settle to one.
+      const updated = await pool.request()
+        .input("id", sql.UniqueIdentifier, id)
+        .input("by", sql.NVarChar(200), withdrawnBy)
+        .input("reason", sql.NVarChar(500), reason)
+        .query<DateExclusionRow>(`
+          UPDATE dbo.OtpDateExclusions
+          SET status = 'Withdrawn', withdrawn_by = @by, withdrawn_at = SYSUTCDATETIME(),
+              withdrawal_reason = @reason
+          OUTPUT INSERTED.id, INSERTED.scope, INSERTED.route_id, INSERTED.service_date,
+                 INSERTED.reason_code, INSERTED.notes, INSERTED.status, INSERTED.notified,
+                 INSERTED.notified_at, INSERTED.acknowledged, INSERTED.created_by, INSERTED.created_at
+          WHERE id = @id AND status = 'Approved'
+        `);
+      if (!updated.recordset.length) {
+        // Either there is no such row, or it is not Approved - a Proposed date
+        // subtracts nothing, so there is nothing to withdraw from it.
+        const found = await pool.request().input("id", sql.UniqueIdentifier, id)
+          .query<{ status: string }>("SELECT status FROM dbo.OtpDateExclusions WHERE id = @id");
+        const status = found.recordset[0]?.status;
+        if (!status) return { status: 404, jsonBody: { error: "No such date exclusion" } };
+        return { status: 409, jsonBody: { error: `Only an approved date can be withdrawn; this one is ${status}.` } };
+      }
+      return { status: 200, jsonBody: { exclusion: updated.recordset[0] } };
+    } catch (err) {
+      context.error("POST /otp-date-exclusions/{id}/withdraw failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

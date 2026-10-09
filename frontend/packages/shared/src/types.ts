@@ -1717,7 +1717,7 @@ export interface PutStopExclusionInput {
 }
 
 export type DateExclusionScope = "Agency" | "Route";
-export type DateExclusionStatus = "Proposed" | "Approved";
+export type DateExclusionStatus = "Proposed" | "Approved" | "Withdrawn";
 
 export interface OtpDateExclusion {
   id: string;
@@ -1734,6 +1734,9 @@ export interface OtpDateExclusion {
   created_at: string;
   approved_by: string | null;
   approved_at: string | null;
+  withdrawn_by?: string | null;
+  withdrawn_at?: string | null;
+  withdrawal_reason?: string | null;
   /** What this exclusion is subtracting from the month, in departures. */
   excluded_departures: number;
 }

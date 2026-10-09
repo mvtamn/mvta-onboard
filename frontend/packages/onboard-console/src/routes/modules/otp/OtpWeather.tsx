@@ -7,6 +7,7 @@ export function WeatherPage({
   reasonCodes,
   onAdd,
   onApprove,
+  onWithdraw,
   recordedThisMonth,
   appliedThisMonth,
 }: {
@@ -14,6 +15,7 @@ export function WeatherPage({
   reasonCodes: ReasonCode[];
   onAdd: (input: { scope: "Agency" | "Route"; route_id: number | null; service_date: string; reason_code: string; notes: string }) => Promise<void>;
   onApprove: (id: string) => Promise<DateExclusionSnapshot>;
+  onWithdraw: (id: string, reason: string) => Promise<void>;
   recordedThisMonth: number;
   appliedThisMonth: number;
 }) {
@@ -23,6 +25,11 @@ export function WeatherPage({
   const [reason, setReason] = useState(reasonCodes[0]?.code ?? "");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Withdrawing an approved date moves a published figure, so it asks for the
+  // reason inline rather than acting on one click.
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [withdrawReason, setWithdrawReason] = useState("");
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function add() {
@@ -55,6 +62,23 @@ export function WeatherPage({
   const [approving, setApproving] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [rowResult, setRowResult] = useState<Record<string, string>>({});
+
+  async function withdraw(exclusion: OtpDateExclusion) {
+    const reason = withdrawReason.trim();
+    if (!reason) return;
+    setWithdrawBusy(true);
+    setRowError((e) => ({ ...e, [exclusion.id]: "" }));
+    try {
+      await onWithdraw(exclusion.id, reason);
+      setRowResult((r) => ({ ...r, [exclusion.id]: "Withdrawn. This date no longer subtracts from the month." }));
+      setWithdrawing(null);
+      setWithdrawReason("");
+    } catch (err) {
+      setRowError((e) => ({ ...e, [exclusion.id]: err instanceof ApiError ? err.message : "Could not withdraw this date." }));
+    } finally {
+      setWithdrawBusy(false);
+    }
+  }
 
   async function approve(exclusion: OtpDateExclusion) {
     setApproving(exclusion.id);
@@ -135,7 +159,15 @@ export function WeatherPage({
                   {d.notes ? <div className="td-dim" style={{ marginTop: 2 }}>{d.notes}</div> : null}
                 </td>
                 <td>
-                  {d.status === "Approved" ? (
+                  {d.status === "Withdrawn" ? (
+                    <>
+                      <span className="pill-sm pill-muted">Withdrawn</span>
+                      <div className="td-dim" style={{ marginTop: 2 }}>
+                        {d.withdrawn_by ?? "withdrawn"}{d.withdrawn_at ? ` · ${d.withdrawn_at.slice(0, 10)}` : ""}
+                        {d.withdrawal_reason ? <div>{d.withdrawal_reason}</div> : null}
+                      </div>
+                    </>
+                  ) : d.status === "Approved" ? (
                     <>
                       <span className="pill-sm pill-success">Approved</span>
                       {d.approved_by ? (
@@ -143,6 +175,25 @@ export function WeatherPage({
                           {d.approved_by}{d.approved_at ? ` · ${d.approved_at.slice(0, 10)}` : ""}
                         </div>
                       ) : null}
+                      {withdrawing === d.id ? (
+                        <div style={{ marginTop: 4 }}>
+                          <input
+                            className="f"
+                            value={withdrawReason}
+                            onChange={(event) => setWithdrawReason(event.target.value)}
+                            placeholder="Why is this date no longer excluded?"
+                            aria-label={`Reason for withdrawing ${d.service_date}`}
+                          />
+                          <button className="btn-sm" disabled={withdrawBusy || !withdrawReason.trim()} onClick={() => void withdraw(d)}>
+                            {withdrawBusy ? "Withdrawing…" : "Confirm withdrawal"}
+                          </button>
+                          <button className="btn-sm" disabled={withdrawBusy} onClick={() => { setWithdrawing(null); setWithdrawReason(""); }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 4 }}>
+                          <button className="btn-sm" onClick={() => { setWithdrawing(d.id); setWithdrawReason(""); }}>Withdraw</button>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>

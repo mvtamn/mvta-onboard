@@ -66,7 +66,9 @@ export function otpRouteCategorySql(classification = "classification"): string {
  * day of week - two snow Mondays - so the rows sum before they subtract.
  *
  * Only 'Approved' exclusions subtract. A 'Proposed' one is somebody's request,
- * and the figure does not move on a request.
+ * and the figure does not move on a request; a 'Withdrawn' one was approved
+ * and has been taken back (migration 142), so it stops subtracting here while
+ * its row and its frozen departures stay as evidence of what it once took.
  */
 export function otpDateExcludedJoinSql(otp = "otp", dates = "dates"): string {
   const o = alias(otp);

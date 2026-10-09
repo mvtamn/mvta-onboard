@@ -208,6 +208,19 @@ export function OtpModule() {
     return result.snapshot;
   }
 
+  /**
+   * Withdrawing re-reads the month the same way approving does: the figure it
+   * was subtracting from moves back, so the measurement has to be re-read or
+   * the Dashboard keeps showing the subtracted number.
+   */
+  async function withdrawDateExclusion(id: string, reason: string): Promise<void> {
+    await api.withdrawDateExclusion(id, reason);
+    const refreshed = await api.getDateExclusions(selectedMonth);
+    setDateExclusions(refreshed.exclusions);
+    setWeatherActionTick((t) => t + 1);
+    setMeasurementTick((t) => t + 1);
+  }
+
   const meta = PAGE_META[page];
 
   return (
@@ -285,6 +298,7 @@ export function OtpModule() {
           reasonCodes={dateReasonCodes}
           onAdd={addDateExclusion}
           onApprove={approveDateExclusion}
+          onWithdraw={withdrawDateExclusion}
           recordedThisMonth={liveOtp?.diagnostics.weather_days_recorded ?? 0}
           appliedThisMonth={liveOtp?.measurement?.weather_days_applied ?? 0}
         />
