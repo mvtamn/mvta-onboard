@@ -38,7 +38,8 @@ export interface OtpReview {
   reasonOf: (stop: FlaggedStop) => string;
   setReason: (stop: FlaggedStop, reason: string) => void;
   previousDecisionFor: (stop: FlaggedStop) => OtpStopExclusion | undefined;
-  resolve: (stop: FlaggedStop, action: "approve" | "reject") => Promise<void>;
+  /** True when the decision was written; false leaves actionError set. */
+  resolve: (stop: FlaggedStop, action: "approve" | "reject") => Promise<boolean>;
   copyFromPrevious: (stop: FlaggedStop) => Promise<void>;
   copyAllFromPrevious: () => Promise<void>;
   copyingAll: boolean;
@@ -180,6 +181,7 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
         "Could not save this review decision.",
       );
       if (saved) await refreshDecisions();
+      return saved;
     },
     [record, reasonOf, refreshDecisions],
   );
