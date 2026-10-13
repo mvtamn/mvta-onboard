@@ -30,16 +30,16 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
+  // Standard S3 (100 DTU) rather than serverless: the timers query the
+  // database every few minutes, so serverless never auto-paused and billed
+  // ~$254/mo of compute. 250 GB is S3's included storage.
   sku: {
-    name: 'GP_S_Gen5'
-    tier: 'GeneralPurpose'
-    family: 'Gen5'
-    capacity: 1
+    name: 'Standard'
+    tier: 'Standard'
+    capacity: 100
   }
   properties: {
-    autoPauseDelay: 60
-    minCapacity: json('0.5')
-    maxSizeBytes: 34359738368
+    maxSizeBytes: 268435456000
   }
 }
 

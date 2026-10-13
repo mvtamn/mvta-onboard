@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.318] - 2026-10-13
+
+- **The database was paying for idle time it never had.** `sqldb-mvta-onboard-dev` ran serverless (GP_S_Gen5, 1 vCore max, 0.5 min, 60-minute auto-pause). The 26 timers query it every few minutes around the clock, so it never auto-paused, and compute alone billed ~$254/mo - about two-thirds of the OnBoard resource group's ~$405 September bill.
+- **Now Standard S3 (100 DTU), about $150/mo.** Over the previous week the database averaged 3% of one vCore with a 32% peak, on 1.8 GB of data, so S3 has ample headroom. No migration uses columnstore, In-Memory OLTP, or temporal tables, which the Standard tier would restrict. The max size moves from 32 GB to 250 GB, because Standard does not accept 32 GB and 250 GB is S3's included storage.
+- **Already applied to dev** with `az sql db update` on 2026-10-13 at 08:47 CT. During the switchover, `spareMissedTripsIngest` hit two transient 9001 errors, the expected retryable error during a tier change. No request failed, and traffic afterwards was clean. `infra-stage0/modules/sql.bicep` now declares the same tier, so the infra deploy on merge is a no-op for SQL rather than a revert to serverless.
+
 ## [1.5.317] - 2026-10-09
 
 - **A decided stop exclusion could not be changed from the console.** `PUT /otp-stop-exclusions` has always upserted in place and takes `'approved' | 'rejected'`, so the server was willing - but the Review Queue only rendered Approve and Reject while a stop was `pending`. Once decided, the row became static text (`Excluded - Recovery point`, or `Kept in OTP calc`), with no control even under the "Resolved only" filter. A reviewer who excluded the wrong stop had no way back, which is the same hole weather dates were in until 1.5.316 - except here nothing needed building on the server.
