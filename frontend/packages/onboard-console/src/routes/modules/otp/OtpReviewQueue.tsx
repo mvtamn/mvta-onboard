@@ -40,7 +40,7 @@ export function ReviewQueuePage({
   statusOf: (stop: FlaggedStop) => StopExclusionStatus;
   reasonOf: (stop: FlaggedStop) => string;
   reasonCodes: ReasonCode[];
-  onResolve: (stop: FlaggedStop, action: "approve" | "reject") => void;
+  onResolve: (stop: FlaggedStop, action: "approve" | "reject") => void | Promise<boolean | void>;
   onReason: (stop: FlaggedStop, reason: string) => void;
   serviceMonth: string | null;
   auditRefreshTick: number;
@@ -49,10 +49,29 @@ export function ReviewQueuePage({
   onCopyAll: () => void;
   copyingAll: boolean;
 }) {
+  // A decided stop can be decided again - the API has always allowed it
+  // (PUT upserts in place), but the row rendered as static text, so a reviewer
+  // who approved the wrong stop had no way back through the console. Reopening
+  // is held per row and only while the reviewer is looking at it, so a decided
+  // queue does not read as an editable one.
+  const [reopened, setReopened] = useState<Record<string, boolean>>({});
   const [routeFilter, setRouteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
   const [search, setSearch] = useState("");
   const routes = useMemo(() => [...new Set(queueRows.map((r) => r.routeLabel))].sort(), [queueRows]);
+
+  // Re-deciding overwrites the earlier decision rather than recording a change
+  // of mind: the Review Timeline is derived from OtpStopExclusions itself, not
+  // from an audit table, so "approved, then rejected" reads as one entry at the
+  // later time. That limitation is deliberate and predates this control - see
+  // lib/otpExclusionReview. The row closes only once the save succeeds, so a
+  // failed write leaves the buttons where the reviewer can try again.
+  async function changeDecision(stop: FlaggedStop, action: "approve" | "reject", key: string) {
+    const saved = await onResolve(stop, action);
+    // A failed write leaves the buttons where the reviewer can try again,
+    // rather than closing the row back to a status that did not change.
+    if (saved !== false) setReopened((open) => ({ ...open, [key]: false }));
+  }
 
   const [timeline, setTimeline] = useState<OtpAuditEntry[]>([]);
   const timelineLines = useMemo(() => auditLines(timeline, reasonCodes), [timeline, reasonCodes]);
@@ -143,10 +162,28 @@ export function ReviewQueuePage({
                       <button className="btn-sm" onClick={() => onCopy(stop)}>Copy last month</button>
                     ) : null}
                   </>
-                ) : status === "approved" ? (
-                  <span className="ok-text">Excluded — {reasonLabel(reason)}</span>
+                ) : reopened[row.key] ? (
+                  <>
+                    <select value={reason} onChange={(e) => onReason(stop, e.target.value)} aria-label={`Reason for ${row.stopName}`}>
+                      {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                    </select>
+                    <button className="btn-post" onClick={() => void changeDecision(stop, "approve", row.key)}>Approve</button>
+                    <button className="btn-sm" onClick={() => void changeDecision(stop, "reject", row.key)}>Reject</button>
+                    <button className="btn-sm" onClick={() => setReopened((o) => ({ ...o, [row.key]: false }))}>Cancel</button>
+                  </>
                 ) : (
-                  <span className="muted">Kept in OTP calc</span>
+                  <>
+                    {status === "approved"
+                      ? <span className="ok-text">Excluded — {reasonLabel(reason)}</span>
+                      : <span className="muted">Kept in OTP calc</span>}
+                    <button
+                      className="btn-sm"
+                      onClick={() => setReopened((o) => ({ ...o, [row.key]: true }))}
+                      aria-label={`Change the decision for ${row.stopName}`}
+                    >
+                      Change decision
+                    </button>
+                  </>
                 )}
               </div>
             </div>

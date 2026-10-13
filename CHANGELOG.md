@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.317] - 2026-10-09
+
+- **A decided stop exclusion could not be changed from the console.** `PUT /otp-stop-exclusions` has always upserted in place and takes `'approved' | 'rejected'`, so the server was willing - but the Review Queue only rendered Approve and Reject while a stop was `pending`. Once decided, the row became static text (`Excluded - Recovery point`, or `Kept in OTP calc`), with no control even under the "Resolved only" filter. A reviewer who excluded the wrong stop had no way back, which is the same hole weather dates were in until 1.5.316 - except here nothing needed building on the server.
+- **Decided rows now offer "Change decision"**, which brings back the reason picker with Approve and Reject, plus Cancel. Reopening is held per row and only while the reviewer is looking at it, so a decided queue does not read as an editable one.
+- **A failed write keeps the buttons up.** `resolve` now reports whether the decision was written, and the row closes only when it was - closing back to a status that had not changed would read as success. That is the whole of the behaviour change; the queue's own error banner is unchanged.
+- **Re-deciding still overwrites rather than recording a change of mind.** The Review Timeline is derived from `OtpStopExclusions` itself rather than from an audit table, so "approved, then rejected" reads as one entry at the later time. That limitation predates this control and is deliberately left alone: showing a reviewer's changed mind needs a table, a migration, and somebody at MVTA saying it is wanted.
+- **Verified.** 5 new checks covering an excluded stop, a kept stop, Cancel, a failed write, and that a pending row is not given a second way to do what Approve and Reject already do. Mutation-checked: restoring the static-text rendering fails 4 of the 5. Console 848 passing, typecheck clean. No migration, no API change.
+
 ## [1.5.316] - 2026-10-08
 
 - **Nobody could undo an approved weather day.** Since migration 140 an approved date genuinely subtracts its departures from Official Departure OTP, and `OtpDateExclusions` had exactly three operations - list, create, approve. No reject, no delete, no un-approve, no DELETE method anywhere in the OTP handlers, and no control on the Weather page. A date approved by mistake - wrong day, wrong route scope, or a day that turned out not to have been weather-affected - **permanently inflated that month's OTP**, and the only way back was a hand edit against the database. In a module whose point is being defensible to the agency, that is the wrong kind of irreversible.
