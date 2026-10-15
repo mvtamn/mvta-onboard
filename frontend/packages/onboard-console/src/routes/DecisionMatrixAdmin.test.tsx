@@ -7,6 +7,7 @@ import type { DecisionMatrixUnreferencedSops } from "@mvta/shared";
 
 vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn(), getDecisionMatrixUnreferencedSops: vi.fn() } }));
 import { api } from "../config.js";
+import { AppDialogProvider } from "../components/AppDialog.js";
 
 /** Every surface connected and empty: the state a migrated database starts in. */
 function connected() {
@@ -39,7 +40,7 @@ afterEach(() => cleanup());
 describe("Decision Matrix administration", () => {
   it("says the workspace is not connected and names every missing migration", async () => {
     unmigrated();
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByText(/Decision Matrix is not connected/i)).toBeInTheDocument();
     expect(screen.getByText(/migrations 076, 078, 079, 080/)).toBeInTheDocument();
   });
@@ -50,7 +51,7 @@ describe("Decision Matrix administration", () => {
     vi.mocked(api.getDecisionMatrixAudit).mockResolvedValue({ audit_events: [], diagnostics: { table_ready: false, required_migration: "078" } });
     vi.mocked(api.getDecisionMatrixMatchRules).mockResolvedValue({ match_rules: [], diagnostics: { table_ready: false, required_migration: "080" } });
     vi.mocked(api.getDecisionMatrix).mockResolvedValue({ procedures: [], diagnostics: { table_ready: false, procedure_count: 0 } });
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByText(/Decision Matrix is partly connected/i)).toBeInTheDocument();
     expect(screen.getByText(/migrations 076, 078, 080/)).toBeInTheDocument();
     expect(screen.getByText(/No legacy Procedure is waiting to be mapped/i)).toBeInTheDocument();
@@ -58,7 +59,7 @@ describe("Decision Matrix administration", () => {
 
   it("keeps the surfaces that answered when one of them fails", async () => {
     vi.mocked(api.getDecisionMatrixAudit).mockRejectedValue(new Error("boom"));
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByText(/audit history could not be loaded/i)).toBeInTheDocument();
     // The three that answered are unaffected, and nothing claims a missing migration.
     expect(screen.getByText(/No Procedure revision is awaiting a governance decision/i)).toBeInTheDocument();
@@ -67,14 +68,14 @@ describe("Decision Matrix administration", () => {
 
   it("withholds the authoring and Match Rule forms when their tables are absent", async () => {
     unmigrated();
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     await screen.findByText(/Decision Matrix is not connected/i);
     expect(screen.queryByRole("button", { name: "Create Draft" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add rule" })).not.toBeInTheDocument();
   });
 
   it("offers the forms once the database is migrated", async () => {
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByRole("button", { name: "Create Draft" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add rule" })).toBeInTheDocument();
     expect(screen.getByText(/No approved Procedure exists yet/i)).toBeInTheDocument();
@@ -89,7 +90,7 @@ describe("Decision Matrix administration", () => {
     vi.mocked(api.getDecisionMatrixMatchRules).mockRejectedValue(expired);
     vi.mocked(api.getDecisionMatrixLegacyCandidates).mockRejectedValue(expired);
     vi.mocked(api.getDecisionMatrix).mockRejectedValue(expired);
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByText(/Your sign-in has expired/i)).toBeInTheDocument();
     // Said once, not once per panel.
     expect(screen.getAllByText(/Your sign-in has expired/i)).toHaveLength(1);
@@ -100,13 +101,13 @@ describe("Decision Matrix administration", () => {
 
   it("still calls a genuine server fault a fault", async () => {
     vi.mocked(api.getDecisionMatrixAudit).mockRejectedValue(new ApiError(500, "Decision Matrix audit history is temporarily unavailable."));
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByText(/fault worth investigating/i)).toBeInTheDocument();
     expect(screen.queryByText(/sign-in has expired/i)).not.toBeInTheDocument();
   });
 
   it("asks for the primary SOP by browsing, not by typing seven identifiers", async () => {
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     await screen.findByRole("button", { name: "Create Draft" });
     expect(screen.getByRole("button", { name: /Browse the approved library/i })).toBeInTheDocument();
     // The machine facts about a file are no longer asked of a person.
@@ -126,7 +127,7 @@ describe("Decision Matrix administration", () => {
       diagnostics: { configured: true, outcome: "ok", path: "", reason: null, folder_count: 0, file_count: 1 },
     });
     vi.mocked(api.createDecisionMatrixProcedureDraft).mockResolvedValue({ procedure_id: "vehicle-collision", revision: 1, lifecycle_state: "Draft", concurrency_token: "0x01" });
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     const user = userEvent.setup();
     await screen.findByRole("button", { name: "Create Draft" });
     for (const [label, value] of [["Procedure ID", "vehicle-collision"], ["Condition key", "vehicle-collision"], ["Condition", "Vehicle collision"], ["Criterion", "A collision is reported."], ["Immediate action", "Notify command staff."], ["Severity meaning", "Hold service."], ["Owner team", "Operations Control Center"], ["Effective date", "2026-09-20"], ["Next review date", "2027-03-20"], ["Primary SOP code", "SOP-OCC-001"]]) {
@@ -152,7 +153,7 @@ describe("Decision Matrix administration", () => {
     // checked.", so the reason written for the Admin never reached them.
     it("lists what the check found, reference by reference, with the reason", async () => {
       vi.mocked(api.checkDecisionMatrixProcedureReferences).mockResolvedValue({ outcome: "checked", reason: null, document_references: [refusedByGrant] });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       await userEvent.setup().click(await screen.findByRole("button", { name: "Check documents" }));
       const results = await screen.findByRole("list", { name: "Document check results" });
       expect(within(results).getByText("SOP-Collision.docx")).toBeInTheDocument();
@@ -163,7 +164,7 @@ describe("Decision Matrix administration", () => {
 
     it("says checks are not configured rather than reporting a document problem", async () => {
       vi.mocked(api.checkDecisionMatrixProcedureReferences).mockResolvedValue({ outcome: "not_configured", reason: "Document checks are not configured, so nothing was checked and nothing was recorded.", document_references: [] });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       await userEvent.setup().click(await screen.findByRole("button", { name: "Check documents" }));
       expect(await screen.findByText(/Document checks are not configured/)).toBeInTheDocument();
       expect(screen.queryByRole("list", { name: "Document check results" })).not.toBeInTheDocument();
@@ -171,7 +172,7 @@ describe("Decision Matrix administration", () => {
 
     it("shows why a refused approval was refused, from the check it just made", async () => {
       vi.mocked(api.governDecisionMatrixProcedureRevision).mockRejectedValue(new ApiError(409, "Publication requires complete guidance and a currently Valid primary SOP or Reference.", { document_check: { outcome: "checked", reason: null, document_references: [refusedByGrant] } }));
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       const user = userEvent.setup();
       await user.type(await screen.findByLabelText("Reason for lifecycle decision"), "Publish.");
       await user.click(screen.getByRole("button", { name: "Approve" }));
@@ -190,7 +191,7 @@ describe("Decision Matrix administration", () => {
     // the wrong fault if it were listed alongside.
     it("says checks aren't set up, and nothing else, when no documents application is configured", async () => {
       queueWith({ configured: false, overdue: true, never_checked_reference_count: 3, oldest_check_at: null, refused_reference_count: 2 });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       expect(await screen.findByText("Document checks aren't set up here.")).toBeInTheDocument();
       expect(screen.queryByText(/SharePoint refused/)).not.toBeInTheDocument();
       expect(screen.queryByText(/never been checked|haven't been checked since/)).not.toBeInTheDocument();
@@ -198,32 +199,32 @@ describe("Decision Matrix administration", () => {
 
     it("says it even when there is nothing current to check", async () => {
       queueWith({ configured: false, current_revision_count: 0, overdue: false, oldest_check_at: null });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       expect(await screen.findByText("Document checks aren't set up here.")).toBeInTheDocument();
     });
 
     it("counts refused checks and says they are about access, not the documents", async () => {
       queueWith({ refused_reference_count: 2 });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       expect(await screen.findByText("SharePoint refused 2 document checks.")).toBeInTheDocument();
       expect(screen.getByText(/this is about OnBoard's access, not the documents/)).toBeInTheDocument();
     });
 
     it("says when checks have gone stale, naming the oldest", async () => {
       queueWith({ overdue: true, oldest_check_at: "2026-09-09T05:00:00.000Z" });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       expect(await screen.findByText(/Some documents haven't been checked since/)).toBeInTheDocument();
     });
 
     it("says current documents have never been checked when no check was ever made", async () => {
       queueWith({ overdue: true, never_checked_reference_count: 2, oldest_check_at: null });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       expect(await screen.findByText("Documents on current Procedures have never been checked.")).toBeInTheDocument();
     });
 
     it("says nothing when checks are configured, current and unrefused", async () => {
       queueWith({});
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       await screen.findByText(/No Procedure revision is awaiting/);
       expect(screen.queryByText(/Document checks aren't set up|SharePoint refused|been checked/)).not.toBeInTheDocument();
     });
@@ -232,7 +233,7 @@ describe("Decision Matrix administration", () => {
     // count is unknown, which is not the same as none - so no claim is made.
     it("makes no claim about refusals before the outcome column exists", async () => {
       queueWith({ refused_reference_count: null, overdue: true });
-      render(<DecisionMatrixAdmin />);
+      render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
       expect(await screen.findByText(/haven't been checked since/)).toBeInTheDocument();
       expect(screen.queryByText(/SharePoint refused/)).not.toBeInTheDocument();
     });
@@ -266,7 +267,7 @@ describe("SOPs no Procedure uses", () => {
 
   it("starts a Draft with the SOP already chosen", async () => {
     vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked([newSop]));
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     const user = userEvent.setup();
     await user.click(await screen.findByText("Show them"));
     const list = screen.getByRole("list", { name: "SOPs no Procedure uses" });
@@ -279,7 +280,7 @@ describe("SOPs no Procedure uses", () => {
 
   it("a report that cannot be read leaves the rest of the workspace working", async () => {
     vi.mocked(api.getDecisionMatrixUnreferencedSops).mockRejectedValue(new ApiError(500, "Unreferenced SOPs are temporarily unavailable."));
-    render(<DecisionMatrixAdmin />);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByRole("button", { name: "Create Draft" })).toBeInTheDocument();
     expect(screen.queryByText(/aren't used by any Procedure|isn't used by any Procedure/)).not.toBeInTheDocument();
   });

@@ -7,6 +7,7 @@ import type { FlaggedStop, ReasonCode } from "@mvta/shared";
 // stop nobody has decided yet rather than a row with a status.
 import type { StopExclusionStatus } from "./otpData.js";
 import { ReviewQueuePage } from "./OtpReviewQueue.js";
+import { AppDialogProvider } from "../../../components/AppDialog.js";
 import type { QueueRow } from "./otpFigures.js";
 
 vi.mock("../../../config.js", () => ({ api: { getOtpAuditStream: vi.fn().mockResolvedValue({ entries: [] }) } }));
@@ -28,6 +29,7 @@ const onResolve = vi.fn();
 const onResetMonth = vi.fn();
 function renderQueue(status: StopExclusionStatus, decidedCount = status === "pending" ? 0 : 1) {
   return render(
+    <AppDialogProvider>
     <ReviewQueuePage
       flaggedStops={[stop]}
       queueRows={[row]}
@@ -45,7 +47,8 @@ function renderQueue(status: StopExclusionStatus, decidedCount = status === "pen
       decidedCount={decidedCount}
       onResetMonth={onResetMonth}
       resetting={false}
-    />,
+    />
+    </AppDialogProvider>,
   );
 }
 
@@ -121,19 +124,21 @@ describe("changing a decision that is already made", () => {
 describe("resetting the month", () => {
   // A decision could be changed but never undone, so a month reviewed against
   // the wrong figures had no way back to pending through the console.
-  it("resets the month once the reviewer confirms", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("resets the month once the reviewer confirms in the app's own dialog", async () => {
     renderQueue("approved", 3);
     await userEvent.click(screen.getByRole("button", { name: "Reset 09/2026 decisions" }));
 
-    expect(confirm.mock.calls[0]?.[0]).toMatch(/deletes all 3 stop exclusion decisions for 09\/2026/);
+    const dialog = screen.getByRole("dialog", { name: "Reset 09/2026 decisions?" });
+    expect(dialog).toHaveTextContent(/deletes all 3 stop exclusion decisions for 09\/2026/);
+    await userEvent.click(screen.getByRole("button", { name: "Reset 3 stop exclusion decisions" }));
     expect(onResetMonth).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing when the reviewer cancels", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     renderQueue("approved");
     await userEvent.click(screen.getByRole("button", { name: "Reset 09/2026 decisions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onResetMonth).not.toHaveBeenCalled();
   });
 

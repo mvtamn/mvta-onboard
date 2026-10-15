@@ -5,6 +5,7 @@ import { type StopExclusionStatus } from "./otpData.js";
 import { type QueueRow } from "./otpFigures.js";
 import { auditLines } from "./otpAuditEntries.js";
 import { formatServiceMonth } from "./otpServiceMonth.js";
+import { useAppDialog } from "../../../components/AppDialog.js";
 
 function AdherenceStrip({ row }: { row: QueueRow }) {
   const other = Math.max(0, 100 - row.earlyPct - row.ontimePct - row.latePct - row.missedPct);
@@ -56,6 +57,7 @@ export function ReviewQueuePage({
   onResetMonth: () => Promise<boolean>;
   resetting: boolean;
 }) {
+  const { confirm } = useAppDialog();
   // A decided stop can be decided again - the API has always allowed it
   // (PUT upserts in place), but the row rendered as static text, so a reviewer
   // who approved the wrong stop had no way back through the console. Reopening
@@ -95,10 +97,15 @@ export function ReviewQueuePage({
   async function resetMonth() {
     if (!serviceMonth) return;
     const month = formatServiceMonth(serviceMonth);
-    const ok = window.confirm(
-      `Reset ${month}? This deletes all ${decidedCount} stop exclusion decision${decidedCount === 1 ? "" : "s"} for ${month} ` +
-        "and their review history. Every flagged stop goes back to pending. Weather days and finalized assessments are not affected.",
-    );
+    const decisions = `${decidedCount} stop exclusion decision${decidedCount === 1 ? "" : "s"}`;
+    const ok = await confirm({
+      title: `Reset ${month} decisions?`,
+      description:
+        `This deletes all ${decisions} for ${month} and their review history. Every flagged stop goes back to pending. ` +
+        "Weather days and finalized assessments are not affected.",
+      confirmLabel: `Reset ${decisions}`,
+      danger: true,
+    });
     if (!ok) return;
     const reset = await onResetMonth();
     if (reset) setReopened({});
