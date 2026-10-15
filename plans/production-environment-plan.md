@@ -1,6 +1,7 @@
 # Production environment — plan
 
-Drafted 2026-10-14. Nothing here is built yet.
+Drafted 2026-10-14; decisions agreed with the owner 2026-10-15. Nothing here
+is built yet.
 
 OnBoard has one environment, `rg-mvta-onboard-dev`, and it is already doing
 production work: staff sign in to it, riders subscribe through it, Spare posts
@@ -13,9 +14,21 @@ The custom domains are the last step, not the first: the CNAME target and the
 domain-validation TXT codes come from production's Front Door, which does not
 exist yet.
 
-## Decisions to make first
+## Decisions
 
-Each has a recommendation. The steps below assume it.
+Agreed 2026-10-15. The steps below assume these.
+
+| # | Decision | Agreed |
+|---|---|---|
+| 1 | New environment or rename dev | Build `rg-mvta-onboard-prod` |
+| 2 | How the database starts | Copy dev's database at cutover |
+| 3 | Sign-in registration | A separate production registration |
+| 4 | Dev after cutover | Keeps polling; sends nothing to riders or Teams; downsized |
+| 5a | Rider email sender | `alerts@mvta.com`, on the main domain |
+| 5b | Rider texts at launch | Yes; start toll-free verification now |
+| 6 | Region and sizes | West US 2 at dev's sizes |
+
+The reasoning for each follows.
 
 ### 1. Build a new environment, or rename dev as production?
 
@@ -89,14 +102,30 @@ plan instead of three.
 
 ### 5. Rider messaging identity
 
-- **Email:** dev sends from an Azure-managed `…azurecomm.net` address. Production
-  should send from an MVTA domain such as `alerts@mvta.com` or
-  `noreply@alerts.mvta.com`. That needs a custom domain on ACS Email, which
-  means more DNS records for the web admin (domain verification TXT, SPF,
-  two DKIM CNAMEs). Send them in the same request as the site records.
-- **SMS:** `acsSmsFrom` is empty even on dev, so no texts go out anywhere
-  today. Buying a toll-free number and getting it verified takes weeks, so
-  start that early if texts are needed at launch.
+- **Email — agreed: `alerts@mvta.com`.** Dev sends from an Azure-managed
+  `…azurecomm.net` address. Sending from the main domain means adding
+  `mvta.com` as a custom domain on production's ACS Email service, which
+  needs these changes on `mvta.com` itself:
+  - a domain-verification TXT record (ACS issues the value);
+  - ACS added to the existing SPF record, not a second SPF record;
+  - two DKIM CNAMEs (ACS issues the names and targets).
+
+  `mvta.com` already sends mail (MX `mailf1`/`mailf2.mvta.com`, SPF includes
+  `logis.org` and `mailgun.org`), so the web admin has to merge ACS into what
+  is there. Two things seen in its public DNS on 2026-10-15 are worth raising
+  with them: the SPF TXT value appears to contain literal quote characters,
+  which can stop receivers recognising it as SPF at all, and there is no DMARC
+  record. Whether `alerts@mvta.com` should be a real mailbox that receives
+  replies is MVTA's call; ACS does not need one.
+- **SMS — agreed: texts at launch; start verification now.** `acsSmsFrom` is
+  empty even on dev, so no texts go out anywhere today. A toll-free number has
+  to be verified before carriers deliver its messages, and that takes weeks.
+  An ACS phone number belongs to the ACS resource it was bought on, so buy it
+  on **production's** ACS. Create that one resource ahead of the rest of
+  production (step 11 moves forward to the start). Verification asks for the
+  opt-in flow and sample messages; the rider subscribe page and its
+  confirmation text are what to submit. Check whether it will accept the
+  page before `alerts.mvta.com` is live, or needs screenshots instead.
 
 ### 6. Region and sizes
 
@@ -109,6 +138,13 @@ sizes (B1 plans, SQL S3, Front Door Standard) and adjust once real load shows.
 
 The numbers give the order. Steps marked **(owner)** need an Azure or Entra
 administrator, not the deploy pipeline.
+
+### Start now — long lead time
+
+0. **(owner)** Create `rg-mvta-onboard-prod` and production's ACS resource in
+   it, buy a toll-free number on it, and submit the toll-free verification
+   (decision 5b). Nothing else in production needs to exist for this. Step 11
+   then only adds email to that resource.
 
 ### A. Make the repo deploy to more than one environment
 
@@ -163,9 +199,11 @@ Every workflow hard-codes dev today.
     the WAF policy from step 9 through a security policy. Record the
     `FrontDoorId` as the prod environment's `FRONT_DOOR_ID` variable, then
     re-run phase 1 so the Function Apps accept traffic only from it.
-11. **(owner) Communication Services.** Create ACS and an ACS Email service for
-    production, and add the custom email domain from decision 5. Start the
-    toll-free number purchase and verification if texts are needed.
+11. **(owner) Communication Services email.** On the ACS resource from step 0,
+    add an ACS Email service with `mvta.com` as a custom domain and
+    `alerts@mvta.com` as the sender (decision 5a). ACS then issues the
+    verification TXT, SPF and DKIM values for step 17. Set production's
+    `acsEndpoint`, `acsEmailFrom` and, once verified, `acsSmsFrom`.
 
 ### C. Sign-in
 
@@ -196,7 +234,9 @@ Every workflow hard-codes dev today.
     State of Minnesota (`ns1-3.state.mn.us`), so it may go through MNIT.
     Records: two CNAMEs to production's `*.azurefd.net` endpoint, the two
     `_dnsauth` TXT records (they expire after 7 days), and the ACS email
-    records from step 11.
+    records from step 11 on `mvta.com` itself (verification TXT, ACS merged
+    into the existing SPF record, two DKIM CNAMEs). Raise the SPF quoting and
+    missing DMARC noted under decision 5 in the same request.
 18. Optional: a Front Door rule that sends `onboard.mvta.com/` to `/console/`
     and `alerts.mvta.com/console/*` to `onboard.mvta.com/console/`, so each
     hostname shows only its own app.
@@ -239,9 +279,7 @@ Pick a quiet window. Fixed route runs 4am–midnight Central, so overnight works
 
 ## Open questions for the owner
 
-- Decision 1–6 above.
 - Does Spare allow more than one webhook URL? If so, dev can keep receiving
   deliveries; if not, dev's on-demand monitor goes quiet after step 24.
-- Is there a firm launch date for `alerts.mvta.com`? It decides whether SMS
-  verification (decision 5) has to start now.
 - Who besides the owner needs production access on day one?
+- Should `alerts@mvta.com` be a mailbox that receives rider replies?
