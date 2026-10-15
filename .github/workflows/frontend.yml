@@ -10,7 +10,15 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+  # A push to main deploys dev. Any other environment deploys only from here,
+  # and its GitHub environment's protection rules decide who may approve it.
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        type: choice
+        options: [dev, prod]
+        default: dev
 
 permissions:
   contents: read
@@ -53,15 +61,59 @@ jobs:
         working-directory: frontend
         run: npm test
 
-  build-and-deploy:
+  # Pull requests build both apps so a broken build shows on the PR, but
+  # deploy nothing and use no environment. Their builds are never uploaded, so
+  # the repository-level VITE_* values are fine here.
+  build:
     needs: test
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [rider-app, onboard-console]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build (${{ matrix.app }})
+        working-directory: frontend
+        env:
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          VITE_ENTRA_CLIENT_ID: ${{ vars.VITE_ENTRA_CLIENT_ID }}
+          VITE_ENTRA_TENANT_ID: ${{ vars.VITE_ENTRA_TENANT_ID }}
+          VITE_API_SCOPE: ${{ vars.VITE_API_SCOPE }}
+          VITE_PRIVILEGED_AUTH_CONTEXT: ${{ vars.VITE_PRIVILEGED_AUTH_CONTEXT }}
+        run: |
+          npm run build:shared
+          npm run build --workspace @mvta/${{ matrix.app }}
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # VITE_* values set on this GitHub environment override the repository's,
+    # so each environment builds against its own sign-in registration.
+    environment: ${{ inputs.environment || 'dev' }}
+    permissions:
+      id-token: write # OIDC, to read the Static Web App's deployment token
+      contents: read
+    env:
+      DEPLOY_ENV: ${{ inputs.environment || 'dev' }}
     strategy:
       matrix:
         include:
           - app: rider-app
             output: frontend/packages/rider-app/dist
-            token_secret: SWA_TOKEN_RIDERAPP
+            static_web_app: stapp-mvta-riderapp
           - app: onboard-console
             # dist-wrapped, not dist: this app is served behind Front Door at
             # /console/*, and Front Door forwards requests WITHOUT stripping
@@ -71,9 +123,32 @@ jobs:
             # under a literal console/ subfolder so the deployed file layout
             # matches the requested URLs directly, with no rewrite needed.
             output: frontend/packages/onboard-console/dist-wrapped
-            token_secret: SWA_TOKEN_ONBOARD
+            static_web_app: stapp-mvta-onboard
     steps:
       - uses: actions/checkout@v7
+
+      # A repository-level value silently fills any VITE_* this environment
+      # does not set. Holding the build to the client id in this environment's
+      # own phase-1 parameters stops one environment's console from shipping
+      # with another's sign-in registration.
+      - name: Build settings belong to this environment
+        env:
+          VITE_ENTRA_CLIENT_ID: ${{ vars.VITE_ENTRA_CLIENT_ID }}
+          VITE_API_SCOPE: ${{ vars.VITE_API_SCOPE }}
+        run: |
+          expected=$(jq -r '.parameters.aadClientId.value' "infra-phase1/parameters/phase1-$DEPLOY_ENV.parameters.json")
+          if [ -z "$expected" ]; then
+            echo "::error::aadClientId is empty in phase1-$DEPLOY_ENV.parameters.json. Register $DEPLOY_ENV's app and fill it in first."
+            exit 1
+          fi
+          if [ "$VITE_ENTRA_CLIENT_ID" != "$expected" ]; then
+            echo "::error::VITE_ENTRA_CLIENT_ID is not $DEPLOY_ENV's registration ($expected). Set it on the $DEPLOY_ENV GitHub environment."
+            exit 1
+          fi
+          case "$VITE_API_SCOPE" in
+            "api://$expected/"*) ;;
+            *) echo "::error::VITE_API_SCOPE is not a scope of $DEPLOY_ENV's registration. Set it on the $DEPLOY_ENV GitHub environment."; exit 1 ;;
+          esac
 
       - uses: actions/setup-node@v7
         with:
@@ -101,17 +176,30 @@ jobs:
           npm run build:shared
           npm run build --workspace @mvta/${{ matrix.app }}
 
-      # Deploy only from main (or a manual dispatch). The SWA deployment
-      # tokens are not available to pull_request runs, so this step could only
-      # ever fail there - two permanent red checks on every frontend PR, plus a
-      # fail-fast cancellation that killed the sibling app's build before it
-      # finished. The guard sits on the step rather than the job so a PR still
-      # builds both apps and reports it; only the upload is skipped.
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # The deployment token is read from the Static Web App itself rather than
+      # stored as a secret, so a build for one environment cannot be uploaded
+      # to another's app with the wrong token.
+      - name: Read the Static Web App's deployment token
+        run: |
+          token=$(az staticwebapp secrets list \
+            --resource-group "rg-mvta-onboard-$DEPLOY_ENV" \
+            --name "${{ matrix.static_web_app }}-$DEPLOY_ENV" \
+            --query properties.apiKey -o tsv)
+          test -n "$token"
+          echo "::add-mask::$token"
+          echo "SWA_DEPLOYMENT_TOKEN=$token" >> "$GITHUB_ENV"
+
       - name: Deploy to SWA
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets[matrix.token_secret] }}
+          azure_static_web_apps_api_token: ${{ env.SWA_DEPLOYMENT_TOKEN }}
           action: upload
           app_location: ${{ matrix.output }}
           # The app is already built above, so Oryx must not rebuild it.
