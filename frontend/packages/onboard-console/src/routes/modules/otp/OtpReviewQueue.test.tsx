@@ -25,7 +25,8 @@ const reasonCodes: ReasonCode[] = [
 ];
 
 const onResolve = vi.fn();
-function renderQueue(status: StopExclusionStatus) {
+const onResetMonth = vi.fn();
+function renderQueue(status: StopExclusionStatus, decidedCount = status === "pending" ? 0 : 1) {
   return render(
     <ReviewQueuePage
       flaggedStops={[stop]}
@@ -41,6 +42,9 @@ function renderQueue(status: StopExclusionStatus) {
       onCopy={vi.fn()}
       onCopyAll={vi.fn()}
       copyingAll={false}
+      decidedCount={decidedCount}
+      onResetMonth={onResetMonth}
+      resetting={false}
     />,
   );
 }
@@ -51,8 +55,11 @@ async function showResolved() {
   await userEvent.selectOptions(screen.getAllByRole("combobox")[1]!, "resolved");
 }
 
-beforeEach(() => { onResolve.mockReset(); onResolve.mockResolvedValue(true); });
-afterEach(() => cleanup());
+beforeEach(() => {
+  onResolve.mockReset(); onResolve.mockResolvedValue(true);
+  onResetMonth.mockReset(); onResetMonth.mockResolvedValue(true);
+});
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("changing a decision that is already made", () => {
   // The API always allowed this - PUT /otp-stop-exclusions upserts in place -
@@ -108,5 +115,30 @@ describe("changing a decision that is already made", () => {
     renderQueue("pending");
     expect(screen.queryByRole("button", { name: /Change the decision/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+});
+
+describe("resetting the month", () => {
+  // A decision could be changed but never undone, so a month reviewed against
+  // the wrong figures had no way back to pending through the console.
+  it("resets the month once the reviewer confirms", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderQueue("approved", 3);
+    await userEvent.click(screen.getByRole("button", { name: "Reset 09/2026 decisions" }));
+
+    expect(confirm.mock.calls[0]?.[0]).toMatch(/deletes all 3 stop exclusion decisions for 09\/2026/);
+    expect(onResetMonth).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when the reviewer cancels", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderQueue("approved");
+    await userEvent.click(screen.getByRole("button", { name: "Reset 09/2026 decisions" }));
+    expect(onResetMonth).not.toHaveBeenCalled();
+  });
+
+  it("is not offered when the month has no decisions to clear", () => {
+    renderQueue("pending", 0);
+    expect(screen.queryByRole("button", { name: /Reset .* decisions/ })).not.toBeInTheDocument();
   });
 });

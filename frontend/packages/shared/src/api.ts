@@ -1696,6 +1696,15 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
+    /** Clear every Stop Exclusion decision for a month; its Flagged Stops return to pending. */
+    resetStopExclusions(month: string) {
+      return request<{ service_month: string; deleted: number }>(
+        `/api/otp-stop-exclusions?month=${encodeURIComponent(month)}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+
     /** Weather Day Exclusions for a service month. Defaults to the current one. */
     getDateExclusions(month?: string) {
       const suffix = month ? `?month=${month}` : "";

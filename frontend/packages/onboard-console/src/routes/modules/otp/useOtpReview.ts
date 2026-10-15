@@ -43,6 +43,11 @@ export interface OtpReview {
   copyFromPrevious: (stop: FlaggedStop) => Promise<void>;
   copyAllFromPrevious: () => Promise<void>;
   copyingAll: boolean;
+  /** How many decisions the month holds, including stops no longer flagged. */
+  decidedCount: number;
+  /** Clear the month's decisions. True when the reset was written. */
+  resetMonth: () => Promise<boolean>;
+  resetting: boolean;
   actionError: string | null;
   /** Bumped when the timeline should be re-read. */
   auditRefreshTick: number;
@@ -63,6 +68,7 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
   const [draftReason, setDraftReason] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [copyingAll, setCopyingAll] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [auditRefreshTick, setAuditRefreshTick] = useState(0);
   const [decisionsVersion, setDecisionsVersion] = useState(0);
 
@@ -230,6 +236,27 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
     }
   }, [flaggedStops, previousDecisionFor, record, refreshDecisions, statusOf]);
 
+  // Reset the month: every decision for it is deleted on the server, so each
+  // Flagged Stop returns to pending and the month scores without exclusions
+  // until a reviewer decides again. The re-read and both ticks follow the
+  // same path as a decision, so Route Summary and the timeline catch up.
+  const resetMonth = useCallback(async (): Promise<boolean> => {
+    if (!serviceMonth) return false;
+    setActionError(null);
+    setResetting(true);
+    try {
+      await api.resetStopExclusions(serviceMonth);
+      setDraftReason({});
+      await refreshDecisions();
+      return true;
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not reset this month's decisions.");
+      return false;
+    } finally {
+      setResetting(false);
+    }
+  }, [serviceMonth, refreshDecisions]);
+
   return {
     queueRows,
     statuses,
@@ -241,6 +268,9 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
     copyFromPrevious,
     copyAllFromPrevious,
     copyingAll,
+    decidedCount: stopExclusions.length,
+    resetMonth,
+    resetting,
     actionError,
     auditRefreshTick,
     decisionsVersion,
