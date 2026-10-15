@@ -361,6 +361,13 @@ resource queueDataContributorRole 'Microsoft.Authorization/roleDefinitions@2022-
   scope: subscription()
   name: '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 }
+// Storage Table Data Contributor - since host 4.1055 the
+// azure.functions.webjobs.storage health check fails with
+// AuthorizationPermissionMismatch without it (tableServiceUri is set above).
+resource tableDataContributorRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
+}
 
 resource storageBlobRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments) {
   name: guid(functionApp.id, blobDataOwnerRole.id, storageAccount.id)
@@ -377,6 +384,16 @@ resource storageQueueRoleAssignment 'Microsoft.Authorization/roleAssignments@202
   scope: storageAccount
   properties: {
     roleDefinitionId: queueDataContributorRole.id
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource storageTableRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments) {
+  name: guid(functionApp.id, tableDataContributorRole.id, storageAccount.id)
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: tableDataContributorRole.id
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
