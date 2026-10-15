@@ -80,6 +80,28 @@
 .ih-table-empty { color: var(--text-muted); font-size: 12px; padding: 14px; }
 .ih-table > :last-child { border-bottom: none; }
 
+.ih-risk-summary { color: var(--text-dim); display: flex; flex-wrap: wrap; font-size: 12px; gap: 4px 12px; justify-content: space-between; margin: 0; }
+.ih-risk-summary .ih-risk-feed { color: var(--text-muted); font-size: 11px; }
+.ih-risk-summary strong { color: var(--text); }
+.ih-risk-scroll { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 10px; max-width: 100%; overflow-x: auto; }
+.ih-risk { border-collapse: collapse; font-size: 12.5px; min-width: 780px; width: 100%; }
+.ih-risk th, .ih-risk td { border-bottom: 1px solid var(--border-soft); padding: 8px 12px; text-align: left; }
+.ih-risk thead th { background: var(--surface-alt-bg); border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.3; max-width: 112px; text-transform: uppercase; vertical-align: bottom; }
+.ih-risk tbody tr:nth-child(even) { background: var(--table-stripe); }
+.ih-risk tbody tr:last-child > * { border-bottom: none; }
+.ih-risk tbody th { font-weight: 700; white-space: nowrap; }
+.ih-risk tbody th small { color: var(--text-muted); display: block; font-size: 10.5px; font-weight: 500; }
+.ih-risk .num { font-variant-numeric: tabular-nums; text-align: right; }
+.ih-risk td.num { white-space: nowrap; }
+.ih-risk td { color: var(--text-dim); }
+.ih-risk td.flagged { background: var(--pill-warning-bg); color: var(--pill-warning-fg); font-weight: 800; }
+.ih-risk-count { color: var(--text-muted); }
+.ih-risk-count.flagged { color: var(--text); font-weight: 800; }
+.ih-risk-legend { display: grid; gap: 10px 20px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin: 0; }
+.ih-risk-legend dt { color: var(--text); font-size: 12px; font-weight: 700; }
+.ih-risk-legend dt span { color: var(--text-muted); font-weight: 500; }
+.ih-risk-legend dd { color: var(--text-dim); font-size: 11.5px; line-height: 1.45; margin: 2px 0 0; }
+
 @media (max-width: 1100px) { .ih-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .ih-board { grid-template-columns: 1fr; } }
 @media (max-width: 620px) {

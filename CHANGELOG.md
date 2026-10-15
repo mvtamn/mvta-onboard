@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.319] - 2026-10-14
+
+- **Prediction accuracy was only measured by a vendor.** Swiftly's Sep 1-20 comparison put MVTA's current predictions between 49% (490) and 79% (470) accurate, but nothing in OnBoard said *why* any route scored the way it did, or whether the schedule MVTA publishes was part of the cause. A prediction engine starts from the schedule and corrects it with each GPS ping; where the schedule is wrong or silent, the correction has nothing good to start from.
+- **`lib/gtfsPredictionRisk.ts`** reviews the static feed per route: placeholder stop times (a stop scheduled one second after the previous one although it is a block or more away), the longest gap between timepoints, the longest distance between stops, tight turnarounds (three minutes or less on the same block), trips continuing from another route, impossible blocks (a trip starting before the previous one on its bus ends), and run-time spread within one stop pattern. Pure, CSV in and report out; thresholds are declared beside each check with the reason it hurts predictions.
+- **Run on every static sync.** `fetchAndParseStatic` runs the review over the CSVs it already holds, and `gtfsStopsSync` stores it after the schedule commits, outside the transaction. A bug in the review or a failed write is a warning in the log and never fails or rolls back the import the missed-trip detectors depend on.
+- **Against the 20260909 feed** the review agrees with Swiftly on what matters most: 490 and 480, the two worst-scoring routes, carry 5 and 4 flags (45 and 33 minute timepoint gaps, roughly 15 stop-free miles, 50% and 67% of trips coming off another route). On most local routes 16-30% of in-between stop times are placeholders. No route has an impossible block. The review takes about 60 ms and stores about 10 KB.
+- **`GET /gtfs-prediction-risk`**, any OnBoard role (schedule data only), returns the latest review with the check definitions read from the code, so a review always describes its checks in today's words. Integrations & Data Health shows it below the connectivity checks.
+- **Migration 143** adds `GtfsPredictionRiskReviews`, one row per sync with the review as JSON, so a new check does not need a migration. Registered with the schema drift check. Until it is applied the sync warns, the endpoint answers 503 naming the file, and the page says so.
+- **Verified.** 14 backend checks on the review and 5 console checks. Run against the live MVTA feed, it gives the same figures as an independent script. Seen in the mock-auth preview with the endpoint stubbed from that run, at desktop width and at 375 px (the table scrolls inside its frame; the page does not scroll sideways).
+
 ## [1.5.318] - 2026-10-13
 
 - **The database was paying for idle time it never had.** `sqldb-mvta-onboard-dev` ran serverless (GP_S_Gen5, 1 vCore max, 0.5 min, 60-minute auto-pause). The 26 timers query it every few minutes around the clock, so it never auto-paused, and compute alone billed ~$254/mo - about two-thirds of the OnBoard resource group's ~$405 September bill.
