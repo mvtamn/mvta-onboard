@@ -40,6 +40,7 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   }
   properties: {
     maxSizeBytes: 268435456000
+    requestedBackupStorageRedundancy: 'Local'
   }
 }
 
