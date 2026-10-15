@@ -214,6 +214,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'TEAMS_EVENT_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-event-webhook-url/)' }
         // Detour communications posted to Teams (migration 092 send path). Its own channel/secret so detours need not share the event channel.
         { name: 'TEAMS_DETOUR_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-detour-webhook-url/)' }
+        // Announcements posted to Teams by the dispatch app, one Workflows webhook per
+        // audience the compose form offers (lib/teamsAnnouncements.ts). Unresolved
+        // until the secret exists, which the code reads as "no channel set up".
+        { name: 'TEAMS_OPERATIONS_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-operations-webhook-url/)' }
+        { name: 'TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-customer-service-webhook-url/)' }
       ], !empty(serviceBusNamespace) ? [
         // Azure Functions resolves this identity-based connection using the
         // app's system-assigned managed identity; no SAS secret is used.
