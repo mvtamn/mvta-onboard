@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.322] - 2026-10-15
+
+- **Two confirmations still used the browser's own pop-up.** Resetting a month in the OTP Review Queue (1.5.321) and emergency-withdrawing Decision Matrix guidance called `window.confirm`, which shows the site's hostname as its title and an unlabelled OK. Every other confirmation in the console already goes through `useAppDialog`.
+- **Both now use the in-app dialog.** The reset reads "Reset MM/YYYY decisions?" with a red "Reset N stop exclusion decisions" button; the withdrawal reads "Emergency withdraw this guidance?" with "Withdraw guidance". Escape, Cancel and clicking outside all cancel. No `window.confirm` remains in the console.
+- **Verified.** Queue tests drive the dialog itself (confirm and cancel); OTP module and Decision Matrix tests render inside `AppDialogProvider`. No API change.
+
 ## [1.5.321] - 2026-10-15
 
 - **A month's stop exclusion decisions could not be undone.** Since 1.5.317 a decided stop can be changed between approved and rejected, but nothing put it back to pending. A month reviewed against the wrong figures - September 2026 was the case that asked for this - could only be cleared with a hand-written `DELETE` against `OtpStopExclusions`.

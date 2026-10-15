@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OtpComplianceAdmin } from "./OtpComplianceAdmin.js";
 import { OtpModule } from "./modules/otp/OtpModule.js";
+import { AppDialogProvider } from "../components/AppDialog.js";
 
 vi.mock("../config.js", () => ({ api: {
   getOtpSettings: vi.fn().mockResolvedValue({ early_late_bias_threshold: 0.25 }),
@@ -91,7 +92,7 @@ describe("OTP compliance administration", () => {
   });
 
   it("no longer offers Administration or Threshold Tuner inside the OTP module", async () => {
-    render(<OtpModule />);
+    render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
 
     expect(await screen.findByRole("button", { name: "Review Queue" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Administration" })).not.toBeInTheDocument();
