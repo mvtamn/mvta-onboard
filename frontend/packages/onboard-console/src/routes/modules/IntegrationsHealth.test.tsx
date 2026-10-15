@@ -5,8 +5,13 @@ import type { KpiTrustStream } from "@mvta/shared";
 import { IntegrationsHealth } from "./IntegrationsHealth.js";
 import { KPI_TRUST_STREAMS } from "./kpiTrustPresentation.js";
 
-const { getFeedChecks, getKpiTrust } = vi.hoisted(() => ({ getFeedChecks: vi.fn(), getKpiTrust: vi.fn() }));
-vi.mock("../../config.js", () => ({ api: { getFeedChecks, getKpiTrust } }));
+const { getFeedChecks, getKpiTrust, getGtfsPredictionRisk } = vi.hoisted(() => ({
+  getFeedChecks: vi.fn(),
+  getKpiTrust: vi.fn(),
+  // The schedule review has its own tests (SchedulePredictionRisk.test.tsx).
+  getGtfsPredictionRisk: vi.fn(() => Promise.resolve({ review: null })),
+}));
+vi.mock("../../config.js", () => ({ api: { getFeedChecks, getKpiTrust, getGtfsPredictionRisk } }));
 
 function stream(
   state: KpiTrustStream["state"],

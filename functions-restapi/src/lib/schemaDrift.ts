@@ -72,6 +72,11 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     table: "AvailEvidenceLinks",
     breaks: "A probable Avail link cannot be recorded for a reviewer to resolve",
   },
+  {
+    migration: "143",
+    table: "GtfsPredictionRiskReviews",
+    breaks: "The static sync cannot keep the schedule's prediction-risk review",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */

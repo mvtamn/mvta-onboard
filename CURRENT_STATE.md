@@ -148,6 +148,10 @@ Authorization is enforced server-side by reading the Easy Auth
   names, and trip-direction reference data.
 - `GtfsRoutes` is initially seeded from the July 27, 2026 MVTA static feed
   (20 routes) and replaced by the authoritative `routes.txt` on each sync.
+- Each static sync also reviews the schedule for what makes arrival
+  predictions worse, per route (`lib/gtfsPredictionRisk.ts`), and keeps the
+  review in `GtfsPredictionRiskReviews` (migration 143). Integrations & Data
+  Health shows the latest one.
 - Direction labels are derived from `trips.txt` headsigns.
 - Previous-stop tracking is derived when a trip's next stop changes.
 

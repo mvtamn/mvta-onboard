@@ -396,6 +396,40 @@ export interface FeedCheck {
   last_success_at?: string;
 }
 
+// The static sync's review of where the published schedule makes arrival
+// predictions worse (functions-restapi/src/lib/gtfsPredictionRisk.ts).
+export type PredictionRiskCheckId =
+  | "placeholder_times"
+  | "timepoint_gap"
+  | "longest_hop"
+  | "tight_turnarounds"
+  | "interlined"
+  | "block_overlaps"
+  | "run_time_spread";
+
+export interface PredictionRiskCheckDefinition {
+  id: PredictionRiskCheckId;
+  label: string;
+  unit: "%" | "min" | "mi" | "trips";
+  threshold: number;
+  why: string;
+}
+
+export interface PredictionRiskRoute {
+  route_id: string;
+  route_short_name: string;
+  trip_count: number;
+  flag_count: number;
+  checks: { id: PredictionRiskCheckId; value: number | null; flagged: boolean }[];
+}
+
+export interface PredictionRiskReview {
+  reviewed_at: string;
+  feed: { version: string | null; start_date: string | null; end_date: string | null };
+  checks: PredictionRiskCheckDefinition[];
+  routes: PredictionRiskRoute[];
+}
+
 export interface KpiTrustDependency {
   feed_name: string;
   required: boolean;
@@ -1177,6 +1211,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
     getKpiTrust() {
       return request<{ checked_at: string; streams: KpiTrust }>("/api/kpi-trust", {}, true);
+    },
+    getGtfsPredictionRisk() {
+      return request<{ review: PredictionRiskReview | null }>("/api/gtfs-prediction-risk", {}, true);
     },
 
     getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {

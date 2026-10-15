@@ -7,12 +7,15 @@
 // GtfsScheduledTrips - the schedule reference the missed-trip silent-no-show
 // detector (gtfsMissedTripsPoll.ts) needs to know what SHOULD have run.
 // Static schedules change infrequently, so this does a full replace rather
-// than an incremental diff.
+// than an incremental diff. Each import also stores the schedule's
+// prediction-risk review (lib/gtfsPredictionRisk.ts, migration 143) for
+// Integrations & Data Health.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
 import { runFeedIngestion, type FeedRunReport } from "../lib/feedRun";
 import { scheduleCoverage } from "../lib/gtfsScheduleHorizon";
+import { savePredictionRiskReview } from "../lib/gtfsPredictionRiskStore";
 
 // Days of remaining coverage below which the sync warns while the schedule is
 // still valid, so an expiring feed is visible before it lapses.
@@ -28,7 +31,7 @@ app.timer("gtfsStopsSync", {
     }
 
     await runFeedIngestion("gtfs_static", context, async () => {
-      const { stops, trips, routes, scheduledTrips, calendar, calendarDates, stopRoutes } =
+      const { stops, trips, routes, scheduledTrips, calendar, calendarDates, stopRoutes, predictionRisk, predictionRiskError } =
         await fetchAndParseStatic(feedUrl);
       // An archive that parses to nothing is a broken delivery, not an empty
       // schedule: the existing tables are kept, and the ledger says why rather
@@ -233,6 +236,22 @@ app.timer("gtfsStopsSync", {
         }
 
         await tx.commit();
+
+        // After the commit and outside the transaction: the review is a
+        // diagnostic, and failing to store it must not roll back or fail the
+        // schedule import the detectors depend on.
+        if (predictionRiskError) {
+          context.warn(`GTFS prediction-risk review failed and was not stored: ${predictionRiskError}`);
+        } else if (predictionRisk) {
+          try {
+            const stored = await savePredictionRiskReview(pool, predictionRisk);
+            if (!stored) {
+              context.warn("GtfsPredictionRiskReviews does not exist yet; apply migration 143 to keep the schedule's prediction-risk review.");
+            }
+          } catch (err) {
+            context.warn("Failed to store the GTFS prediction-risk review:", err);
+          }
+        }
 
         // A schedule that has run out is the one import failure that looks like
         // a success: the feed parses, the tables load, and every subsequent day
