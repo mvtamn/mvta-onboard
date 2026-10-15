@@ -287,6 +287,9 @@ export function OtpModule() {
           onCopy={review.copyFromPrevious}
           onCopyAll={review.copyAllFromPrevious}
           copyingAll={review.copyingAll}
+          decidedCount={review.decidedCount}
+          onResetMonth={review.resetMonth}
+          resetting={review.resetting}
         />
       )}
       {page === "routes" && (

@@ -5,6 +5,7 @@ import test from "node:test";
 import { parseConnectionString, sql } from "../db";
 import {
   recordStopExclusion,
+  resetStopExclusionsForMonth,
   stopExclusionsForMonth,
   timeline,
 } from "./index";
@@ -17,7 +18,8 @@ import {
 //   a month reaching BOTH kinds of exclusion - the defect fixed in 1.5.291,
 //   where ?month= filtered stop exclusions and never weather days;
 //   a weather day scoped by the date it happened, not when it was logged;
-//   the timeline bounded in SQL and ordered newest first across both tables.
+//   the timeline bounded in SQL and ordered newest first across both tables;
+//   resetting a month removing that month's decisions and nothing else.
 //
 // Tables come from the real migration, in a database of its own.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
@@ -126,6 +128,20 @@ test("exclusion review against real SQL", { skip: !connectionString && "DECISION
         day_of_week: "Weekday - Friday", status: "approved", reason_code: null,
       }, ACTOR);
       assert.equal(saved.day_of_week, "Weekday - Friday");
+    });
+
+    await t.test("resetting a month clears its decisions and nothing else", async () => {
+      const septemberBefore = (await stopExclusionsForMonth(pool, "202609")).length;
+      assert.ok(septemberBefore > 0, "the earlier steps leave September with decisions");
+
+      assert.equal(await resetStopExclusionsForMonth(pool, "202609"), septemberBefore);
+      assert.deepEqual(await stopExclusionsForMonth(pool, "202609"), []);
+      // August's decision and both weather days survive.
+      assert.deepEqual((await stopExclusionsForMonth(pool, "202608")).map((r) => r.route_id), [446]);
+      const weather = await pool.request().query<{ n: number }>("SELECT COUNT(*) AS n FROM OtpDateExclusions");
+      assert.equal(weather.recordset[0]?.n, 2);
+
+      assert.equal(await resetStopExclusionsForMonth(pool, "202609"), 0, "a second reset finds nothing");
     });
   } finally {
     await pool.close();

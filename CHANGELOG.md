@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.321] - 2026-10-15
+
+- **A month's stop exclusion decisions could not be undone.** Since 1.5.317 a decided stop can be changed between approved and rejected, but nothing put it back to pending. A month reviewed against the wrong figures - September 2026 was the case that asked for this - could only be cleared with a hand-written `DELETE` against `OtpStopExclusions`.
+- **`DELETE /otp-stop-exclusions?month=YYYYMM`**, behind `compliance-review.review`, the permission that decides a stop. `month` is required and validated: unlike GET, a destructive call never falls back to the current month. It answers `{ service_month, deleted }`, and logs who reset which month and how many decisions went, because the rows are the only record of those decisions.
+- **The Review Queue offers "Reset MM/YYYY decisions"** whenever the month holds at least one decision (counting stops no longer flagged), behind a confirmation that says how many decisions go and that the month's review history goes with them. The queue, Route Summary and the timeline re-read afterwards, the same path a single decision takes.
+- **What it leaves alone.** Other months, Weather Day Exclusions (which are withdrawn, never deleted - ADR 0038) and a finalized assessment's frozen figure (ADR 0006). The Review Timeline is derived from `OtpStopExclusions`, so a reset month reads as never reviewed; there is no audit table to keep it, the same limitation 1.5.317 recorded.
+- **Verified.** A contract test against real SQL shows a reset removes that month's decisions and nothing else, and that a second reset finds nothing. Hook tests cover the re-read, a failed reset leaving decisions in place with the error shown, and no month resolved. Queue tests cover confirm, cancel, and the button hidden when there is nothing to clear. No migration.
+
 ## [1.5.319] - 2026-10-14
 
 - **Prediction accuracy was only measured by a vendor.** Swiftly's Sep 1-20 comparison put MVTA's current predictions between 49% (490) and 79% (470) accurate, but nothing in OnBoard said *why* any route scored the way it did, or whether the schedule MVTA publishes was part of the cause. A prediction engine starts from the schedule and corrects it with each GPS ping; where the schedule is wrong or silent, the correction has nothing good to start from.
