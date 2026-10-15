@@ -18,7 +18,7 @@ test("Teams-only alerts do not request SMS or email", () => {
   assert.strictEqual(channelRequested(channels, "Email"), false);
 });
 
-test("Teams targets are extracted for the future connector", () => {
+test("Teams audiences are read from the channels the console saved", () => {
   assert.deepStrictEqual(
     teamsTargets(["Website", "Teams: Operations", "teams: Customer Service"]),
     ["Operations", "Customer Service"],

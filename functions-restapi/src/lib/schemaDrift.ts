@@ -72,6 +72,11 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     table: "AvailEvidenceLinks",
     breaks: "A probable Avail link cannot be recorded for a reviewer to resolve",
   },
+  {
+    migration: "144",
+    table: "TeamsDeliveryLog",
+    breaks: "Announcement posts to Teams go unrecorded, and a redelivered announcement can post twice",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */
