@@ -1,7 +1,8 @@
 # Production environment — plan
 
-Drafted 2026-10-14; decisions agreed with the owner 2026-10-15. Nothing here
-is built yet.
+Drafted 2026-10-14; decisions agreed with the owner 2026-10-15. Step 0 started
+2026-10-15: `rg-mvta-onboard-prod` (West US 2) and `acs-mvta-onboard-prod`
+(data location United States) exist. Nothing else is built.
 
 OnBoard has one environment, `rg-mvta-onboard-dev`, and it is already doing
 production work: staff sign in to it, riders subscribe through it, Spare posts
