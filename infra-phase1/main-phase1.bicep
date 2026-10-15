@@ -143,6 +143,10 @@ module restApiFunction 'modules/functionapp.bicep' = {
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
+    // A new environment is deployed before its app registration exists, and
+    // Easy Auth with an empty client id cannot validate anyone. Once the id is
+    // filled in, the next deploy turns it on.
+    enableEasyAuth: !empty(aadClientId)
     decisionMatrixLibrarySiteId: decisionMatrixLibrarySiteId
     decisionMatrixLibraryDriveId: decisionMatrixLibraryDriveId
     decisionMatrixSopFolder: decisionMatrixSopFolder
@@ -347,12 +351,13 @@ module complianceReportsStorage 'modules/storage-compliance-reports.bicep' = {
 // same "built outside Bicep first" pattern as Front Door (see this file's
 // own header comment). Name matches the real resource
 // (rg-mvta-onboard-dev/mvta-onboard-maps) so a future deployment manages it
-// in place instead of creating a second, unused account.
+// in place instead of creating a second, unused account. Dev keeps that
+// unsuffixed name; every other environment carries its own.
 module maps 'modules/maps.bicep' = {
   name: 'maps-deployment'
   params: {
     location: location
-    mapsAccountName: 'mvta-onboard-maps'
+    mapsAccountName: environment == 'dev' ? 'mvta-onboard-maps' : 'mvta-onboard-maps-${environment}'
     functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
   }
 }
