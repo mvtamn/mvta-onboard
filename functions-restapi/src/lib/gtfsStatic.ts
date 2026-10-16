@@ -10,7 +10,7 @@
 // static schedule doesn't change intraday, so there's no reason to fetch it
 // twice in the same sync run.
 import AdmZip from "adm-zip";
-import { reviewPredictionRisk, type PredictionRiskReview } from "./gtfsPredictionRisk";
+import { reviewSchedule, type ScheduleReview } from "./scheduleReview";
 
 export interface GtfsStopRow {
   stop_id: string;
@@ -451,7 +451,7 @@ export interface GtfsStaticData {
   calendarDates: GtfsCalendarDateRow[];
   // null when the review itself failed: a bug in a diagnostic must not stop
   // the schedule the detectors depend on from importing.
-  predictionRisk: PredictionRiskReview | null;
+  predictionRisk: ScheduleReview | null;
   predictionRiskError: string | null;
 }
 
@@ -492,11 +492,11 @@ export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> 
   const stopsCsv = stopsEntry.getData().toString("utf-8");
   const routesCsv = routesEntry.getData().toString("utf-8");
   const trips = parseTripsCsv(tripsCsv);
-  let predictionRisk: PredictionRiskReview | null = null;
+  let predictionRisk: ScheduleReview | null = null;
   let predictionRiskError: string | null = null;
   try {
     const feedInfoEntry = zip.getEntry("feed_info.txt");
-    predictionRisk = reviewPredictionRisk({
+    predictionRisk = reviewSchedule({
       routesCsv,
       tripsCsv,
       stopsCsv,

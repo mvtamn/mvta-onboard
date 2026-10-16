@@ -77,6 +77,17 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     table: "GtfsPredictionRiskReviews",
     breaks: "The static sync cannot keep the schedule's prediction-risk review",
   },
+  {
+    migration: "145",
+    table: "GtfsScheduleReviewRoutes",
+    breaks: "The schedule review keeps no evidence per route, so a route's detail cannot be opened",
+  },
+  {
+    migration: "145",
+    table: "GtfsPredictionRiskReviews",
+    column: "confirmed_at",
+    breaks: "An unchanged schedule review is stored again every day instead of being confirmed",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */
