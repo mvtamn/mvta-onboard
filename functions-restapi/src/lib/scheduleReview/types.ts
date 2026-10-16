@@ -88,7 +88,11 @@ export interface PredictionRiskReview {
 
 /** Scheduled minutes over one timepoint segment for trips starting in one hour. */
 export interface TimepointSegmentHour {
-  /** Start hour of the trip, 0-23 (GTFS hours past 24 are folded). */
+  /**
+   * Hour the bus leaves the segment's first timepoint, 0-23 (GTFS hours past
+   * 24 are folded). Detail stored before v1.5.334 keyed this by the trip's
+   * start hour; the next static sync refreshes it in place.
+   */
   hour: number;
   trips: number;
   min_minutes: number;
@@ -107,6 +111,12 @@ export interface TimepointSegmentDetail {
    */
   direction?: string | null;
   /** Along the route when the feed's shape distances calibrate; else straight-line. */
+  /**
+   * The same scheduled minutes in every hour it runs, across the peaks and
+   * the rest of the day (observed.ts isFlatSegment): the "same all day"
+   * marker. Absent in detail stored before v1.5.334.
+   */
+  flat_all_day?: boolean;
   miles: number | null;
   hours: TimepointSegmentHour[];
 }

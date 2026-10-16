@@ -160,3 +160,22 @@ test("a segment whose trips disagree on direction, or name none, has no directio
   const route = review.details.find((r) => r.route_short_name === "401");
   assert.deepStrictEqual(route?.segments.map((s) => s.direction), [null, null]);
 });
+
+test("a segment's minutes are filed under the hour the bus leaves its first timepoint, not the hour the trip started", () => {
+  // The trip starts at 6:50 but reaches C, the segment C->D's first timepoint, at 7:05.
+  const review = reviewSchedule(feed({
+    stopTimesCsv: ST_HEADER + "T1,6:50:00,6:50:00,A,1,1\nT1,7:05:00,7:05:00,C,2,1\nT1,7:30:00,7:30:00,D,3,1\n",
+  }));
+  const route = review.details.find((r) => r.route_short_name === "401");
+  assert.deepStrictEqual(route?.segments.map((s) => [s.from_stop_id, s.to_stop_id, s.hours.map((h) => h.hour)]), [["A", "C", [6]], ["C", "D", [7]]]);
+});
+
+test("a segment says whether it is scheduled the same all day, by the same rule the readings use", () => {
+  const trips = [6, 7, 10, 12, 16].map((h, i) => `T${i},${h}:00:00,${h}:00:00,A,1,1\nT${i},${h}:06:00,${h}:06:00,C,2,1`);
+  const flat = reviewSchedule(feed({
+    tripsCsv: "route_id,service_id,trip_id,direction_id,block_id\n" + trips.map((_, i) => `R1,S,T${i},0,`).join("\n") + "\n",
+    stopTimesCsv: ST_HEADER + trips.join("\n") + "\n",
+  }));
+  assert.strictEqual(flat.details[0].segments[0].flat_all_day, true);
+  assert.strictEqual(reviewSchedule(feed({})).details[0].segments[0].flat_all_day, false);
+});

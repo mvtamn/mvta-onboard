@@ -504,3 +504,24 @@ The thresholds stayed where they were (15 points, 20 departures) and one was
 added (10 points of added lateness). The next thing to tune is not a threshold
 but the window: 90 days once the daily feed holds them, and a separate read of
 Saturdays and Sundays, whose schedules differ.
+
+## 11. Redesign after the UX critique (v1.5.334)
+
+The impeccable critique of 2026-10-16 scored the page 21/40. The design
+canvas "Schedule Review redesign" drew the answer to its four P1 issues, and
+v1.5.334 builds it:
+
+- **Route loop.** One master-detail page; `?route=` is the selection. A phone
+  gets a Route picker instead of the list.
+- **Ranking.** Confirmed by Avail, then fixable flags. Structural flags
+  (timepoint gap, longest hop) are counted apart: no scheduler can act on
+  them. Needs `GET /api/gtfs-prediction-risk/observed-summary`, one query for
+  every route.
+- **One grid per direction.** Scheduled minutes over observed late/early share,
+  per segment and departure hour, with *Same all day* and the readings on the
+  row. Segment hours are now the hour the bus leaves the segment, matching
+  Avail's hour.
+- **Contrast.** `--text-muted` and a `--focus-ring` token, console-wide.
+
+Left for later: the phone artboard folded the checks into one "Show the N
+flagged checks" line; the build keeps them grouped by owner on every width.

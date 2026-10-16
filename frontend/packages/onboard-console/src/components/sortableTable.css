@@ -16,6 +16,6 @@ table.sortable-table tbody tr.selected td.sticky-col { background: var(--highlig
 th.sorted .sortable-table-arrow { opacity: 1; }
 
 table.sortable-table tbody tr[tabindex] { cursor: pointer; }
-table.sortable-table tbody tr:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+table.sortable-table tbody tr:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 table.sortable-table tbody tr.selected td { background: var(--highlight-bg); box-shadow: inset 3px 0 0 var(--highlight-border); }
 table.sortable-table tbody tr.selected td.sticky-col { box-shadow: inset 3px 0 0 var(--highlight-border), 1px 0 0 var(--border-soft); }

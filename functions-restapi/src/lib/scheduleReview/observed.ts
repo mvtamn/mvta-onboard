@@ -302,3 +302,24 @@ export function readings(rows: readonly ObservedRow[], segments: readonly Timepo
   }
   return out;
 }
+
+/** One route's readings, reduced to what the ranked route list shows. */
+export interface RouteReadingSummary {
+  /** Readings of every kind and period. */
+  readings: number;
+  /** Distinct segments with at least one reading: what "confirmed by Avail" counts. */
+  confirmed_segments: number;
+  /**
+   * The reading the list names: the under-run whose peak most exceeds midday,
+   * else the strongest midday over-run; null with no readings.
+   */
+  worst: ObservedReading | null;
+}
+
+export function summarizeRouteReadings(found: readonly ObservedReading[]): RouteReadingSummary {
+  const segments = new Set(found.map((r) => `${r.from_stop_id}\u0000${r.to_stop_id}`));
+  const gap = (r: ObservedReading) => r.peak_pct - r.off_peak_pct;
+  const underRuns = found.filter((r) => r.kind === "peak_under_run").sort((a, b) => gap(b) - gap(a));
+  const overRuns = found.filter((r) => r.kind === "off_peak_over_run").sort((a, b) => (b.off_peak_pct - b.peak_pct) - (a.off_peak_pct - a.peak_pct));
+  return { readings: found.length, confirmed_segments: segments.size, worst: underRuns[0] ?? overRuns[0] ?? null };
+}

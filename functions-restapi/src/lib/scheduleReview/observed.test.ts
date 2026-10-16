@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { isFlatSegment, readings, summarizeObserved, type ObservedRow } from "./observed";
+import { isFlatSegment, readings, summarizeObserved, summarizeRouteReadings, type ObservedRow } from "./observed";
 import type { TimepointSegmentDetail } from "./types";
 
 const WINDOW = { days: 28, dow: "weekday" as const, first_day: "20260916", last_day: "20261014", service_days: 20 };
@@ -139,4 +139,16 @@ test("flatness needs three start hours across the peak and the off-peak", () => 
   assert.strictEqual(isFlatSegment(VARIED), false);
   assert.strictEqual(isFlatSegment(segment("A", "B", { 6: 10, 7: 10, 8: 10 })), false);
   assert.strictEqual(isFlatSegment(segment("A", "B", { 6: 10, 12: 10 })), false);
+});
+
+test("a route's readings reduce to the count of confirmed segments and the worst under-run", () => {
+  const rows = [
+    ...day("A", "W"), ...day("B", "W", { pm: 10 }),         // A->B: PM 50% vs 0
+    ...day("C", "W", { am: 6, pm: 14, mid: 2 }),            // B->C: AM 30% and PM 70% vs 10
+  ];
+  const segs = [FLAT_W, { ...segment("B", "C", { 6: 10, 7: 10, 10: 10, 12: 10, 16: 10 }), direction: "W" }];
+  const summary = summarizeRouteReadings(readings(rows, segs));
+  assert.deepStrictEqual([summary.readings, summary.confirmed_segments], [3, 2]);
+  assert.deepStrictEqual([summary.worst?.from_stop_id, summary.worst?.to_stop_id, summary.worst?.period, summary.worst?.peak_pct], ["B", "C", "pm", 70]);
+  assert.deepStrictEqual(summarizeRouteReadings([]), { readings: 0, confirmed_segments: 0, worst: null });
 });

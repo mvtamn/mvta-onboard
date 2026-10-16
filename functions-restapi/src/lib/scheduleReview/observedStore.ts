@@ -98,3 +98,60 @@ export async function loadObservedRows(
     },
   };
 }
+
+/**
+ * The same counts for every route at once, for the ranked route list: one
+ * aggregate over the window rather than nineteen. Rows are keyed by the route
+ * id as GTFS spells it (Avail's numeric id, cast).
+ */
+export async function loadObservedRowsByRoute(
+  pool: sql.ConnectionPool,
+  days: number,
+  dow: ObservedDayKind,
+  now = new Date(),
+): Promise<{ byRoute: Map<string, ObservedRow[]>; window: ObservedWindow }> {
+  const until = agencyServiceDate(now, -1).serviceDate;
+  const since = agencyServiceDate(now, -days).serviceDate;
+  const filter = DOW_FILTER[dow];
+  const result = await pool.request()
+    .input("since", sql.Char(8), since)
+    .input("until", sql.Char(8), until)
+    .query<ObservedRow & { route_id: string }>(`
+      SELECT CAST(route_id AS NVARCHAR(50)) AS route_id,
+             CAST(stop_id AS NVARCHAR(50)) AS stop_id,
+             MAX(stop_name) AS stop_name,
+             direction,
+             hour_of_day,
+             SUM(ISNULL(early, 0)) AS early,
+             SUM(ISNULL(ontime, 0)) AS ontime,
+             SUM(ISNULL(late, 0)) AS late,
+             SUM(ISNULL(total, 0)) AS total
+      FROM OtpDailyRouteStopHour
+      WHERE calendar_date BETWEEN @since AND @until
+        AND ${filter}
+      GROUP BY route_id, stop_id, direction, hour_of_day
+    `);
+  const span = await pool.request()
+    .input("since", sql.Char(8), since)
+    .input("until", sql.Char(8), until)
+    .query<{ first_day: string | null; last_day: string | null; service_days: number }>(`
+      SELECT MIN(calendar_date) AS first_day, MAX(calendar_date) AS last_day, COUNT(DISTINCT calendar_date) AS service_days
+      FROM OtpDailyRouteStopHour
+      WHERE calendar_date BETWEEN @since AND @until
+        AND ${filter}
+    `);
+  const byRoute = new Map<string, ObservedRow[]>();
+  for (const r of result.recordset) {
+    const list = byRoute.get(String(r.route_id)) ?? [];
+    list.push({
+      stop_id: String(r.stop_id), stop_name: r.stop_name, direction: r.direction, hour_of_day: Number(r.hour_of_day),
+      early: Number(r.early), ontime: Number(r.ontime), late: Number(r.late), total: Number(r.total),
+    });
+    byRoute.set(String(r.route_id), list);
+  }
+  const covered = span.recordset[0];
+  return {
+    byRoute,
+    window: { days, dow, first_day: covered?.first_day ?? null, last_day: covered?.last_day ?? null, service_days: Number(covered?.service_days ?? 0) },
+  };
+}

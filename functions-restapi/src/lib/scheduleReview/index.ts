@@ -16,6 +16,7 @@
 import { buildScheduleModel, type PredictionRiskFeed, type RouteModel, type ScheduleModel } from "./feedModel";
 import { CHECKS, PREDICTION_RISK_CHECKS, isFlagged } from "./checks";
 import { miles } from "./distance";
+import { isFlatSegment } from "./observed";
 import type {
   PredictionRiskReview,
   RouteCheckDetail,
@@ -29,13 +30,13 @@ export * from "./types";
 export { PREDICTION_RISK_CHECKS, isFlagged } from "./checks";
 
 function segmentDetails(route: RouteModel, model: ScheduleModel): TimepointSegmentDetail[] {
-  return route.segments.map((segment) => {
+  return route.segments.map((segment): TimepointSegmentDetail => {
     const byHour = new Map<number, { trips: number; min: number; max: number }>();
     const directions = new Set<string | null>();
     let longest: number | null = null;
     for (const occurrence of segment.occurrences) {
       directions.add(occurrence.trip.directionLabel);
-      const hour = occurrence.trip.startHour;
+      const hour = occurrence.departureHour;
       const known = byHour.get(hour);
       byHour.set(hour, known
         ? { trips: known.trips + 1, min: Math.min(known.min, occurrence.minutes), max: Math.max(known.max, occurrence.minutes) }
@@ -53,7 +54,7 @@ function segmentDetails(route: RouteModel, model: ScheduleModel): TimepointSegme
         .sort((a, b) => a[0] - b[0])
         .map(([hour, h]) => ({ hour, trips: h.trips, min_minutes: Math.round(h.min), max_minutes: Math.round(h.max) })),
     };
-  });
+  }).map((detail) => ({ ...detail, flat_all_day: isFlatSegment(detail) }));
 }
 
 export function reviewSchedule(feed: PredictionRiskFeed): ScheduleReview {

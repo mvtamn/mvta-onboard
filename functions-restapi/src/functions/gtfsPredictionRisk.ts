@@ -6,6 +6,9 @@
 // GET /gtfs-prediction-risk/history?from=&to= - one entry per distinct review,
 // newest first, and what changed between two of them (by default the newest
 // and the one before). Any OnBoard role: schedule data only.
+// GET /gtfs-prediction-risk/observed-summary - every route's readings counted,
+// with the one the ranked route list names (Schedule Review's "confirmed by
+// Avail"). OTP data, so compliance-review.view, like /observed.
 // GET /gtfs-prediction-risk/routes/{routeId}/observed - what Avail saw at the
 // route's timepoints by hour over a window, beside the schedule. Reads OTP
 // data, so it needs compliance-review.view like /otp-daily does.
@@ -13,9 +16,9 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { requireAccess, requireAnyOnBoardAccess } from "../lib/access/require";
 import { getPool } from "../lib/db";
 import { PREDICTION_RISK_CHECKS } from "../lib/scheduleReview";
-import { loadLatestPredictionRiskReview, loadRouteScheduleDetail } from "../lib/scheduleReview/store";
-import { summarizeObserved } from "../lib/scheduleReview/observed";
-import { loadObservedRows, parseObservedDays, parseObservedDow } from "../lib/scheduleReview/observedStore";
+import { loadLatestPredictionRiskReview, loadLatestRouteSegments, loadRouteScheduleDetail } from "../lib/scheduleReview/store";
+import { readings, summarizeObserved, summarizeRouteReadings } from "../lib/scheduleReview/observed";
+import { loadObservedRows, loadObservedRowsByRoute, parseObservedDays, parseObservedDow } from "../lib/scheduleReview/observedStore";
 import { diffReviews } from "../lib/scheduleReview/diff";
 import { loadReviewHistory, loadReviewSnapshot } from "../lib/scheduleReview/history";
 
@@ -61,7 +64,7 @@ app.http("gtfsPredictionRiskRoute", {
       }
       return {
         status: 200,
-        jsonBody: { reviewed_at: detail.reviewed_at, confirmed_at: detail.confirmed_at, feed: detail.feed, checks: PREDICTION_RISK_CHECKS, route: detail.route },
+        jsonBody: { reviewed_at: detail.reviewed_at, confirmed_at: detail.confirmed_at, feed: detail.feed, checks: PREDICTION_RISK_CHECKS, route: detail.route, route_long_name: detail.route_long_name },
       };
     } catch (error) {
       context.error("GET /gtfs-prediction-risk/routes failed:", error);
@@ -136,6 +139,38 @@ app.http("gtfsPredictionRiskHistory", {
       return { status: 200, jsonBody: { history, diff: diffReviews(earlier, later, PREDICTION_RISK_CHECKS.map((c) => c.id)) } };
     } catch (error) {
       context.error("GET /gtfs-prediction-risk/history failed:", error);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("gtfsPredictionRiskObservedSummary", {
+  route: "gtfs-prediction-risk/observed-summary",
+  methods: ["GET"],
+  authLevel: "anonymous",
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = await requireAccess(request, "compliance-review.view");
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const days = parseObservedDays(request.query.get("days"));
+    const dow = parseObservedDow(request.query.get("dow"));
+    try {
+      const pool = await getPool();
+      const [{ byRoute, window }, segmentsByRoute] = await Promise.all([
+        loadObservedRowsByRoute(pool, days, dow),
+        loadLatestRouteSegments(pool),
+      ]);
+      const routes = [...segmentsByRoute.entries()].map(([routeId, segments]) => {
+        const rows = byRoute.get(routeId) ?? [];
+        return {
+          route_id: routeId,
+          measured: rows.length > 0,
+          departures: rows.reduce((sum, r) => sum + r.total, 0),
+          ...summarizeRouteReadings(readings(rows, segments)),
+        };
+      });
+      return { status: 200, jsonBody: { window, schedule_available: segmentsByRoute.size > 0, routes } };
+    } catch (error) {
+      context.error("GET /gtfs-prediction-risk/observed-summary failed:", error);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

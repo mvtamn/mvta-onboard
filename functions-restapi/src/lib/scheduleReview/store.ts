@@ -16,11 +16,27 @@
 // insert of v1.5.319 carries on unchanged.
 import { sql } from "../db";
 import type { PredictionRiskFeedInfo, PredictionRiskReview, RouteScheduleDetail, ScheduleReview } from "./types";
+import { withFlagCounts, type RankedRoute } from "./ranking";
 
-export interface StoredPredictionRiskReview extends PredictionRiskReview {
+export interface ServedPredictionRiskRoute extends RankedRoute {
+  /** From GtfsRoutes; null when the table has no row or no long name for it. */
+  route_long_name: string | null;
+}
+
+export interface StoredPredictionRiskReview extends Omit<PredictionRiskReview, "routes"> {
   reviewed_at: string;
   /** Last sync that found the same review; null before migration 145. */
   confirmed_at: string | null;
+  routes: ServedPredictionRiskRoute[];
+}
+
+/** route_id -> route_long_name from the static sync's GtfsRoutes table; empty if it is missing. */
+export async function loadRouteLongNames(pool: sql.ConnectionPool): Promise<Map<string, string>> {
+  if (!await tableReady(pool, "GtfsRoutes")) return new Map();
+  const result = await pool.request().query<{ route_id: string; route_long_name: string | null }>(
+    "SELECT route_id, route_long_name FROM GtfsRoutes",
+  );
+  return new Map(result.recordset.filter((r) => r.route_long_name).map((r) => [r.route_id, r.route_long_name as string]));
 }
 
 const REVIEWS_TABLE = "GtfsPredictionRiskReviews";
@@ -159,6 +175,8 @@ export async function loadLatestPredictionRiskReview(
   if (!row) return { state: "none" };
   const stored = JSON.parse(row.review_json) as StoredSummary;
   const known = new Set(checks.map((c) => c.id));
+  const names = await loadRouteLongNames(pool);
+  const routes = withFlagCounts(stored.routes.map((route) => ({ ...route, checks: route.checks.filter((c) => known.has(c.id)) })), checks);
   return {
     state: "ready",
     review: {
@@ -166,7 +184,7 @@ export async function loadLatestPredictionRiskReview(
       confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
       feed: stored.feed,
       checks,
-      routes: stored.routes.map((route) => ({ ...route, checks: route.checks.filter((c) => known.has(c.id)) })),
+      routes: routes.map((route) => ({ ...route, route_long_name: names.get(route.route_id) ?? null })),
     },
   };
 }
@@ -178,6 +196,7 @@ export type StoredRouteScheduleDetail =
       confirmed_at: string | null;
       feed: PredictionRiskFeedInfo;
       route: RouteScheduleDetail;
+      route_long_name: string | null;
     }
   /** The latest review has no detail for this route: not in the feed, or stored before migration 145. */
   | { state: "route_missing" }
@@ -209,5 +228,17 @@ export async function loadRouteScheduleDetail(
     confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
     feed: stored.feed,
     route: { ...detail, checks: detail.checks.filter((c) => known.has(c.id)) },
+    route_long_name: (await loadRouteLongNames(pool)).get(routeId) ?? null,
   };
+}
+
+/** Every route's stored timepoint segments from the latest review; empty before migration 145. */
+export async function loadLatestRouteSegments(pool: sql.ConnectionPool): Promise<Map<string, RouteScheduleDetail["segments"]>> {
+  if (!await tableReady(pool, REVIEWS_TABLE) || !await tableReady(pool, DETAIL_TABLE)) return new Map();
+  const result = await pool.request().query<{ route_id: string; detail_json: string }>(`
+    SELECT d.route_id, d.detail_json
+    FROM ${DETAIL_TABLE} d
+    WHERE d.review_id = (SELECT TOP 1 review_id FROM ${REVIEWS_TABLE} ORDER BY reviewed_at DESC, review_id DESC)
+  `);
+  return new Map(result.recordset.map((r) => [r.route_id, (JSON.parse(r.detail_json) as RouteScheduleDetail).segments]));
 }
