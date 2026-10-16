@@ -504,6 +504,49 @@ export interface RouteScheduleDetailResponse {
   route: RouteScheduleDetail;
 }
 
+// What Avail observed at a route's timepoints by hour, beside the schedule
+// (functions-restapi/src/lib/scheduleReview/observed.ts). Avail's own
+// early/on-time/late classification over a window; not the official OTP figure.
+export type ObservedDayKind = "weekday" | "saturday" | "sunday";
+
+export interface ObservedCell {
+  hour: number;
+  departures: number;
+  early_pct: number;
+  ontime_pct: number;
+  late_pct: number;
+}
+
+export interface ObservedTimepoint {
+  stop_id: string;
+  stop_name: string;
+  direction: string | null;
+  departures: number;
+  in_schedule: boolean;
+  hours: ObservedCell[];
+}
+
+export interface ObservedReading {
+  kind: "peak_under_run" | "off_peak_over_run";
+  from_stop_id: string;
+  to_stop_id: string;
+  from_stop_name: string;
+  to_stop_name: string;
+  scheduled_minutes: number;
+  peak_pct: number;
+  off_peak_pct: number;
+  text: string;
+}
+
+export interface ObservedOtpResponse {
+  window: { days: number; dow: ObservedDayKind; first_day: string | null; last_day: string | null; service_days: number };
+  departures: number;
+  timepoints: ObservedTimepoint[];
+  readings: ObservedReading[];
+  /** false when migration 145 has no detail for the route: the grid is in Avail's order and has no readings. */
+  schedule_available: boolean;
+}
+
 export interface KpiTrustDependency {
   feed_name: string;
   required: boolean;
@@ -1292,6 +1335,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     /** The evidence behind one route's flags and its scheduled minutes per timepoint segment by hour. Needs migration 145. */
     getGtfsPredictionRiskRoute(routeId: string) {
       return request<RouteScheduleDetailResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}`, {}, true);
+    },
+    /** What Avail observed at the route's timepoints by hour. Needs compliance-review.view. */
+    getGtfsPredictionRiskRouteObserved(routeId: string, options: { days?: 7 | 28 | 90; dow?: ObservedDayKind } = {}) {
+      const params = new URLSearchParams();
+      if (options.days) params.set("days", String(options.days));
+      if (options.dow) params.set("dow", options.dow);
+      const query = params.toString();
+      return request<ObservedOtpResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}/observed${query ? `?${query}` : ""}`, {}, true);
     },
 
     getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {
