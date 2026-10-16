@@ -15,7 +15,7 @@ import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
 import { runFeedIngestion, type FeedRunReport } from "../lib/feedRun";
 import { scheduleCoverage } from "../lib/gtfsScheduleHorizon";
-import { savePredictionRiskReview } from "../lib/gtfsPredictionRiskStore";
+import { savePredictionRiskReview } from "../lib/scheduleReview/store";
 
 // Days of remaining coverage below which the sync warns while the schedule is
 // still valid, so an expiring feed is visible before it lapses.
@@ -244,9 +244,13 @@ app.timer("gtfsStopsSync", {
           context.warn(`GTFS prediction-risk review failed and was not stored: ${predictionRiskError}`);
         } else if (predictionRisk) {
           try {
-            const stored = await savePredictionRiskReview(pool, predictionRisk);
-            if (!stored) {
+            const outcome = await savePredictionRiskReview(pool, predictionRisk);
+            if (outcome === "summary_table_missing") {
               context.warn("GtfsPredictionRiskReviews does not exist yet; apply migration 143 to keep the schedule's prediction-risk review.");
+            } else if (outcome === "detail_table_missing") {
+              context.warn("GtfsScheduleReviewRoutes does not exist yet; apply migration 145 to keep the evidence behind the schedule review.");
+            } else {
+              context.log(`Schedule review ${outcome === "stored" ? "stored" : "unchanged, confirmed"} for feed ${predictionRisk.summary.feed.version ?? "(no version)"}: ${predictionRisk.summary.routes.filter((r) => r.flag_count > 0).length} of ${predictionRisk.summary.routes.length} routes flagged (shape distances: ${predictionRisk.distance.unit}).`);
             }
           } catch (err) {
             context.warn("Failed to store the GTFS prediction-risk review:", err);

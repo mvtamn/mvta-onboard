@@ -21,6 +21,13 @@ function errorMessage(error: unknown): string {
   return "The schedule review could not be loaded. Try again shortly.";
 }
 
+const OWNER_LABEL: Record<PredictionRiskCheckDefinition["owner"], string> = {
+  scheduling: "MVTA scheduling",
+  avail: "Avail schedule export",
+  operations: "Operations",
+  structural: "Not a schedule fix",
+};
+
 export function formatRiskValue(definition: PredictionRiskCheckDefinition, value: number | null): string {
   if (value === null) return "—";
   if (definition.unit === "%") return `${value}%`;
@@ -122,8 +129,12 @@ export function SchedulePredictionRisk() {
           <dl className="ih-risk-legend">
             {review.checks.map((definition) => (
               <div key={definition.id}>
-                <dt>{definition.label} <span>flagged at {formatRiskValue(definition, definition.threshold)} or more</span></dt>
+                <dt>
+                  {definition.label}{" "}
+                  <span>flagged at {formatRiskValue(definition, definition.threshold)} or {definition.comparison === "at_most" ? "less" : "more"}</span>
+                </dt>
                 <dd>{definition.why}</dd>
+                <dd className="ih-risk-fix"><strong>{OWNER_LABEL[definition.owner]}:</strong> {definition.fix}</dd>
               </div>
             ))}
           </dl>
