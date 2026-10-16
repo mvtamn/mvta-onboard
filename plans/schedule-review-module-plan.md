@@ -1,7 +1,7 @@
 # Schedule Review Module Plan
 
-Status: increments 1–3 built 2026-10-16 (v1.5.324–327, ADR 0040);
-increment 0 (SQL handed over), 4 and 5 open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
+Status: increments 1–4 built 2026-10-16 (v1.5.324–328, ADR 0040);
+increment 0 (SQL handed over) and 5 (tuning, waits on real evidence) open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
 2026-11-01).
 
 Goal: grow the one-table schedule check shipped in v1.5.319
@@ -274,7 +274,7 @@ Each is one PR, one changelog entry, tests first on the pure parts.
 | 1 | **Module + evidence.** `lib/scheduleReview/` with `feedModel`, `distance` (calibrated), the seven existing checks moved to `checks/` with evidence, four new checks (2a–2d) with owner/fix, `GtfsScheduleReviewRoutes` + write-on-change, route detail endpoint. ADR: *Keep the schedule review's evidence beside its verdict*. CONTEXT.md gains "Schedule review" (distinct from "Schedule snapshot"). | — | large |
 | 2 | **Console route detail + run-time profile** (views 1–2) on the Schedule Review page, Health links in. **Built, v1.5.325.** | 1 | medium |
 | 3 | **Observed overlay** (`observed.ts`, view 3). | 0, 1, 2 | medium |
-| 4 | **Feed diff + history** (`diff.ts`, view 4, Health summary gains history). | 1 | small |
+| 4 | **Feed diff + history** (`diff.ts`, view 4, Health summary gains history). **Built, v1.5.328**: one `/history` endpoint serves both the list and the diff; the diff tells a feed change from a change in the checks. | 1 | small |
 | 5 | Retune thresholds now that evidence is visible; drop `run_time_spread` in favour of 2a or keep both with clear words. | 2 | small |
 
 Not in scope: changing any OTP figure or rule; writing anything back to Avail;

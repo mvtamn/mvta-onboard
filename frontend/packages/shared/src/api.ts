@@ -504,6 +504,44 @@ export interface RouteScheduleDetailResponse {
   route: RouteScheduleDetail;
 }
 
+// The schedule review's history and what changed between two reviews
+// (functions-restapi/src/lib/scheduleReview/history.ts and diff.ts).
+export interface ReviewHistoryEntry {
+  review_id: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  feed_version: string | null;
+  route_count: number;
+  flagged_route_count: number;
+}
+
+export interface ReviewFlagChange {
+  route_id: string;
+  route_short_name: string;
+  check_id: PredictionRiskCheckId;
+  from_value: number | null;
+  to_value: number | null;
+}
+
+export interface ReviewDiff {
+  from: { review_id: number; reviewed_at: string; feed_version: string | null };
+  to: { review_id: number; reviewed_at: string; feed_version: string | null };
+  /** feed: the published schedule changed. checks: same feed, the review itself changed. */
+  cause: "feed" | "checks";
+  gained: ReviewFlagChange[];
+  lost: ReviewFlagChange[];
+  checks_added: PredictionRiskCheckId[];
+  checks_removed: PredictionRiskCheckId[];
+  routes_added: { route_id: string; route_short_name: string; flag_count: number }[];
+  routes_removed: { route_id: string; route_short_name: string }[];
+  flagged_routes: { from: number; to: number };
+}
+
+export interface ReviewHistoryResponse {
+  history: ReviewHistoryEntry[];
+  diff: ReviewDiff | null;
+}
+
 // What Avail observed at a route's timepoints by hour, beside the schedule
 // (functions-restapi/src/lib/scheduleReview/observed.ts). Avail's own
 // early/on-time/late classification over a window; not the official OTP figure.
@@ -1335,6 +1373,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     /** The evidence behind one route's flags and its scheduled minutes per timepoint segment by hour. Needs migration 145. */
     getGtfsPredictionRiskRoute(routeId: string) {
       return request<RouteScheduleDetailResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}`, {}, true);
+    },
+    /** One entry per distinct schedule review, newest first, and what changed between two (default: the newest two). */
+    getGtfsPredictionRiskHistory(options: { from?: number; to?: number } = {}) {
+      const params = new URLSearchParams();
+      if (options.from !== undefined) params.set("from", String(options.from));
+      if (options.to !== undefined) params.set("to", String(options.to));
+      const query = params.toString();
+      return request<ReviewHistoryResponse>(`/api/gtfs-prediction-risk/history${query ? `?${query}` : ""}`, {}, true);
     },
     /** What Avail observed at the route's timepoints by hour. Needs compliance-review.view. */
     getGtfsPredictionRiskRouteObserved(routeId: string, options: { days?: 7 | 28 | 90; dow?: ObservedDayKind } = {}) {
