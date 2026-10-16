@@ -121,3 +121,17 @@ describe("ScheduleReviewChanges on Integrations & Data Health", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("ScheduleReviewChanges on the Schedule Review page as a notice", () => {
+  it("is one line that opens the full comparison in place and closes it again", async () => {
+    getGtfsPredictionRiskHistory.mockResolvedValue(respond(FEED_DIFF));
+    render(<MemoryRouter><ScheduleReviewChanges mode="notice" checks={CHECKS} /></MemoryRouter>);
+    expect(await screen.findByText(/Since feed 20260909: 1 flag gained, 2 lost\./)).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Flags lost" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "See what changed" }));
+    expect(screen.getByRole("list", { name: "Flags lost" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Hide" }));
+    expect(screen.queryByRole("list", { name: "Flags lost" })).not.toBeInTheDocument();
+  });
+});

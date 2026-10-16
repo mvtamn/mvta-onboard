@@ -438,6 +438,11 @@ export interface PredictionRiskRoute {
   trip_count: number;
   flag_count: number;
   checks: PredictionRiskCheckResult[];
+  /** Flags the schedule can fix (owner other than "structural"); decided by the server. */
+  fixable_flag_count?: number;
+  /** Flags that describe the route, not its schedule. */
+  structural_flag_count?: number;
+  route_long_name?: string | null;
 }
 
 export interface PredictionRiskFeedInfo {
@@ -482,6 +487,8 @@ export interface TimepointSegmentDetail {
   to_stop_name: string;
   /** N, S, E or W when the segment's trips agree; absent in detail kept before v1.5.330. */
   direction?: string | null;
+  /** Scheduled the same in every hour, peak and off-peak; absent in detail kept before v1.5.334. */
+  flat_all_day?: boolean;
   miles: number | null;
   hours: TimepointSegmentHour[];
 }
@@ -504,6 +511,7 @@ export interface RouteScheduleDetailResponse {
   feed: PredictionRiskFeedInfo;
   checks: PredictionRiskCheckDefinition[];
   route: RouteScheduleDetail;
+  route_long_name?: string | null;
 }
 
 // The schedule review's history and what changed between two reviews
@@ -583,6 +591,24 @@ export interface ObservedReading {
   /** Under-run: the late share at the timepoint before, same peak; null when not measured. */
   upstream_pct: number | null;
   text: string;
+}
+
+/** Every route's readings for the ranked route list (GET /gtfs-prediction-risk/observed-summary). */
+export interface ObservedRouteSummary {
+  route_id: string;
+  /** Avail has rows for this route in the window. */
+  measured: boolean;
+  departures: number;
+  readings: number;
+  /** Distinct segments with at least one reading: "confirmed by Avail". */
+  confirmed_segments: number;
+  worst: ObservedReading | null;
+}
+
+export interface ObservedSummaryResponse {
+  window: ObservedOtpResponse["window"];
+  schedule_available: boolean;
+  routes: ObservedRouteSummary[];
 }
 
 export interface ObservedOtpResponse {
@@ -1390,6 +1416,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       if (options.to !== undefined) params.set("to", String(options.to));
       const query = params.toString();
       return request<ReviewHistoryResponse>(`/api/gtfs-prediction-risk/history${query ? `?${query}` : ""}`, {}, true);
+    },
+    /** Every route's readings, for ranking the route list. Needs compliance-review.view. */
+    getGtfsPredictionRiskObservedSummary(options: { days?: 7 | 28 | 90; dow?: ObservedDayKind } = {}) {
+      const params = new URLSearchParams();
+      if (options.days) params.set("days", String(options.days));
+      if (options.dow) params.set("dow", options.dow);
+      const query = params.toString();
+      return request<ObservedSummaryResponse>(`/api/gtfs-prediction-risk/observed-summary${query ? `?${query}` : ""}`, {}, true);
     },
     /** What Avail observed at the route's timepoints by hour. Needs compliance-review.view. */
     getGtfsPredictionRiskRouteObserved(routeId: string, options: { days?: 7 | 28 | 90; dow?: ObservedDayKind } = {}) {

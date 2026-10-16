@@ -44,13 +44,15 @@ export function ScheduleReviewChanges({
   checks,
   onOpenRoute,
 }: {
-  mode: "summary" | "page";
+  /** summary: one line on Integrations & Data Health. notice: one line on Schedule Review that opens the comparison. page: the comparison. */
+  mode: "summary" | "notice" | "page";
   checks: PredictionRiskCheckDefinition[];
   /** Page mode: open a route's review in place. */
   onOpenRoute?: (routeId: string) => void;
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [compareWith, setCompareWith] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const inRouter = useInRouterContext();
 
   useEffect(() => {
@@ -86,6 +88,16 @@ export function ScheduleReviewChanges({
     );
   }
 
+  if (mode === "notice" && !expanded) {
+    if (!headline) return null;
+    return (
+      <div className="sr-notice" role="status">
+        <span><strong>Since the last review:</strong> {headline}.</span>
+        <button type="button" className="sr-link-btn" aria-expanded={false} onClick={() => setExpanded(true)}>See what changed</button>
+      </div>
+    );
+  }
+
   const earlier = data ? data.history.filter((entry) => entry.review_id !== data.history[0]?.review_id) : [];
 
   const routeName = (change: ReviewFlagChange) => onOpenRoute ? (
@@ -113,6 +125,7 @@ export function ScheduleReviewChanges({
     <section className="sr-changes" aria-labelledby="sr-changes-title">
       <div className="sr-changes-head">
         <h3 id="sr-changes-title" className="sr-table-title">What changed</h3>
+        {mode === "notice" ? <button type="button" className="sr-link-btn" aria-expanded={true} onClick={() => setExpanded(false)}>Hide</button> : null}
         {earlier.length > 1 ? (
           <label className="sr-changes-pick">
             Compared with

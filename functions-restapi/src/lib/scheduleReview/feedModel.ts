@@ -83,6 +83,13 @@ export interface BlockLink {
 
 export interface SegmentOccurrence {
   trip: ModelTrip;
+  /**
+   * Hour (0-23, folded past midnight) the bus leaves the segment's first
+   * timepoint. The run-time grid is keyed by this, not the trip's start hour,
+   * so a segment late in a long trip sits in the hour it is actually run and
+   * lines up with what Avail observed at the stops in that hour.
+   */
+  departureHour: number;
   minutes: number;
   metres: number | null;
 }
@@ -302,7 +309,12 @@ export function buildScheduleModel(feed: PredictionRiskFeed): ScheduleModel {
           if (hop === null) { metres = null; break; }
           metres += hop;
         }
-        segment.occurrences.push({ trip, minutes: (stopTime.arrival - lastExact.stopTime.departure) / 60, metres });
+        segment.occurrences.push({
+          trip,
+          departureHour: Math.floor(lastExact.stopTime.departure / 3600) % 24,
+          minutes: (stopTime.arrival - lastExact.stopTime.departure) / 60,
+          metres,
+        });
       }
       lastExact = { stopTime, index };
     });

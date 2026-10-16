@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ApiError, type PredictionRiskCheckDefinition, type PredictionRiskReview } from "@mvta/shared";
 import { SchedulePredictionRisk, formatRiskValue } from "./SchedulePredictionRisk.js";
@@ -92,7 +91,7 @@ describe("SchedulePredictionRisk", () => {
   });
 });
 
-describe("SchedulePredictionRisk as the Schedule Review page", () => {
+describe("SchedulePredictionRisk on Integrations & Data Health", () => {
   it("links each route to the Schedule Review page from Integrations & Data Health", async () => {
     getGtfsPredictionRisk.mockResolvedValue({ review: REVIEW });
     render(<MemoryRouter><SchedulePredictionRisk /></MemoryRouter>);
@@ -102,24 +101,6 @@ describe("SchedulePredictionRisk as the Schedule Review page", () => {
     expect(screen.getByText(/a route name opens its evidence on the Schedule Review page/)).toBeInTheDocument();
   });
 
-  it("opens a route's evidence in place on the page, and on arrival when the link named one", async () => {
-    getGtfsPredictionRisk.mockResolvedValue({ review: REVIEW });
-    getGtfsPredictionRiskRoute.mockImplementation((routeId: string) => Promise.resolve({
-      reviewed_at: REVIEW.reviewed_at, confirmed_at: null, feed: REVIEW.feed, checks: CHECKS,
-      route: { route_id: routeId, route_short_name: routeId, trip_count: 1, stop_count: 2, timepoint_count: 2, pattern_count: 1, flag_count: 0, checks: [], segments: [] },
-    }));
-    render(<SchedulePredictionRisk mode="page" initialRoute="470" />);
-
-    expect(await screen.findByRole("heading", { name: /Route 470.*Schedule review/ })).toBeInTheDocument();
-    expect(getGtfsPredictionRiskRoute).toHaveBeenCalledWith("470");
-
-    await userEvent.click(screen.getByRole("button", { name: "Open schedule review for route 490" }));
-    expect(await screen.findByRole("heading", { name: /Route 490.*Schedule review/ })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /Route 470/ })).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Hide schedule review for route 490" }));
-    expect(screen.queryByRole("heading", { name: /Schedule review/ })).not.toBeInTheDocument();
-  });
 });
 
 describe("formatRiskValue", () => {

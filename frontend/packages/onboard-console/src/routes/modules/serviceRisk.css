@@ -528,7 +528,7 @@
 }
 
 .missed-trips-table tbody tr.missed-trip-row:focus-visible {
-  outline: 2px solid var(--brand-green);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 

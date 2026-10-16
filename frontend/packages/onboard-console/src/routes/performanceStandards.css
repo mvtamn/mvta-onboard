@@ -134,7 +134,7 @@
 .standards-choice label.selected strong{color:var(--chip-fg)}
 .standards-choice strong{font-size:.82rem;line-height:1.25}
 .standards-choice small{color:var(--text-muted);font-size:.72rem;line-height:1.35}
-.standards-choice label:has(input:focus-visible){outline:3px solid color-mix(in srgb,var(--brand-green) 22%,transparent);outline-offset:2px}
+.standards-choice label:has(input:focus-visible){outline: 2px solid var(--focus-ring);outline-offset:2px}
 .standards-choice-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
 .standards-segmented>div{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 /* A percentage band gets a slider beside its number; other units do not -

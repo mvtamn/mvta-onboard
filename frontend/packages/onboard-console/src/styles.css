@@ -11,10 +11,13 @@
   --border-soft: #eee;
   --text: #2c2c2a;
   --text-dim: #4f4f4f;
-  --text-muted: #8a8a82;
+  /* #8a8a82 was 3.5:1 on white; this is 5.4:1 (4.9:1 on --surface-alt-bg). */
+  --text-muted: #6b6b64;
 
   --brand-green: #00553d;
   --brand-green-hover: #003d2c;
+  /* Every :focus-visible outline reads this. Light: the brand green, 8.9:1 on white. */
+  --focus-ring: #00553d;
   /* Evergreen as *foreground text*. --brand-green is a fill token and stays
      constant across themes, so it drops to ~1.9:1 when used as text on a dark
      surface; this variant lightens under [data-theme="dark"] instead. */
@@ -57,6 +60,8 @@
   /* Lightened evergreen for foreground text; --brand-green itself stays the
      constant dark fill used by the nav, toolbars, and chips. */
   --brand-green-text: #6fc9a0;
+  /* The brand green is 1.9:1 on the dark panel; its light text tint is 8.3:1. */
+  --focus-ring: #6fc9a0;
 
   /* Nav sidebar goes near-black-green in dark mode instead of staying the
      bright brand fill - matches the reference's fully-dark cohesion rather
@@ -260,7 +265,7 @@ body {
 .changelog-entry summary::after { border: 1px solid var(--border); border-radius: 50%; color: var(--text-muted); content: "⌄"; display: grid; font-size: 15px; height: 26px; line-height: 1; margin-left: auto; place-items: center; transition: transform .15s ease; width: 26px; }
 .changelog-entry[open] summary::after { transform: rotate(180deg); }
 .changelog-entry summary:hover { background: var(--surface-alt-bg); }
-.changelog-entry summary:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -3px; }
+.changelog-entry summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
 .changelog-version { background: var(--pill-success-bg); border-radius: 7px; color: var(--pill-success-fg); font-size: 12px; font-weight: 900; padding: 6px 8px; }
 .changelog-entry.is-current .changelog-version { background: var(--brand-green); color: #fff; }
 .changelog-entry-meta { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
@@ -718,7 +723,7 @@ body {
 .prototype-freehand { color: var(--text-dim); font-size: 9px; font-weight: 800; letter-spacing: .04em; }
 .prototype-notes { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: inherit; font-size: 12px; min-height: 82px; padding: 10px; resize: vertical; width: 100%; }
 .prototype-notes:focus { border-color: var(--brand-green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green) 14%, transparent); outline: 0; }
-.prototype-field input:focus { border-color: var(--brand-green); outline: 2px solid color-mix(in srgb, var(--brand-green) 18%, transparent); }
+.prototype-field input:focus { border-color: var(--focus-ring); outline: 2px solid color-mix(in srgb, var(--focus-ring) 40%, transparent); }
 .prototype-actions, .prototype-decision-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 .prototype-rail { display: grid; gap: 8px; }
 .prototype-rail h3 { margin: 2px 0 4px; }
@@ -904,7 +909,7 @@ table.data tr.review-focus-row td:first-child {
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 .sr-only { height: 1px; margin: -1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); }
 
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand-green) 22%, transparent); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 @media (max-width: 760px) {
   .field-grid,
@@ -1186,7 +1191,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .seg { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; display: inline-flex; overflow: hidden; }
 .seg button { background: transparent; border: 0; color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; padding: 8px 12px; }
 .seg button[aria-pressed="true"] { background: var(--brand-green); color: #fff; }
-.seg button:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+.seg button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .choice-cards { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .choice-card { align-items: center; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); cursor: pointer; display: flex; font: inherit; gap: 10px; padding: 10px 12px; text-align: left; }
 .choice-card svg { color: var(--text-muted); flex-shrink: 0; }
@@ -1220,7 +1225,7 @@ textarea.directions-input { line-height: 1.45; min-height: 84px; resize: vertica
 /* A channel this record still names that OnBoard no longer offers: selected,
    removable, and visibly not one of the choices. */
 .chip-toggle.is-retired[aria-pressed="true"] { background: var(--surface-bg); border-color: var(--border-strong); border-style: dashed; color: var(--text-muted); font-weight: 600; text-decoration: line-through; }
-.chip-toggle:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.chip-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 /* Per-channel progress on one required audience: the wording differs per
    channel, so each is drafted, published and shown separately. */
 .comm-channel-marks { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }
