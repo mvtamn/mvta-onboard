@@ -5,8 +5,13 @@ import { MemoryRouter } from "react-router-dom";
 import { ApiError, type PredictionRiskCheckDefinition, type PredictionRiskReview } from "@mvta/shared";
 import { SchedulePredictionRisk, formatRiskValue } from "./SchedulePredictionRisk.js";
 
-const { getGtfsPredictionRisk, getGtfsPredictionRiskRoute } = vi.hoisted(() => ({ getGtfsPredictionRisk: vi.fn(), getGtfsPredictionRiskRoute: vi.fn() }));
-vi.mock("../../config.js", () => ({ api: { getGtfsPredictionRisk, getGtfsPredictionRiskRoute } }));
+const { getGtfsPredictionRisk, getGtfsPredictionRiskRoute, getGtfsPredictionRiskHistory } = vi.hoisted(() => ({
+  getGtfsPredictionRisk: vi.fn(),
+  getGtfsPredictionRiskRoute: vi.fn(),
+  // What changed has its own tests (scheduleReview/ScheduleReviewChanges.test.tsx).
+  getGtfsPredictionRiskHistory: vi.fn(() => Promise.resolve({ history: [], diff: null })),
+}));
+vi.mock("../../config.js", () => ({ api: { getGtfsPredictionRisk, getGtfsPredictionRiskRoute, getGtfsPredictionRiskHistory } }));
 
 const CHECKS: PredictionRiskCheckDefinition[] = [
   { id: "placeholder_times", label: "Placeholder stop times", unit: "%", threshold: 10, comparison: "at_least", why: "Stops scheduled one second apart.", owner: "avail", fix: "Export interpolated times." },

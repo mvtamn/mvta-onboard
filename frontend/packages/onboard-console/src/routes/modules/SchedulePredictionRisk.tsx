@@ -5,6 +5,7 @@ import { api } from "../../config.js";
 import { whenLabel } from "./kpiTrustPresentation.js";
 import { OWNER_LABEL, feedDate, formatRiskValue, scheduleReviewPath, thresholdSentence } from "./scheduleReviewPresentation.js";
 import { ScheduleRouteView } from "./scheduleReview/ScheduleRouteView.js";
+import { ScheduleReviewChanges } from "./scheduleReview/ScheduleReviewChanges.js";
 
 export { formatRiskValue } from "./scheduleReviewPresentation.js";
 
@@ -95,6 +96,7 @@ export function SchedulePredictionRisk({
               {from && to ? ` · ${from} – ${to}` : ""}
             </span>
           </p>
+          <ScheduleReviewChanges mode={mode} checks={review.checks} onOpenRoute={mode === "page" ? setOpenRoute : undefined} />
           {open ? (
             <ScheduleRouteView routeId={open.route_id} routeLabel={open.route_short_name} onClose={() => setOpenRoute(null)} />
           ) : null}
