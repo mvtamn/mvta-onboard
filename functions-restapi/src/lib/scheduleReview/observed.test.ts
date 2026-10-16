@@ -46,39 +46,91 @@ test("rows with no departures are left out rather than shown as 0%", () => {
   assert.deepStrictEqual(observed.timepoints, []);
 });
 
-test("a flat segment whose downstream timepoint runs late in the peak reads as under-run", () => {
-  const rows = [
-    row("B", 7, 0, 12, 8), row("B", 16, 0, 10, 10),   // peak: 18 late of 40 = 45%
-    row("B", 10, 1, 19, 0), row("B", 12, 0, 18, 2),   // off-peak: 2 late of 40 = 5%
+/** n departures in an hour, `late` of them late and `early` early. */
+function hour(stop_id: string, hour_of_day: number, n: number, late: number, early = 0, direction: string | null = null): ObservedRow {
+  return { stop_id, stop_name: `Avail ${stop_id}`, direction, hour_of_day, early, late, ontime: n - late - early, total: n };
+}
+
+/** A whole weekday at one stop: `pm` late of 20 in each PM hour, `mid` late of 20 in each midday hour. */
+function day(stop_id: string, direction: string | null, { am = 0, pm = 0, mid = 0, evening = 0, midEarly = 0 } = {}): ObservedRow[] {
+  return [
+    ...[6, 7, 8].map((h) => hour(stop_id, h, 20, am, 0, direction)),
+    ...[10, 11, 12, 13, 14].map((h) => hour(stop_id, h, 20, mid, midEarly, direction)),
+    ...[15, 16, 17, 18].map((h) => hour(stop_id, h, 20, pm, 0, direction)),
+    hour(stop_id, 19, 20, evening, 0, direction),
   ];
-  const found = readings(rows, [FLAT, VARIED]);
+}
+
+const FLAT_W = { ...FLAT, direction: "W" };
+
+test("a flat segment whose next timepoint runs late in the PM peak, and later than the one before it, is a PM under-run", () => {
+  const rows = [...day("A", "W", { pm: 4, mid: 0 }), ...day("B", "W", { pm: 10, mid: 1 })];
+  const found = readings(rows, [FLAT_W]);
   assert.strictEqual(found.length, 1);
-  assert.strictEqual(found[0].kind, "peak_under_run");
-  assert.strictEqual(found[0].to_stop_id, "B");
-  assert.strictEqual(found[0].peak_pct, 45);
-  assert.strictEqual(found[0].off_peak_pct, 5);
-  assert.strictEqual(found[0].text, "Stop A → Stop B: scheduled 10 min at every hour; the late share at Stop B rises from 5% off-peak to 45% in the peak. The peak is under-run.");
+  assert.deepStrictEqual(
+    [found[0].kind, found[0].period, found[0].direction, found[0].peak_pct, found[0].off_peak_pct, found[0].upstream_pct],
+    ["peak_under_run", "pm", "W", 50, 5, 20],
+  );
+  assert.strictEqual(found[0].text, "Stop A → Stop B (westbound): scheduled 10 min at every hour; departures from Stop B run 50% late 3–7pm against 5% midday, up from 20% at Stop A. The PM peak is under-run.");
 });
 
-test("a flat segment whose downstream timepoint runs early off-peak reads as over-run", () => {
-  const rows = [
-    row("B", 7, 1, 19, 0), row("B", 16, 2, 18, 0),    // peak early 3 of 40 = 8%
-    row("B", 10, 8, 12, 0), row("B", 12, 9, 11, 0),   // off-peak early 17 of 40 = 43%
-  ];
-  const found = readings(rows, [FLAT]);
-  assert.strictEqual(found[0].kind, "off_peak_over_run");
-  assert.match(found[0].text, /early share at Stop B is 43% off-peak against 8% in the peak\. The off-peak is over-run\.$/);
+test("each direction is read on its own: an on-time opposite direction does not hide a late one", () => {
+  // Pooled, B would be 25% late in the PM peak; westbound alone it is 50%.
+  const rows = [...day("A", "W"), ...day("B", "W", { pm: 10 }), ...day("B", "E")];
+  assert.deepStrictEqual(readings(rows, [FLAT_W]).map((r) => [r.direction, r.peak_pct]), [["W", 50]]);
+  // And the eastbound segment into B reads nothing, because eastbound B is on time.
+  assert.deepStrictEqual(readings(rows, [{ ...FLAT, direction: "E" }]), []);
 });
 
-test("no reading without enough departures on both sides, or when the shares barely differ", () => {
-  const thin = [row("B", 7, 0, 5, 5), row("B", 12, 0, 10, 0)];
-  assert.deepStrictEqual(readings(thin, [FLAT]), []);
-  const close = [row("B", 7, 0, 30, 10), row("B", 12, 0, 32, 8)];
-  assert.deepStrictEqual(readings(close, [FLAT]), []);
+test("Avail's direction is matched on its first letter", () => {
+  const rows = [...day("A", "Westbound"), ...day("B", "Westbound", { pm: 10 })];
+  assert.strictEqual(readings(rows, [FLAT_W]).length, 1);
+});
+
+test("the evening is not counted as off-peak: lateness carried past 7pm does not dilute midday", () => {
+  // 420 westbound at 157th Street: 46% late 3-7pm, 50% at 7pm, 4% midday.
+  const rows = [...day("A", "W"), ...day("B", "W", { pm: 9, mid: 1, evening: 10 })];
+  const [found] = readings(rows, [FLAT_W]);
+  assert.deepStrictEqual([found.peak_pct, found.off_peak_pct], [45, 5]);
+});
+
+test("lateness the bus brings in from upstream is not blamed on the segment", () => {
+  const rows = [...day("A", "W", { pm: 9 }), ...day("B", "W", { pm: 10 })];
+  assert.deepStrictEqual(readings(rows, [FLAT_W]), []);
+});
+
+test("when the timepoint before is not measured the reading is kept and says so", () => {
+  const [found] = readings(day("B", "W", { pm: 10 }), [FLAT_W]);
+  assert.strictEqual(found.upstream_pct, null);
+  assert.match(found.text, /and the timepoint before it is not measured, so some of that may come from earlier in the trip\. The PM peak looks under-run\.$/);
+});
+
+test("the AM and PM peaks are read separately", () => {
+  const rows = [...day("A", "W"), ...day("B", "W", { am: 8, pm: 0 })];
+  assert.deepStrictEqual(readings(rows, [FLAT_W]).map((r) => [r.period, r.peak_pct]), [["am", 40]]);
+});
+
+test("a flat segment whose next timepoint runs early at midday reads as a midday over-run", () => {
+  const rows = [...day("A", "W"), ...day("B", "W", { midEarly: 6 })];
+  const found = readings(rows, [FLAT_W]);
+  assert.deepStrictEqual(found.map((r) => [r.kind, r.period, r.peak_pct, r.off_peak_pct]), [["off_peak_over_run", "midday", 0, 30]]);
+  assert.match(found[0].text, /run 30% early 10am–3pm against 0% in the peaks\. Midday is over-run\.$/);
+});
+
+test("a segment stored without a direction is read across both directions, and says no direction", () => {
+  const rows = [...day("A", "W"), ...day("B", "W", { pm: 10 }), ...day("B", "E", { pm: 10 })];
+  const [found] = readings(rows, [FLAT]);
+  assert.strictEqual(found.direction, null);
+  assert.match(found.text, /^Stop A → Stop B: scheduled/);
+});
+
+test("no reading without enough departures, or when the peak barely differs from midday", () => {
+  assert.deepStrictEqual(readings([hour("B", 16, 10, 5), hour("B", 12, 10, 0)], [FLAT_W]), []);
+  assert.deepStrictEqual(readings([...day("A", "W"), ...day("B", "W", { pm: 4, mid: 2 })], [FLAT_W]), []);
 });
 
 test("a segment that already varies by hour is not read, whatever Avail saw", () => {
-  const rows = [row("C", 7, 0, 10, 30), row("C", 12, 0, 40, 0)];
+  const rows = [...day("B", null), ...day("C", null, { pm: 15 })];
   assert.deepStrictEqual(readings(rows, [VARIED]), []);
 });
 

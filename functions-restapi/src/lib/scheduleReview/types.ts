@@ -100,6 +100,12 @@ export interface TimepointSegmentDetail {
   from_stop_name: string;
   to_stop_id: string;
   to_stop_name: string;
+  /**
+   * N, S, E or W when every trip over the segment carries the same headsign
+   * direction; null when they disagree or have none. Absent in detail stored
+   * before v1.5.330.
+   */
+  direction?: string | null;
   /** Along the route when the feed's shape distances calibrate; else straight-line. */
   miles: number | null;
   hours: TimepointSegmentHour[];

@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from "react";
-import { ApiError, type ObservedCell, type ObservedDayKind, type ObservedOtpResponse } from "@mvta/shared";
+import { ApiError, type ObservedCell, type ObservedDayKind, type ObservedOtpResponse, type ObservedReading } from "@mvta/shared";
 import { api } from "../../../config.js";
 import { AccessContext } from "../../../auth/AccessContext.js";
 import { feedDate } from "../scheduleReviewPresentation.js";
@@ -35,6 +35,12 @@ function errorLoad(error: unknown): Load {
   if (error instanceof ApiError && error.status === 403) return { state: "error", message: "What Avail observed needs Compliance access." };
   if (error instanceof ApiError && error.status === 401) return { state: "error", message: "Sign in again to see what Avail observed." };
   return { state: "error", message: "What Avail observed could not be loaded. Try again shortly." };
+}
+
+/** "PM peak under-run", "AM peak under-run" or "Midday over-run". Readings stored before v1.5.330 have no period. */
+export function readingLabel(reading: Pick<ObservedReading, "kind" | "period">): string {
+  if (reading.kind === "off_peak_over_run") return reading.period === "midday" ? "Midday over-run" : "Off-peak over-run";
+  return reading.period === "am" ? "AM peak under-run" : reading.period === "pm" ? "PM peak under-run" : "Peak under-run";
 }
 
 /** The larger of the late and early shares, which is the one the cell is about. */
@@ -129,8 +135,8 @@ export function ObservedGrid({ routeId, routeLabel, hours }: { routeId: string; 
             <>
               <ul className="sr-readings" aria-label={`Route ${routeLabel}: where the schedule and Avail disagree`}>
                 {(allReadings ? observed.readings : observed.readings.slice(0, READINGS_SHOWN)).map((reading) => (
-                  <li key={`${reading.from_stop_id}-${reading.to_stop_id}`} className={reading.kind}>
-                    <span className="sr-reading-kind">{reading.kind === "peak_under_run" ? "Peak under-run" : "Off-peak over-run"}</span>
+                  <li key={`${reading.from_stop_id}-${reading.to_stop_id}-${reading.period}`} className={reading.kind}>
+                    <span className="sr-reading-kind">{readingLabel(reading)}</span>
                     {reading.text}
                   </li>
                 ))}
@@ -194,8 +200,10 @@ export function ObservedGrid({ routeId, routeLabel, hours }: { routeId: string; 
             A cell is the larger of the late (L) and early (E) shares of departures from that timepoint in that hour, as
             Avail classified them; hover for the full split. These are Avail's own counts over the window above, not the
             Official Departure OTP figure: no stop or date exclusions are applied. A reading is made only where a segment
-            is scheduled the same at every hour and its next timepoint differs by fifteen points or more between the peak
-            (6–10am, 3–7pm) and the rest of the day.
+            is scheduled the same at every hour, in its own direction: when departures from its next timepoint run late
+            in the morning (6–9am) or afternoon (3–7pm) peak at least fifteen points more than at midday (10am–3pm), and
+            the late share rises across the segment by ten points or more, so the segment adding the lateness is named
+            rather than one that only carries it on; or when they run early at midday fifteen points more than in the peaks.
           </p>
         </>
       ) : null}

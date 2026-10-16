@@ -480,6 +480,8 @@ export interface TimepointSegmentDetail {
   from_stop_name: string;
   to_stop_id: string;
   to_stop_name: string;
+  /** N, S, E or W when the segment's trips agree; absent in detail kept before v1.5.330. */
+  direction?: string | null;
   miles: number | null;
   hours: TimepointSegmentHour[];
 }
@@ -566,13 +568,20 @@ export interface ObservedTimepoint {
 
 export interface ObservedReading {
   kind: "peak_under_run" | "off_peak_over_run";
+  /** am / pm: that peak is under-run. midday: midday is over-run. */
+  period: "am" | "pm" | "midday";
+  /** N, S, E or W; null when the segment was read across both directions. */
+  direction: string | null;
   from_stop_id: string;
   to_stop_id: string;
   from_stop_name: string;
   to_stop_name: string;
   scheduled_minutes: number;
   peak_pct: number;
+  /** The same share at midday (10am–3pm). */
   off_peak_pct: number;
+  /** Under-run: the late share at the timepoint before, same peak; null when not measured. */
+  upstream_pct: number | null;
   text: string;
 }
 

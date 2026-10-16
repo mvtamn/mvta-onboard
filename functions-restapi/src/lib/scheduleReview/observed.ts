@@ -52,17 +52,26 @@ export interface ObservedTimepoint {
 }
 
 export type ObservedReadingKind = "peak_under_run" | "off_peak_over_run";
+export type ObservedPeriod = "am" | "pm" | "midday";
 
 /** A flat segment whose downstream timepoint shows the signature of a wrong running time. */
 export interface ObservedReading {
   kind: ObservedReadingKind;
+  /** am / pm: that peak is under-run. midday: midday is over-run. */
+  period: ObservedPeriod;
+  /** The segment's direction (N, S, E, W), or null when it was read across both. */
+  direction: string | null;
   from_stop_id: string;
   to_stop_id: string;
   from_stop_name: string;
   to_stop_name: string;
   scheduled_minutes: number;
+  /** Late share in the peak (under-run) or early share in the peak (over-run) at the downstream timepoint. */
   peak_pct: number;
+  /** The same share at midday. */
   off_peak_pct: number;
+  /** Under-run only: the late share at the upstream timepoint in the same peak; null when it is not measured. */
+  upstream_pct: number | null;
   text: string;
 }
 
@@ -81,10 +90,32 @@ export interface ObservedOtp {
   readings: ObservedReading[];
 }
 
-/** Points by which the peak and off-peak shares must differ before a reading is made. */
+// Tuned on the live September-October 2026 weekday data across the twelve
+// routes with flat schedules (plans/schedule-review-module-plan.md section 10).
+// The first rule pooled both directions at the downstream stop and called
+// every hour outside the peak "off-peak", so the evening tail of a PM peak and
+// a well-run opposite direction both diluted the gap: it found nothing on 420
+// although 157th Street westbound departs 46% late 3-7pm and 4% midday.
+
+/** The peaks a reading compares with midday. The hour is the hour a bus departed the timepoint. */
+export const AM_PEAK_HOURS: ReadonlySet<number> = new Set([6, 7, 8]);
+export const PM_PEAK_HOURS: ReadonlySet<number> = new Set([15, 16, 17, 18]);
+/** The base. 9am and the evening are shoulders: lateness there is often carried over from the peak. */
+export const MIDDAY_HOURS: ReadonlySet<number> = new Set([10, 11, 12, 13, 14]);
+
+/** Points by which a peak's share must exceed midday's before a reading is made. */
 export const READING_MIN_POINT_GAP = 15;
 /** Departures each side needs before a share means anything. */
 export const READING_MIN_DEPARTURES = 20;
+/**
+ * Points the late share must rise between the upstream and the downstream
+ * timepoint in that peak, so the reading names the segment where lateness is
+ * added rather than one that only carries it on.
+ */
+export const READING_MIN_ADDED_POINTS = 10;
+
+const PERIOD_WORDS: Record<ObservedPeriod, string> = { am: "6–9am", pm: "3–7pm", midday: "10am–3pm" };
+const DIRECTION_WORDS: Record<string, string> = { N: "northbound", S: "southbound", E: "eastbound", W: "westbound" };
 
 function pct(part: number, whole: number): number {
   return whole === 0 ? 0 : Math.round((100 * part) / whole);
@@ -162,52 +193,111 @@ export function summarizeObserved(
 
 interface Side { departures: number; early: number; late: number }
 
-function sides(rows: readonly ObservedRow[], stopId: string): { peak: Side; offPeak: Side } {
-  const peak: Side = { departures: 0, early: 0, late: 0 };
-  const offPeak: Side = { departures: 0, early: 0, late: 0 };
+function band(rows: readonly ObservedRow[], hours: ReadonlySet<number>): Side {
+  const side: Side = { departures: 0, early: 0, late: 0 };
   for (const row of rows) {
-    if (row.stop_id !== stopId || row.total <= 0) continue;
-    const side = PEAK_HOURS.has(row.hour_of_day) ? peak : offPeak;
+    if (row.total <= 0 || !hours.has(row.hour_of_day)) continue;
     side.departures += row.total;
     side.early += row.early;
     side.late += row.late;
   }
-  return { peak, offPeak };
+  return side;
+}
+
+/** Avail's direction labels are N/S/E/W; compare on the first letter in case a feed spells them out. */
+function sameDirection(avail: string | null, segment: string): boolean {
+  return (avail ?? "").trim().charAt(0).toUpperCase() === segment;
 }
 
 /**
- * One reading per flat segment whose downstream timepoint tells on it. Both
- * directions of a station are read together: the segment's direction is not
- * in the detail, and a station late both ways is late.
+ * The rows Avail measured at a stop for the segment's direction. Read across
+ * both directions only when the segment has no direction, or when Avail gives
+ * no direction at that stop.
+ */
+function rowsAt(rows: readonly ObservedRow[], stopId: string, direction: string | null): { rows: ObservedRow[]; direction: string | null } {
+  const atStop = rows.filter((row) => row.stop_id === stopId);
+  if (direction && atStop.some((row) => row.direction)) {
+    return { rows: atStop.filter((row) => sameDirection(row.direction, direction)), direction };
+  }
+  return { rows: atStop, direction: null };
+}
+
+function segmentWords(segment: TimepointSegmentDetail, direction: string | null): string {
+  const way = direction ? DIRECTION_WORDS[direction] : null;
+  return `${segment.from_stop_name} → ${segment.to_stop_name}${way ? ` (${way})` : ""}`;
+}
+
+/**
+ * Readings for every flat segment whose downstream timepoint tells on it:
+ *
+ *  - Peak under-run: departures there run late in the AM or PM peak by at
+ *    least READING_MIN_POINT_GAP points more than at midday, AND the late share
+ *    rises across the segment by READING_MIN_ADDED_POINTS (lateness added here,
+ *    not carried in). When the upstream timepoint is not measured the reading
+ *    is kept and says so.
+ *  - Midday over-run: departures run early at midday by the same gap more than
+ *    in the peaks.
+ *
+ * Each direction is read on its own; one reading per segment and period.
  */
 export function readings(rows: readonly ObservedRow[], segments: readonly TimepointSegmentDetail[]): ObservedReading[] {
   const out: ObservedReading[] = [];
   for (const segment of segments) {
     if (!isFlatSegment(segment)) continue;
-    const { peak, offPeak } = sides(rows, segment.to_stop_id);
-    if (peak.departures < READING_MIN_DEPARTURES || offPeak.departures < READING_MIN_DEPARTURES) continue;
+    const to = rowsAt(rows, segment.to_stop_id, segment.direction ?? null);
+    const from = rowsAt(rows, segment.from_stop_id, to.direction);
+    const midday = band(to.rows, MIDDAY_HOURS);
+    if (midday.departures < READING_MIN_DEPARTURES) continue;
     const minutes = segment.hours[0].min_minutes;
-    const peakLate = pct(peak.late, peak.departures);
-    const offPeakLate = pct(offPeak.late, offPeak.departures);
-    const peakEarly = pct(peak.early, peak.departures);
-    const offPeakEarly = pct(offPeak.early, offPeak.departures);
-    const base = { from_stop_id: segment.from_stop_id, to_stop_id: segment.to_stop_id, from_stop_name: segment.from_stop_name, to_stop_name: segment.to_stop_name, scheduled_minutes: minutes };
-    if (peakLate - offPeakLate >= READING_MIN_POINT_GAP) {
+    const middayLate = pct(midday.late, midday.departures);
+    const middayEarly = pct(midday.early, midday.departures);
+    const where = segmentWords(segment, to.direction);
+    const base = {
+      direction: to.direction,
+      from_stop_id: segment.from_stop_id,
+      to_stop_id: segment.to_stop_id,
+      from_stop_name: segment.from_stop_name,
+      to_stop_name: segment.to_stop_name,
+      scheduled_minutes: minutes,
+    };
+
+    for (const [period, hours] of [["am", AM_PEAK_HOURS], ["pm", PM_PEAK_HOURS]] as const) {
+      const peak = band(to.rows, hours);
+      if (peak.departures < READING_MIN_DEPARTURES) continue;
+      const peakLate = pct(peak.late, peak.departures);
+      if (peakLate - middayLate < READING_MIN_POINT_GAP) continue;
+      const upstream = band(from.rows, hours);
+      const upstreamLate = upstream.departures >= READING_MIN_DEPARTURES ? pct(upstream.late, upstream.departures) : null;
+      if (upstreamLate !== null && peakLate - upstreamLate < READING_MIN_ADDED_POINTS) continue;
+      const label = period === "am" ? "AM" : "PM";
       out.push({
         ...base,
         kind: "peak_under_run",
+        period,
         peak_pct: peakLate,
-        off_peak_pct: offPeakLate,
-        text: `${segment.from_stop_name} → ${segment.to_stop_name}: scheduled ${minutes} min at every hour; the late share at ${segment.to_stop_name} rises from ${offPeakLate}% off-peak to ${peakLate}% in the peak. The peak is under-run.`,
+        off_peak_pct: middayLate,
+        upstream_pct: upstreamLate,
+        text: `${where}: scheduled ${minutes} min at every hour; departures from ${segment.to_stop_name} run ${peakLate}% late ${PERIOD_WORDS[period]} against ${middayLate}% midday, ` +
+          (upstreamLate === null
+            ? `and the timepoint before it is not measured, so some of that may come from earlier in the trip. The ${label} peak looks under-run.`
+            : `up from ${upstreamLate}% at ${segment.from_stop_name}. The ${label} peak is under-run.`),
       });
-    } else if (offPeakEarly - peakEarly >= READING_MIN_POINT_GAP) {
-      out.push({
-        ...base,
-        kind: "off_peak_over_run",
-        peak_pct: peakEarly,
-        off_peak_pct: offPeakEarly,
-        text: `${segment.from_stop_name} → ${segment.to_stop_name}: scheduled ${minutes} min at every hour; the early share at ${segment.to_stop_name} is ${offPeakEarly}% off-peak against ${peakEarly}% in the peak. The off-peak is over-run.`,
-      });
+    }
+
+    const peaks = band(to.rows, new Set([...AM_PEAK_HOURS, ...PM_PEAK_HOURS]));
+    if (peaks.departures >= READING_MIN_DEPARTURES) {
+      const peakEarly = pct(peaks.early, peaks.departures);
+      if (middayEarly - peakEarly >= READING_MIN_POINT_GAP) {
+        out.push({
+          ...base,
+          kind: "off_peak_over_run",
+          period: "midday",
+          peak_pct: peakEarly,
+          off_peak_pct: middayEarly,
+          upstream_pct: null,
+          text: `${where}: scheduled ${minutes} min at every hour; departures from ${segment.to_stop_name} run ${middayEarly}% early ${PERIOD_WORDS.midday} against ${peakEarly}% in the peaks. Midday is over-run.`,
+        });
+      }
     }
   }
   return out;

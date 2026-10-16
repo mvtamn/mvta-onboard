@@ -134,3 +134,29 @@ test("the evidence behind a check is capped so a route's detail stays small", ()
   assert.strictEqual(c.evidence.length, 25);
   assert.strictEqual(c.evidence[24].text, "16 more stop pairs not shown");
 });
+
+test("a segment carries the direction its trips' headsigns name, so it can be matched to Avail's", () => {
+  const review = reviewSchedule(feed({
+    tripsCsv:
+      "route_id,service_id,trip_id,trip_headsign,direction_id,block_id\n" +
+      "R1,S,T1,West to Apple Valley TS,0,\nR1,S,T2,Apple Valley TS,0,\nR1,S,T3,East to Rosemount,1,\n",
+    stopTimesCsv: ST_HEADER +
+      "T1,6:00:00,6:00:00,A,1,1\nT1,6:06:00,6:06:00,C,2,1\n" +
+      // T2's headsign names no direction: it takes the one its direction_id's other trips carry.
+      "T2,7:00:00,7:00:00,A,1,1\nT2,7:06:00,7:06:00,C,2,1\n" +
+      "T3,8:00:00,8:00:00,C,1,1\nT3,8:06:00,8:06:00,A,2,1\n",
+  }));
+  const route = review.details.find((r) => r.route_short_name === "401");
+  assert.deepStrictEqual(route?.segments.map((s) => [s.from_stop_id, s.to_stop_id, s.direction]), [["A", "C", "W"], ["C", "A", "E"]]);
+});
+
+test("a segment whose trips disagree on direction, or name none, has no direction", () => {
+  const review = reviewSchedule(feed({
+    tripsCsv: "route_id,service_id,trip_id,trip_headsign,direction_id,block_id\nR1,S,T1,North,0,\nR1,S,T2,South,1,\nR1,S,T3,Downtown,2,\n",
+    stopTimesCsv: ST_HEADER +
+      "T1,6:00:00,6:00:00,A,1,1\nT1,6:06:00,6:06:00,C,2,1\nT2,7:00:00,7:00:00,A,1,1\nT2,7:06:00,7:06:00,C,2,1\n" +
+      "T3,8:00:00,8:00:00,C,1,1\nT3,8:06:00,8:06:00,D,2,1\n",
+  }));
+  const route = review.details.find((r) => r.route_short_name === "401");
+  assert.deepStrictEqual(route?.segments.map((s) => s.direction), [null, null]);
+});
