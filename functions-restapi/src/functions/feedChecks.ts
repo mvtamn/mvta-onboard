@@ -10,6 +10,7 @@ import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import { missedTripDetectionSettings } from "../lib/missedTripCase";
 import { schemaDriftChecks } from "../lib/schemaDrift";
 import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
+import { predictionCaptureAccount, PREDICTION_CAPTURE_ACCOUNT_SETTING } from "../lib/predictionAccuracy/captureStore";
 
 async function checkStaticGtfs(url: string | undefined): Promise<FeedCheck> {
   if (!url?.trim()) return { name: "GTFS static", configured: false };
@@ -76,6 +77,20 @@ async function spareMissedTripPipelineChecks(): Promise<FeedCheck[]> {
   }
 }
 
+// The 30-second prediction capture, from its ledger row: when it last wrote,
+// what it wrote, and why not when it is stale.
+async function predictionCaptureCheck(): Promise<FeedCheck> {
+  const name = "Prediction capture";
+  if (!predictionCaptureAccount()) return { name, configured: false, error: `${PREDICTION_CAPTURE_ACCOUNT_SETTING} is not set` };
+  try {
+    const pool = await getPool();
+    if (!await feedHealthTableReady(pool)) return { name, configured: true, error: "Pipeline health table is not ready" };
+    return ledgerFeedChecks([{ name, feedName: "prediction_capture" }], await loadKpiFeedHealthRecords(pool))[0];
+  } catch (error) {
+    return { name, configured: true, error: error instanceof Error ? error.message : "Capture health check failed" };
+  }
+}
+
 app.http("feedChecks", {
   route: "feed-checks",
   methods: ["GET"],
@@ -92,7 +107,7 @@ app.http("feedChecks", {
     const avlStart = new Date(now.getTime() - 10 * 60_000);
     const nowSeconds = Math.floor(now.getTime() / 1000);
 
-    const [checks, sparePipelineChecks, schemaChecks] = await Promise.all([
+    const [checks, sparePipelineChecks, schemaChecks, captureCheck] = await Promise.all([
       Promise.all([
       // Through the reader the polls use: same setting, timeout and body checks.
       probeGtfsRtFeed("trip_updates"),
@@ -113,10 +128,11 @@ app.http("feedChecks", {
       // merge can ship a read of a column nobody has applied yet, and nothing
       // else says so - see lib/schemaDrift.ts.
       checkSchema(),
+      predictionCaptureCheck(),
     ]);
     return {
       status: 200,
-      jsonBody: { checked_at: now.toISOString(), checks: [...checks, ...sparePipelineChecks, ...schemaChecks] },
+      jsonBody: { checked_at: now.toISOString(), checks: [...checks, ...sparePipelineChecks, captureCheck, ...schemaChecks] },
     };
   },
 });

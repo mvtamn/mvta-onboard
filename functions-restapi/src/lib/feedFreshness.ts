@@ -33,6 +33,9 @@ export const FEED_STALE_AFTER_MINUTES = {
   spare_on_demand_reconciliation: ON_DEMAND_DEGRADED_AFTER_MINUTES,
   // Event AVL is polled every fifteen seconds and drives live maps.
   avail_avl: 2,
+  // Thirty-second capture: a gap of five minutes is ten missed runs, and the
+  // night's score will be missing those minutes.
+  prediction_capture: 5,
 } as const satisfies Partial<Record<KpiFeedName, number>>;
 
 // How often each polled feed is fetched, where the console needs to know it.
