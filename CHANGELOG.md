@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.335] - 2026-10-16
+
+- **The prediction capture threw an exception every 30 seconds while it could not write.** v1.5.332 went live on dev at 17:22 UTC before the REST app's identity had Storage Blob Data Contributor on `stmvtapredcapdevmvtajx44` (`manageRoleAssignments` is off on dev, so the template does not grant it). Every run failed with "This request is not authorized to perform this operation". `runFeedIngestion` records a thrown error on the ledger and rethrows it, so each failure was also an App Insights exception: 2,880 a day, and a SQL ledger write every 30 seconds.
+- **A refused write (HTTP 403) is now a ledger failure, not a throw** (`notAuthorizedReason` in `lib/predictionAccuracy/captureStore.ts`). The reason names the account and the missing role. The timer then holds off for 15 minutes (`createWriteGate`) before reading the feeds and trying again, so a missing role costs one ledger row and one error log a quarter-hour. Any other write error still throws as before. Once the role is granted, the next attempt after the hold-off succeeds with no restart.
+- **Verified.** Two new backend checks: the 403 reason, the non-403 errors that still throw, and the gate's timing. All 1,550 API tests run with none failing. Not yet run in Azure.
+
 ## [1.5.334] - 2026-10-16
 
 - **Schedule Review redesign, built from the design canvas after the 2026-10-16 critique (21/40).** The critique's four P1 issues: the route table and the route view were two pages with no way back; routes were ranked by raw flag count, so structural flags no scheduler can act on ranked a route first; the run-time and observed grids were two tables per route that had to be read against each other; light-mode muted text and the brand-green focus ring were under 4.5:1.
