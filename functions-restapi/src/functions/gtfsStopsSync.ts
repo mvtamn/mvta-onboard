@@ -250,7 +250,7 @@ app.timer("gtfsStopsSync", {
             } else if (outcome === "detail_table_missing") {
               context.warn("GtfsScheduleReviewRoutes does not exist yet; apply migration 145 to keep the evidence behind the schedule review.");
             } else {
-              context.log(`Schedule review ${outcome === "stored" ? "stored" : "unchanged, confirmed"} for feed ${predictionRisk.summary.feed.version ?? "(no version)"}: ${predictionRisk.summary.routes.filter((r) => r.flag_count > 0).length} of ${predictionRisk.summary.routes.length} routes flagged (shape distances: ${predictionRisk.distance.unit}).`);
+              context.log(`Schedule review ${outcome === "stored" ? "stored" : outcome === "detail_refreshed" ? "unchanged, evidence refreshed" : "unchanged, confirmed"} for feed ${predictionRisk.summary.feed.version ?? "(no version)"}: ${predictionRisk.summary.routes.filter((r) => r.flag_count > 0).length} of ${predictionRisk.summary.routes.length} routes flagged (shape distances: ${predictionRisk.distance.unit}).`);
             }
           } catch (err) {
             context.warn("Failed to store the GTFS prediction-risk review:", err);

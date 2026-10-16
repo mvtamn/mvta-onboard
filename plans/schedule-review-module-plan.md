@@ -1,7 +1,7 @@
 # Schedule Review Module Plan
 
-Status: increments 1–4 built 2026-10-16 (v1.5.324–328, ADR 0040);
-increment 0 (SQL handed over) and 5 (tuning, waits on real evidence) open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
+Status: increments 0–5 done 2026-10-16 (v1.5.324–330, ADR 0040). Increment 0
+was settled on live data: Avail's ids match GTFS on all twelve flat routes. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
 2026-11-01).
 
 Goal: grow the one-table schedule check shipped in v1.5.319
@@ -474,3 +474,33 @@ change, not the change.
 - Weekday service: the schedule grid mixes every service id; the overlay
   defaults to weekdays. A later increment could split the run-time grid by
   service id as well.
+
+---
+
+## 10. Increment 5: tuning the reading rule on live data (v1.5.330)
+
+The first live grids (20 weekdays, 2026-09-18 to 10-15) were read from the dev
+console for the twelve routes with flat schedules: 420, Orange LINK, 436, 440,
+442, 444, 445, 446, 447, 475, 497 and 499. Every Avail timepoint row matched a
+GTFS timepoint by id, which settles increment 0. Avail labels directions N, S,
+E and W, the cardinal word the GTFS headsigns carry.
+
+Four rules were run against those grids before code changed. Counts are
+segments with at least one reading; a segment late in both peaks reads twice.
+
+| Rule | Segments read | 420 | Problem |
+|---|---|---|---|
+| A. v1.5.326: directions pooled, peak 6–9am & 3–7pm against every other hour | 19 | none | Pools a late direction with an on-time one; the 7pm tail raises the base |
+| B. A, per direction | 23 | none | The evening tail still dilutes |
+| C. Per direction, AM and PM peak each against midday 10am–3pm | 35 | 3 | Blames a segment for lateness the bus brought in |
+| D. C, and the late share rises ≥10 points across the segment | 24 | 2 | Kept |
+
+D on 420: Rosemount → 157th westbound, PM 46% against 4% midday, up from 20%
+at Rosemount; 157th → Rosemount eastbound, PM. It drops Dakota County
+Technical College → Rosemount westbound (PM 20%), because departures from
+DCTC are already as late. Routes 445, 497 and 499 read nothing under any rule.
+
+The thresholds stayed where they were (15 points, 20 departures) and one was
+added (10 points of added lateness). The next thing to tune is not a threshold
+but the window: 90 days once the daily feed holds them, and a separate read of
+Saturdays and Sundays, whose schedules differ.

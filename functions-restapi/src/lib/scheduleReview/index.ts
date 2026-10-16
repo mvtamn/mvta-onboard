@@ -31,8 +31,10 @@ export { PREDICTION_RISK_CHECKS, isFlagged } from "./checks";
 function segmentDetails(route: RouteModel, model: ScheduleModel): TimepointSegmentDetail[] {
   return route.segments.map((segment) => {
     const byHour = new Map<number, { trips: number; min: number; max: number }>();
+    const directions = new Set<string | null>();
     let longest: number | null = null;
     for (const occurrence of segment.occurrences) {
+      directions.add(occurrence.trip.directionLabel);
       const hour = occurrence.trip.startHour;
       const known = byHour.get(hour);
       byHour.set(hour, known
@@ -45,6 +47,7 @@ function segmentDetails(route: RouteModel, model: ScheduleModel): TimepointSegme
       from_stop_name: model.stopName(segment.fromStopId),
       to_stop_id: segment.toStopId,
       to_stop_name: model.stopName(segment.toStopId),
+      direction: directions.size === 1 ? [...directions][0] : null,
       miles: longest === null ? null : Math.round(miles(longest) * 10) / 10,
       hours: [...byHour.entries()]
         .sort((a, b) => a[0] - b[0])

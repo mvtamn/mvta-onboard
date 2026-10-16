@@ -3,7 +3,12 @@
 // migration 145 is applied, one detail row per route in
 // GtfsScheduleReviewRoutes.
 //
-// Written on change, not on every sync. The feed changes a few times a year
+// Written on change, not on every sync. The verdict (the summary) decides
+// whether a new review row is written; the evidence behind an unchanged
+// verdict is refreshed in place, so new code that records more about a
+// segment reaches the detail without adding a row to the history.
+//
+// The feed changes a few times a year
 // and the sync runs daily, so a row a day was the same review 150 times over
 // and made feed-to-feed history unreadable. With 145 applied an identical
 // review only stamps confirmed_at on the row it already has; a new one (a new
@@ -37,10 +42,33 @@ export type SaveOutcome =
   | "stored"
   /** The latest stored review is identical; its confirmed_at was stamped. */
   | "unchanged"
+  /**
+   * The verdict is identical but the evidence behind it is not (new code
+   * records more about a segment): the latest review's detail rows were
+   * replaced in place and confirmed_at stamped. No new review row, because
+   * nothing a reader compares across reviews changed.
+   */
+  | "detail_refreshed"
   /** Migration 145 is not applied: the summary was stored as before, without detail. */
   | "detail_table_missing"
   /** Migration 143 is not applied: nothing was stored. */
   | "summary_table_missing";
+
+/** Whether the stored per-route detail differs from the review's. Pure, for the save path and its test. */
+export function detailChanged(stored: ReadonlyMap<string, string>, details: readonly RouteScheduleDetail[]): boolean {
+  if (stored.size !== details.length) return true;
+  return details.some((detail) => stored.get(detail.route_id) !== JSON.stringify(detail));
+}
+
+async function writeDetail(tx: sql.Transaction, reviewId: number, details: readonly RouteScheduleDetail[]): Promise<void> {
+  for (const detail of details) {
+    await new sql.Request(tx)
+      .input("review_id", sql.Int, reviewId)
+      .input("route_id", sql.NVarChar(50), detail.route_id)
+      .input("detail_json", sql.NVarChar(sql.MAX), JSON.stringify(detail))
+      .query(`INSERT INTO ${DETAIL_TABLE} (review_id, route_id, detail_json) VALUES (@review_id, @route_id, @detail_json)`);
+  }
+}
 
 export async function savePredictionRiskReview(pool: sql.ConnectionPool, review: ScheduleReview): Promise<SaveOutcome> {
   if (!await tableReady(pool, REVIEWS_TABLE)) return "summary_table_missing";
@@ -57,9 +85,28 @@ export async function savePredictionRiskReview(pool: sql.ConnectionPool, review:
     const row = latest.recordset[0];
     // A row from before 145 has no detail; it is replaced rather than confirmed.
     if (row && row.review_json === json && row.detail_rows > 0) {
-      await pool.request().input("review_id", sql.Int, row.review_id)
-        .query(`UPDATE ${REVIEWS_TABLE} SET confirmed_at = SYSUTCDATETIME() WHERE review_id = @review_id`);
-      return "unchanged";
+      const storedDetail = await pool.request().input("review_id", sql.Int, row.review_id)
+        .query<{ route_id: string; detail_json: string }>(`SELECT route_id, detail_json FROM ${DETAIL_TABLE} WHERE review_id = @review_id`);
+      const stored = new Map(storedDetail.recordset.map((d) => [d.route_id, d.detail_json]));
+      if (!detailChanged(stored, review.details)) {
+        await pool.request().input("review_id", sql.Int, row.review_id)
+          .query(`UPDATE ${REVIEWS_TABLE} SET confirmed_at = SYSUTCDATETIME() WHERE review_id = @review_id`);
+        return "unchanged";
+      }
+      const refresh = new sql.Transaction(pool);
+      await refresh.begin();
+      try {
+        await new sql.Request(refresh).input("review_id", sql.Int, row.review_id)
+          .query(`DELETE FROM ${DETAIL_TABLE} WHERE review_id = @review_id`);
+        await writeDetail(refresh, row.review_id, review.details);
+        await new sql.Request(refresh).input("review_id", sql.Int, row.review_id)
+          .query(`UPDATE ${REVIEWS_TABLE} SET confirmed_at = SYSUTCDATETIME() WHERE review_id = @review_id`);
+        await refresh.commit();
+      } catch (err) {
+        await refresh.rollback();
+        throw err;
+      }
+      return "detail_refreshed";
     }
   }
 
@@ -77,15 +124,7 @@ export async function savePredictionRiskReview(pool: sql.ConnectionPool, review:
         VALUES (@feed_version, @route_count, @flagged_route_count, @review_json)
       `);
     const reviewId = inserted.recordset[0].review_id;
-    if (detailReady) {
-      for (const detail of review.details) {
-        await new sql.Request(tx)
-          .input("review_id", sql.Int, reviewId)
-          .input("route_id", sql.NVarChar(50), detail.route_id)
-          .input("detail_json", sql.NVarChar(sql.MAX), JSON.stringify(detail))
-          .query(`INSERT INTO ${DETAIL_TABLE} (review_id, route_id, detail_json) VALUES (@review_id, @route_id, @detail_json)`);
-      }
-    }
+    if (detailReady) await writeDetail(tx, reviewId, review.details);
     await tx.commit();
   } catch (err) {
     await tx.rollback();

@@ -5,6 +5,23 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.330] - 2026-10-16
+
+- **The flat-schedule reading missed the case it was built for.** On live data (20 weekdays, Sep 18 to Oct 15) route 420 westbound departs 157th Street Station 46% late 3–7pm and 4% late midday, over a segment scheduled 20 minutes at every hour, and the rule found nothing. It pooled both directions at the downstream stop, so the on-time eastbound departures diluted the westbound ones. It also counted every hour outside the peak as off-peak, so the 7pm tail of the PM peak (50% late) raised the base.
+- **Tuned on the live grids of the twelve routes with flat schedules.** Read from the dev console, candidate rules were run against them before any code changed. The rule kept (`observed.ts`):
+  - **Per direction.** Each segment now carries the direction its trips' headsigns name (N, S, E, W, from `feedModel.ts`, falling back to the route's other trips in the same direction_id). It is read only against Avail's rows for that direction, which Avail labels the same way. A segment with no direction, or a stop where Avail gives none, is read across both, as before.
+  - **Each peak against midday.** AM (6–9am) and PM (3–7pm) are compared separately with midday (10am–3pm); 9am and the evening are shoulders and count for neither. The reading names the peak.
+  - **Lateness added, not carried.** The late share must also rise by ten points or more across the segment, from the timepoint before to the one after, in that peak. On 420 that keeps Rosemount → 157th westbound (up from 20%) and drops Dakota County Technical College → Rosemount, whose lateness the bus brings with it from the start of the trip. Where the timepoint before is not measured the reading is kept and says some of the lateness may come from earlier.
+- **Before and after, on the same live data.**
+
+  | Rule | Segments read | Route 420 |
+  |---|---|---|
+  | v1.5.326 | 19, several naming the wrong direction | none |
+  | v1.5.330 | 24, on 9 of the 12 routes | Rosemount → 157th westbound, PM; 157th → Rosemount eastbound, PM |
+
+- **Evidence refreshed in place.** A new segment field changes the detail but not the verdict, and the store only wrote on a changed verdict, so dev would have kept the old detail until the next feed. `store.ts` now replaces an unchanged review's detail rows in place when they differ (`detail_refreshed`), with no new history entry. The next static sync after this deploys gives dev's segments their directions; until then a reading falls back to both directions.
+- **Verified.** 63 schedule review checks (per direction, per peak, carried-in lateness, unmeasured upstream, midday over-run, first-letter direction match, headsign directions and fallback, detail refresh); 1,525 backend tests pass; 36 console checks; frontend typecheck clean. Live verification follows the deploy and a static sync.
+
 ## [1.5.328] - 2026-10-16
 
 - **Did the new schedule fix it?** The static feed changes a few times a year and the review runs on every import, but nothing compared one review with the next, so a scheduler who added peak running times to 420 had no way to see "same running time all day" leave 420. `lib/scheduleReview/diff.ts` (pure) compares two stored reviews route by route: flags gained and lost with the values either side, routes that entered or left the feed, and the flagged-route count before and after. Values and flags are compared as each was stored, under the thresholds of its own day.

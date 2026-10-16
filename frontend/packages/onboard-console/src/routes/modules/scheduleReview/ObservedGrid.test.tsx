@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { ApiError, type MyAccess, type ObservedOtpResponse } from "@mvta/shared";
 import { StaticAccessProvider } from "../../../auth/AccessContext.js";
-import { ObservedGrid, cellLevel, cellReading } from "./ObservedGrid.js";
+import { ObservedGrid, cellLevel, cellReading, readingLabel } from "./ObservedGrid.js";
 
 const { getGtfsPredictionRiskRouteObserved } = vi.hoisted(() => ({ getGtfsPredictionRiskRouteObserved: vi.fn() }));
 vi.mock("../../../config.js", () => ({ api: { getGtfsPredictionRiskRouteObserved } }));
@@ -38,9 +38,9 @@ const OBSERVED: ObservedOtpResponse = {
   ],
   readings: [
     {
-      kind: "peak_under_run", from_stop_id: "A", to_stop_id: "B", from_stop_name: "Rosemount TS", to_stop_name: "157th Street Station",
-      scheduled_minutes: 20, peak_pct: 36, off_peak_pct: 9,
-      text: "Rosemount TS → 157th Street Station: scheduled 20 min at every hour; the late share at 157th Street Station rises from 9% off-peak to 36% in the peak. The peak is under-run.",
+      kind: "peak_under_run", period: "pm", direction: "W", from_stop_id: "A", to_stop_id: "B", from_stop_name: "Rosemount TS", to_stop_name: "157th Street Station",
+      scheduled_minutes: 20, peak_pct: 46, off_peak_pct: 4, upstream_pct: 20,
+      text: "Rosemount TS → 157th Street Station (westbound): scheduled 20 min at every hour; departures from 157th Street Station run 46% late 3–7pm against 4% midday, up from 20% at Rosemount TS. The PM peak is under-run.",
     },
   ],
 };
@@ -67,8 +67,8 @@ describe("ObservedGrid", () => {
     render(withAccess(["compliance-review.view"], <ObservedGrid routeId="420" routeLabel="420" hours={[6, 7, 16]} />));
 
     const readings = await screen.findByRole("list", { name: "Route 420: where the schedule and Avail disagree" });
-    expect(within(readings).getByText("Peak under-run")).toBeInTheDocument();
-    expect(within(readings).getByText(/rises from 9% off-peak to 36% in the peak/)).toBeInTheDocument();
+    expect(within(readings).getByText("PM peak under-run")).toBeInTheDocument();
+    expect(within(readings).getByText(/run 46% late 3–7pm against 4% midday, up from 20% at Rosemount TS/)).toBeInTheDocument();
     expect(screen.getByText(/20 weekdays with data, Sep 17, 2026 – Oct 14, 2026 · 640 departures/)).toBeInTheDocument();
 
     const grid = screen.getByRole("table", { name: "Route 420 Avail early and late shares per timepoint by departure hour" });
@@ -127,6 +127,15 @@ describe("ObservedGrid readings", () => {
     expect(within(list).getAllByRole("listitem")).toHaveLength(3);
     await userEvent.click(screen.getByRole("button", { name: "Show all 5 readings" }));
     expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+  });
+});
+
+describe("reading label", () => {
+  it("names the peak, or midday for an over-run, and copes with readings from before periods", () => {
+    expect(readingLabel({ kind: "peak_under_run", period: "pm" })).toBe("PM peak under-run");
+    expect(readingLabel({ kind: "peak_under_run", period: "am" })).toBe("AM peak under-run");
+    expect(readingLabel({ kind: "off_peak_over_run", period: "midday" })).toBe("Midday over-run");
+    expect(readingLabel({ kind: "peak_under_run" } as never)).toBe("Peak under-run");
   });
 });
 
