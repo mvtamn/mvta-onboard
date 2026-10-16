@@ -33,7 +33,7 @@ export const CAPTURE_PAST_SECONDS = 10 * 60;
 /** ... to this far ahead of it. */
 export const CAPTURE_AHEAD_SECONDS = 30 * 60;
 
-/** The capture runs every 30 s; TripUpdates (420 KB) are read on the :00 run only, VehiclePositions on both. */
+/** The capture runs at :20 and :50; TripUpdates (420 KB) are read on the :20 run only, VehiclePositions on both. */
 export function readsTripUpdates(runAt: Date): boolean {
   return runAt.getUTCSeconds() < 30;
 }

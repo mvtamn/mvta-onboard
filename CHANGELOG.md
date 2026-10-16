@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.333] - 2026-10-16
+
+- **The prediction capture now runs at :20 and :50 past the minute**, not :00 and :30. In its first hour live its TripUpdates runs took 19–62 seconds against 1–10 seconds for its vehicle-only runs, 62 on a fifth-minute boundary, and runs that overran the 30-second cadence were skipped. Every other timer in the REST app fires on second 0: the one-minute trip-start poll reads TripUpdates there, and four five-minute pollers read the same InfoPoint server on every fifth minute. Event AVL polls at :00, :15, :30 and :45. Second 20 and 50 collide with none of them. Verified: 16 capture checks pass with the new split.
+
 ## [1.5.332] - 2026-10-16
 
 - **Prediction accuracy needs predictions, and OnBoard kept none.** TripUpdates were read every five minutes for the current delay and overwritten; VehiclePositions likewise. Increment 1 of `plans/prediction-accuracy-evaluation.md` starts writing both down, so the arrival predictions riders see can be scored the way Swiftly does (ADR 0041).

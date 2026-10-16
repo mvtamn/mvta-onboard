@@ -68,7 +68,7 @@ test("a prediction is stamped with the feed's own timestamp, not the moment we f
   assert.ok(p.startsWith(`P,${H},`));
 });
 
-test("a run without TripUpdates (the :30 run) still writes itself and the vehicles", () => {
+test("a run without TripUpdates (the :50 run) still writes itself and the vehicles", () => {
   const out = captureLines(RUN, null, VP);
   assert.deepStrictEqual(out.lines.map((l) => l[0]), ["R", "V"]);
   assert.strictEqual(out.lines[0], `R,${H + 3},,${H + 2}`);
@@ -79,9 +79,9 @@ test("a trip with no vehicle yet is captured with an empty vehicle field, and a 
   assert.strictEqual(captureLines(RUN, feed, null).lines[1], `P,${H},t1,425,20261016,1,"Stop ""A"", north",${H + 60},`);
 });
 
-test("TripUpdates are read on the :00 run and not the :30 one", () => {
-  assert.strictEqual(readsTripUpdates(new Date("2026-10-16T16:27:00.400Z")), true);
-  assert.strictEqual(readsTripUpdates(new Date("2026-10-16T16:27:30.200Z")), false);
+test("TripUpdates are read on the :20 run and not the :50 one", () => {
+  assert.strictEqual(readsTripUpdates(new Date("2026-10-16T16:27:20.400Z")), true);
+  assert.strictEqual(readsTripUpdates(new Date("2026-10-16T16:27:50.200Z")), false);
 });
 
 test("the daily file is named by the Central calendar date, so 11:30pm and 12:30am land in different files", () => {
