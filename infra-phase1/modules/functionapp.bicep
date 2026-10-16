@@ -21,6 +21,8 @@ param assessmentMonthBoundaryEnabled bool = false
 param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
 param complianceReportsStorageAccountName string = ''
+@description('Blob account the prediction capture writes to (REST app only). Empty leaves the capture off.')
+param predictionCaptureStorageAccountName string = ''
 param manageRoleAssignments bool = false
 param enableAccessManagement bool = false
 param accessManagementConfigJson string = ''
@@ -288,6 +290,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'DECISION_MATRIX_HEALTH_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/decision-matrix-health-client-secret/)' }
       ] : [], !empty(complianceReportsStorageAccountName) ? [
         { name: 'COMPLIANCE_REPORTS_STORAGE_ACCOUNT', value: complianceReportsStorageAccountName }
+      ] : [], !empty(predictionCaptureStorageAccountName) ? [
+        { name: 'PREDICTION_CAPTURE_STORAGE_ACCOUNT', value: predictionCaptureStorageAccountName }
       ] : [], includeSpareApiKey ? [
         // Spare missed-trip ingestion runs only in the REST app. Keep this
         // reference in Bicep so a redeploy does not remove the setting.

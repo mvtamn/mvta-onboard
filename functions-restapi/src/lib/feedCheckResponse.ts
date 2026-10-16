@@ -1,4 +1,5 @@
 import { resolveKpiTrust, type KpiFeedHealth, type KpiFeedName, type KpiTrustDependency } from "./kpiTrust";
+import { FEED_STALE_AFTER_MINUTES } from "./feedFreshness";
 
 export type FeedResponseSummary = { records: number; keys?: string[] };
 
@@ -55,7 +56,9 @@ export function ledgerFeedChecks(
   }
   const recordByFeed = new Map(records.map((record) => [record.feed_name, record]));
   return feeds.map(({ name, feedName }) => {
-    const dependency = dependencies.get(feedName);
+    // A feed no KPI depends on (the prediction capture) has no trust
+    // dependency to read; it is judged by the same freshness table instead.
+    const dependency = dependencies.get(feedName) ?? ledgerOnlyDependency(feedName, recordByFeed.get(feedName), now);
     const check: FeedCheck = {
       name,
       configured: true,
@@ -68,4 +71,23 @@ export function ledgerFeedChecks(
     }
     return check;
   });
+}
+
+function ledgerOnlyDependency(feedName: KpiFeedName, record: KpiFeedHealth | undefined, now: Date): KpiTrustDependency | undefined {
+  const limit = (FEED_STALE_AFTER_MINUTES as Partial<Record<KpiFeedName, number>>)[feedName];
+  if (!record || limit === undefined) return undefined;
+  const lastSuccess = record.last_success_at;
+  const current = lastSuccess !== null && now.getTime() - lastSuccess.getTime() <= limit * 60_000;
+  return {
+    feed_name: feedName,
+    required: false,
+    state: lastSuccess === null ? "unavailable" : current ? "current" : "stale",
+    last_success_at: lastSuccess ? lastSuccess.toISOString() : null,
+    source_timestamp_at: record.source_timestamp_at ? record.source_timestamp_at.toISOString() : null,
+    coverage_start_at: null,
+    coverage_end_at: null,
+    stale_after_minutes: limit,
+    last_failure_at: record.last_failure_at ? record.last_failure_at.toISOString() : null,
+    last_failure_reason: record.last_failure_reason ?? null,
+  };
 }

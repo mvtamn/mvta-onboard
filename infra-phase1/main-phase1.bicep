@@ -162,6 +162,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     riderAppBaseUrl: riderAppBaseUrl
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
+    predictionCaptureStorageAccountName: take('stmvtapredcap${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
     onDemandDeparturesEnabled: onDemandDeparturesEnabled
     assessmentMonthBoundaryEnabled: assessmentMonthBoundaryEnabled
@@ -332,6 +333,18 @@ module detourImagesStorage 'modules/storage-detour-images.bicep' = {
     // Same origins the Function App's own CORS allows - the console needs
     // to PUT/GET blobs directly from the browser via SAS URLs.
     allowedCorsOrigins: allowedCorsOrigins
+  }
+}
+
+// Raw prediction capture for the prediction accuracy benchmark
+// (plans/prediction-accuracy-evaluation.md). Expires its own files.
+module predictionCaptureStorage 'modules/storage-prediction-capture.bicep' = {
+  name: 'prediction-capture-storage-deployment'
+  params: {
+    location: location
+    storageAccountName: take('stmvtapredcap${environment}${cleanSuffix}', 24)
+    functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+    manageRoleAssignments: manageRoleAssignments
   }
 }
 

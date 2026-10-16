@@ -57,3 +57,24 @@ test("a feed that has never recorded a success is not current", () => {
     ["stale", 0, undefined],
   ]);
 });
+
+test("a feed no KPI depends on is judged by the freshness table: the prediction capture is current for 5 minutes", () => {
+  const now = new Date("2026-10-16T17:00:00Z");
+  const record = (minutesAgo: number, reason: string | null = null): KpiFeedHealth => ({
+    feed_name: "prediction_capture",
+    last_success_at: new Date(now.getTime() - minutesAgo * 60_000),
+    last_entity_count: 412,
+    source_timestamp_at: null,
+    last_failure_at: reason ? now : null,
+    last_failure_reason: reason,
+  });
+  const feeds = [{ name: "Prediction capture", feedName: "prediction_capture" as const }];
+
+  assert.deepEqual(ledgerFeedChecks(feeds, [record(4)], now)[0], {
+    name: "Prediction capture", configured: true, records: 412, freshness: "current", last_success_at: "2026-10-16T16:56:00.000Z",
+  });
+  const stale = ledgerFeedChecks(feeds, [record(6, "Both feeds failed")], now)[0];
+  assert.equal(stale.freshness, "stale");
+  assert.equal(stale.error, "Both feeds failed");
+  assert.equal(ledgerFeedChecks(feeds, [], now)[0].freshness, "stale");
+});
