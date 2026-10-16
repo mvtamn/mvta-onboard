@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.331] - 2026-10-16
+## [1.6.0] - 2026-10-16
 
 - **The OTP Review Queue listed one row per stop-day.** A Flagged Stop is a stop, on one route, on one day of the week, and that is how the server sends them and how a decision is recorded. The queue drew them that way too: October 2026 had 348 rows for 96 route/stop pairs, with the same stop - Oak St SE at University Av, flagged on three routes and five weekdays - in front of the reviewer fifteen times, scattered through the list by lean, each row with its own reason dropdown. A reviewer who knows the stop is a recovery point had to find and decide every row.
 - **One card per stop on a route.** `otpQueueGroups.ts` folds the server's list into route/stop groups, in the order the server put each stop's worst day, with the weekdays inside each card Monday first. A chip per day shows its lean (“71% late”), its adherence strip and its state; the card's meta line names the other routes the same stop is flagged on. “Exclude 5 days” / “Keep 5 days” decide the whole week; pressing a chip leaves that day out, and a decided day can be pressed to re-decide it with the rest. The hook's `resolve` and `copyFromPrevious` now take a list of stop-days: one `PUT` per day, in order, and one re-read of the month, so the audit trail keeps its shape and a failure part-way leaves the earlier days decided and the rest pending.
