@@ -1,7 +1,7 @@
 # Schedule Review Module Plan
 
-Status: increment 1 built 2026-10-16 (v1.5.324, ADR 0040); increments 0 and
-2-5 open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
+Status: increments 0–5 done 2026-10-16 (v1.5.324–330, ADR 0040). Increment 0
+was settled on live data: Avail's ids match GTFS on all twelve flat routes. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
 2026-11-01).
 
 Goal: grow the one-table schedule check shipped in v1.5.319
@@ -241,10 +241,14 @@ answers:
   health reader.
 - **B. Put the analysis where the route already is: Compliance › OTP › Route
   Summary.** Its per-route drill-down already shows OTP by timepoint, worst
-  first. A "Schedule" view beside it shows the same timepoints with scheduled
-  minutes by hour, flags and evidence, and the observed overlay is one tab
-  away from the figure it explains. Health keeps the summary table and links
-  to it. **Recommended.**
+  first. Recommended at first, and built that way, then **moved out before
+  landing**: OTP is compliance and the schedule review is analysis (the user's
+  call, 2026-10-16). Putting an analysis view inside the compliance module
+  would have made a schedule flag read like a contract finding.
+- **C. Its own page, `/schedule-review`, under Specialist Operations** beside
+  OCC Tools. Health keeps the summary table and links each route to it. Every
+  signed-in role sees it, matching the endpoint. **Built (v1.5.325).** The
+  observed overlay (increment 3) goes on this page, under the run-time grid.
 
 Views, in build order:
 
@@ -268,9 +272,9 @@ Each is one PR, one changelog entry, tests first on the pure parts.
 |---|---|---|---|
 | 0 | **Confirm the stop join on dev** (one SQL, user runs it since public SQL access is denied): `SELECT COUNT(*) FROM OtpDailyRouteStopHour o JOIN GtfsStops s ON s.stop_id = CAST(o.stop_id AS NVARCHAR(50))` against distinct OTP stops. | — | minutes |
 | 1 | **Module + evidence.** `lib/scheduleReview/` with `feedModel`, `distance` (calibrated), the seven existing checks moved to `checks/` with evidence, four new checks (2a–2d) with owner/fix, `GtfsScheduleReviewRoutes` + write-on-change, route detail endpoint. ADR: *Keep the schedule review's evidence beside its verdict*. CONTEXT.md gains "Schedule review" (distinct from "Schedule snapshot"). | — | large |
-| 2 | **Console route detail + run-time profile** (views 1–2) in Compliance › OTP › Route Summary, Health links in. | 1 | medium |
+| 2 | **Console route detail + run-time profile** (views 1–2) on the Schedule Review page, Health links in. **Built, v1.5.325.** | 1 | medium |
 | 3 | **Observed overlay** (`observed.ts`, view 3). | 0, 1, 2 | medium |
-| 4 | **Feed diff + history** (`diff.ts`, view 4, Health summary gains history). | 1 | small |
+| 4 | **Feed diff + history** (`diff.ts`, view 4, Health summary gains history). **Built, v1.5.328**: one `/history` endpoint serves both the list and the diff; the diff tells a feed change from a change in the checks. | 1 | small |
 | 5 | Retune thresholds now that evidence is visible; drop `run_time_spread` in favour of 2a or keep both with clear words. | 2 | small |
 
 Not in scope: changing any OTP figure or rule; writing anything back to Avail;
@@ -291,3 +295,212 @@ retaining live TripUpdate delays.
   already does for the prediction engine, without implying a contract claim.
 - **Where it lives** (section 5, A vs B) is a product call; everything else
   is derivable from the data.
+
+---
+
+## 8. Increment 0: confirm the OTP ↔ GTFS joins on dev
+
+Public SQL access to dev is denied from this machine, so these are handed over
+to run. They read only. Expected results are stated so the answer is a yes or
+a no, not a judgement.
+
+```sql
+-- 1. Stop ids: every OTP timepoint of the last 30 service days should match a
+--    GTFS stop by id, and the names should agree. Expect unmatched = 0.
+WITH otp AS (
+  SELECT DISTINCT o.route_id, o.stop_id, o.stop_name
+  FROM OtpDailyRouteStopHour o
+  WHERE o.calendar_date >= CONVERT(CHAR(8), DATEADD(DAY, -30, GETDATE()), 112)
+)
+SELECT COUNT(*)                                                     AS otp_stops,
+       SUM(CASE WHEN g.stop_id IS NULL THEN 1 ELSE 0 END)           AS unmatched,
+       SUM(CASE WHEN g.stop_id IS NOT NULL
+                 AND g.stop_name <> ISNULL(otp.stop_name, '') THEN 1 ELSE 0 END) AS name_differs
+FROM otp
+LEFT JOIN GtfsStops g ON g.stop_id = CAST(otp.stop_id AS NVARCHAR(50));
+
+-- 2. The unmatched ones, if any (expect no rows).
+WITH otp AS (
+  SELECT DISTINCT o.route_id, o.stop_id, o.stop_name
+  FROM OtpDailyRouteStopHour o
+  WHERE o.calendar_date >= CONVERT(CHAR(8), DATEADD(DAY, -30, GETDATE()), 112)
+)
+SELECT otp.route_id, otp.stop_id, otp.stop_name
+FROM otp
+LEFT JOIN GtfsStops g ON g.stop_id = CAST(otp.stop_id AS NVARCHAR(50))
+WHERE g.stop_id IS NULL
+ORDER BY otp.route_id, otp.stop_id;
+
+-- 3. Route ids: every OTP route of the last 30 days should be a GTFS route.
+--    Expect unmatched = 0 and 19 rows.
+SELECT o.route_id, MAX(o.route_label) AS route_label, r.route_short_name,
+       CASE WHEN r.route_id IS NULL THEN 'UNMATCHED' ELSE '' END AS note
+FROM OtpDailyRouteStopHour o
+LEFT JOIN GtfsRoutes r ON r.route_id = CAST(o.route_id AS NVARCHAR(50))
+WHERE o.calendar_date >= CONVERT(CHAR(8), DATEADD(DAY, -30, GETDATE()), 112)
+GROUP BY o.route_id, r.route_id, r.route_short_name
+ORDER BY o.route_id;
+
+-- 4. Are the OTP stops the schedule's timepoints? Needs migration 145 and one
+--    static sync after it. Reads the latest review's segment endpoints per
+--    route. Expect not_a_timepoint = 0 (a handful is tolerable: a terminal that
+--    Avail measures arrivals at rather than departures).
+WITH latest AS (
+  SELECT TOP 1 review_id FROM GtfsPredictionRiskReviews ORDER BY reviewed_at DESC, review_id DESC
+),
+tp AS (
+  SELECT d.route_id, s.stop_id
+  FROM GtfsScheduleReviewRoutes d
+  JOIN latest ON latest.review_id = d.review_id
+  CROSS APPLY OPENJSON(d.detail_json, '$.segments')
+    WITH (from_stop_id NVARCHAR(50) '$.from_stop_id', to_stop_id NVARCHAR(50) '$.to_stop_id') seg
+  CROSS APPLY (VALUES (seg.from_stop_id), (seg.to_stop_id)) s(stop_id)
+),
+otp AS (
+  SELECT DISTINCT o.route_id, o.stop_id
+  FROM OtpDailyRouteStopHour o
+  WHERE o.calendar_date >= CONVERT(CHAR(8), DATEADD(DAY, -30, GETDATE()), 112)
+)
+SELECT COUNT(*) AS otp_route_stops,
+       SUM(CASE WHEN tp.stop_id IS NULL THEN 1 ELSE 0 END) AS not_a_timepoint
+FROM otp
+LEFT JOIN tp ON tp.route_id = CAST(otp.route_id AS NVARCHAR(50)) AND tp.stop_id = CAST(otp.stop_id AS NVARCHAR(50));
+
+-- 5. Volume and window, for sizing the overlay query. Expect roughly 2,000
+--    rows per service day since 2026-10-04 (the poll fix, PR #389).
+SELECT MIN(calendar_date) AS first_day, MAX(calendar_date) AS last_day,
+       COUNT(DISTINCT calendar_date) AS days, COUNT(*) AS rows_total,
+       COUNT(*) / NULLIF(COUNT(DISTINCT calendar_date), 0) AS rows_per_day
+FROM OtpDailyRouteStopHour;
+```
+
+If 1 and 3 come back clean, the join is `route_id` and `stop_id` cast to
+`NVARCHAR(50)`, and increment 3 needs no mapping table. If 4 shows a few
+terminals, the overlay shows them as extra rows rather than dropping them.
+
+---
+
+## 9. Increment 3: what Avail observed, beside what the schedule says
+
+**The question it answers.** Increment 2 shows that route 420 is scheduled
+the same 10 minutes from 157th Street Station to Apple Valley TS at every
+hour. Whether that is wrong is a question for the buses: if departures at
+Apple Valley run 38% late at 4–6pm and 11% early at 10am–2pm, the flat
+running time is the cause and the fix is a peak running time. Avail already
+measures this; `OtpDailyRouteStopHour` holds it per route, stop, hour and
+service day since 2026-10-04.
+
+**Not compliance.** The overlay reads Avail's early/on-time/late counts as
+Avail classified them (its own tolerances, not the Review Queue's bias
+threshold), over whatever window the reader picks. It is not the Official
+Departure OTP figure, applies no stop or date exclusions, changes nothing in
+`lib/otpMonth`, and says so under the grid. It lives on the Schedule Review
+page, not in the OTP module (section 5, option C).
+
+### Shape
+
+Join at the **timepoint stop**, not the segment. The run-time grid's columns
+are the hour a trip *starts*; OTP's `hour_of_day` is the hour of departure
+*at the stop*. Shifting one onto the other needs the trip's elapsed time to
+each stop, which the detail does not carry and which is exactly what is in
+doubt on a flat schedule. So the overlay is a second grid with the same hour
+columns: rows are the route's timepoints in segment order, cells are what
+Avail saw there in that hour.
+
+```
+What Avail observed at each timepoint, by hour of departure (28 weekdays to Oct 14)
+TIMEPOINT                    5a   6a   7a   8a   9a  10a  11a  12p   1p   2p   3p   4p   5p   6p
+Apple Valley TS NB            ·  4%L  9%L 14%L  6%E 11%E 12%E 10%E  9%E  7%L 21%L 38%L 34%L 12%L
+157th Street Station        ...
+```
+
+A cell is the late share (L) or early share (E), whichever is larger, with
+departures and the full split in its title; coloured on the warning scale by
+the larger share. Under the grid, one sentence per flat segment whose
+downstream timepoint shows the signature: *"Scheduled 10 min at every hour;
+late share at Apple Valley TS rises from 9% (10a–2p) to 36% (3p–6p). The peak
+is under-run."* The sentence is derived by one rule (peak late share at least
+15 points above off-peak, or off-peak early share at least 15 points above
+peak), declared in code with its threshold, and is evidence for a schedule
+change, not the change.
+
+### Server
+
+- `lib/scheduleReview/observed.ts` (pure): rows `{stop_id, hour_of_day,
+  early, ontime, late, total}` in, per-stop-per-hour shares out, plus the
+  flat-segment sentences given the route's segments. Tested with no database.
+- `lib/scheduleReview/observedStore.ts`: one aggregate query over
+  `OtpDailyRouteStopHour` for a route, a window of service days and a
+  day-of-week set (weekdays by default; the schedule grid is weekday service),
+  grouped by `stop_id, hour_of_day`. Window capped at 90 days.
+- `GET /gtfs-prediction-risk/routes/{routeId}/observed?days=28&dow=weekday`
+  — a **separate endpoint** requiring `compliance-review.view`, because it
+  reads OTP data; the schedule-only detail stays any-role. Returns the grid
+  rows, the window actually covered (first and last service day with rows),
+  departures counted, and the sentences. 404 when the route has no OTP rows
+  in the window; the console then says Avail has nothing for it rather than
+  showing an empty grid.
+- No migration. No change to the sync.
+
+### Console
+
+- `ScheduleRouteView` gains a third block under the run-time grid, loaded
+  only when the signed-in user has `compliance-review.view` (otherwise a one
+  line note that the observed view needs that access). Window picker:
+  7 / 28 / 90 days; day-of-week: weekdays / Saturday / Sunday.
+- Same hour columns as the run-time grid, same sticky first column, same
+  phone-width behaviour.
+- The sentences render above the grid, one per segment, with the segment
+  name linking the two grids by eye.
+
+### Increments inside the increment
+
+| # | Piece | Size |
+|---|---|---|
+| 3a | `observed.ts` + tests, store, endpoint. **Built, v1.5.326** (the reading rule of 3c came with it; only its render is left). | small–medium |
+| 3b | Console grid + window picker. **Built, v1.5.327.** | medium |
+| 3c | Flat-segment sentences (rule + tests + render). **Built**: rule in v1.5.326, render in v1.5.327. | small |
+
+### Open questions, answered by increment 0 or stated as assumptions
+
+- Stop and route ids join by cast (queries 1 and 3). If not, a mapping table
+  is a migration and 3a grows.
+- OTP's `Direction` is a label, not GTFS `direction_id`; a timepoint served
+  in both directions (a transit station) is one OTP row per direction. The
+  overlay shows one row per (stop, direction) when Avail gives a direction,
+  so the two sides of a station are not averaged together.
+- Hours are Central service-day hours on both sides (`calendar_date` is a
+  Central service day; the review folds GTFS clock hours past 24 into 0–23).
+- Weekday service: the schedule grid mixes every service id; the overlay
+  defaults to weekdays. A later increment could split the run-time grid by
+  service id as well.
+
+---
+
+## 10. Increment 5: tuning the reading rule on live data (v1.5.330)
+
+The first live grids (20 weekdays, 2026-09-18 to 10-15) were read from the dev
+console for the twelve routes with flat schedules: 420, Orange LINK, 436, 440,
+442, 444, 445, 446, 447, 475, 497 and 499. Every Avail timepoint row matched a
+GTFS timepoint by id, which settles increment 0. Avail labels directions N, S,
+E and W, the cardinal word the GTFS headsigns carry.
+
+Four rules were run against those grids before code changed. Counts are
+segments with at least one reading; a segment late in both peaks reads twice.
+
+| Rule | Segments read | 420 | Problem |
+|---|---|---|---|
+| A. v1.5.326: directions pooled, peak 6–9am & 3–7pm against every other hour | 19 | none | Pools a late direction with an on-time one; the 7pm tail raises the base |
+| B. A, per direction | 23 | none | The evening tail still dilutes |
+| C. Per direction, AM and PM peak each against midday 10am–3pm | 35 | 3 | Blames a segment for lateness the bus brought in |
+| D. C, and the late share rises ≥10 points across the segment | 24 | 2 | Kept |
+
+D on 420: Rosemount → 157th westbound, PM 46% against 4% midday, up from 20%
+at Rosemount; 157th → Rosemount eastbound, PM. It drops Dakota County
+Technical College → Rosemount westbound (PM 20%), because departures from
+DCTC are already as late. Routes 445, 497 and 499 read nothing under any rule.
+
+The thresholds stayed where they were (15 points, 20 departures) and one was
+added (10 points of added lateness). The next thing to tune is not a threshold
+but the window: 90 days once the daily feed holds them, and a separate read of
+Saturdays and Sundays, whose schedules differ.

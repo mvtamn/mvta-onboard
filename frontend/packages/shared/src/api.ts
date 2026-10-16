@@ -480,6 +480,8 @@ export interface TimepointSegmentDetail {
   from_stop_name: string;
   to_stop_id: string;
   to_stop_name: string;
+  /** N, S, E or W when the segment's trips agree; absent in detail kept before v1.5.330. */
+  direction?: string | null;
   miles: number | null;
   hours: TimepointSegmentHour[];
 }
@@ -502,6 +504,94 @@ export interface RouteScheduleDetailResponse {
   feed: PredictionRiskFeedInfo;
   checks: PredictionRiskCheckDefinition[];
   route: RouteScheduleDetail;
+}
+
+// The schedule review's history and what changed between two reviews
+// (functions-restapi/src/lib/scheduleReview/history.ts and diff.ts).
+export interface ReviewHistoryEntry {
+  review_id: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  feed_version: string | null;
+  route_count: number;
+  flagged_route_count: number;
+}
+
+export interface ReviewFlagChange {
+  route_id: string;
+  route_short_name: string;
+  check_id: PredictionRiskCheckId;
+  from_value: number | null;
+  to_value: number | null;
+}
+
+export interface ReviewDiff {
+  from: { review_id: number; reviewed_at: string; feed_version: string | null };
+  to: { review_id: number; reviewed_at: string; feed_version: string | null };
+  /** feed: the published schedule changed. checks: same feed, the review itself changed. */
+  cause: "feed" | "checks";
+  gained: ReviewFlagChange[];
+  lost: ReviewFlagChange[];
+  checks_added: PredictionRiskCheckId[];
+  checks_removed: PredictionRiskCheckId[];
+  routes_added: { route_id: string; route_short_name: string; flag_count: number }[];
+  routes_removed: { route_id: string; route_short_name: string }[];
+  flagged_routes: { from: number; to: number };
+}
+
+export interface ReviewHistoryResponse {
+  history: ReviewHistoryEntry[];
+  diff: ReviewDiff | null;
+}
+
+// What Avail observed at a route's timepoints by hour, beside the schedule
+// (functions-restapi/src/lib/scheduleReview/observed.ts). Avail's own
+// early/on-time/late classification over a window; not the official OTP figure.
+export type ObservedDayKind = "weekday" | "saturday" | "sunday";
+
+export interface ObservedCell {
+  hour: number;
+  departures: number;
+  early_pct: number;
+  ontime_pct: number;
+  late_pct: number;
+}
+
+export interface ObservedTimepoint {
+  stop_id: string;
+  stop_name: string;
+  direction: string | null;
+  departures: number;
+  in_schedule: boolean;
+  hours: ObservedCell[];
+}
+
+export interface ObservedReading {
+  kind: "peak_under_run" | "off_peak_over_run";
+  /** am / pm: that peak is under-run. midday: midday is over-run. */
+  period: "am" | "pm" | "midday";
+  /** N, S, E or W; null when the segment was read across both directions. */
+  direction: string | null;
+  from_stop_id: string;
+  to_stop_id: string;
+  from_stop_name: string;
+  to_stop_name: string;
+  scheduled_minutes: number;
+  peak_pct: number;
+  /** The same share at midday (10am–3pm). */
+  off_peak_pct: number;
+  /** Under-run: the late share at the timepoint before, same peak; null when not measured. */
+  upstream_pct: number | null;
+  text: string;
+}
+
+export interface ObservedOtpResponse {
+  window: { days: number; dow: ObservedDayKind; first_day: string | null; last_day: string | null; service_days: number };
+  departures: number;
+  timepoints: ObservedTimepoint[];
+  readings: ObservedReading[];
+  /** false when migration 145 has no detail for the route: the grid is in Avail's order and has no readings. */
+  schedule_available: boolean;
 }
 
 export interface KpiTrustDependency {
@@ -1292,6 +1382,22 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     /** The evidence behind one route's flags and its scheduled minutes per timepoint segment by hour. Needs migration 145. */
     getGtfsPredictionRiskRoute(routeId: string) {
       return request<RouteScheduleDetailResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}`, {}, true);
+    },
+    /** One entry per distinct schedule review, newest first, and what changed between two (default: the newest two). */
+    getGtfsPredictionRiskHistory(options: { from?: number; to?: number } = {}) {
+      const params = new URLSearchParams();
+      if (options.from !== undefined) params.set("from", String(options.from));
+      if (options.to !== undefined) params.set("to", String(options.to));
+      const query = params.toString();
+      return request<ReviewHistoryResponse>(`/api/gtfs-prediction-risk/history${query ? `?${query}` : ""}`, {}, true);
+    },
+    /** What Avail observed at the route's timepoints by hour. Needs compliance-review.view. */
+    getGtfsPredictionRiskRouteObserved(routeId: string, options: { days?: 7 | 28 | 90; dow?: ObservedDayKind } = {}) {
+      const params = new URLSearchParams();
+      if (options.days) params.set("days", String(options.days));
+      if (options.dow) params.set("dow", options.dow);
+      const query = params.toString();
+      return request<ObservedOtpResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}/observed${query ? `?${query}` : ""}`, {}, true);
     },
 
     getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {

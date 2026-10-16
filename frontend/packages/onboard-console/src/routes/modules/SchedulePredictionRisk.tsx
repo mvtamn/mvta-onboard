@@ -1,12 +1,21 @@
 import { useEffect, useState } from "react";
-import { ApiError, type PredictionRiskCheckDefinition, type PredictionRiskReview } from "@mvta/shared";
+import { Link, useInRouterContext } from "react-router-dom";
+import { ApiError, type PredictionRiskReview } from "@mvta/shared";
 import { api } from "../../config.js";
 import { whenLabel } from "./kpiTrustPresentation.js";
+import { OWNER_LABEL, feedDate, formatRiskValue, scheduleReviewPath, thresholdSentence } from "./scheduleReviewPresentation.js";
+import { ScheduleRouteView } from "./scheduleReview/ScheduleRouteView.js";
+import { ScheduleReviewChanges } from "./scheduleReview/ScheduleReviewChanges.js";
 
-// Integrations & Data Health > Schedule data. The latest static sync's review of
-// where the published schedule makes arrival predictions worse, per route. It
-// is about the schedule MVTA publishes, not about whether a feed answers, so it
-// sits below the connectivity checks rather than in them.
+export { formatRiskValue } from "./scheduleReviewPresentation.js";
+
+// The latest static sync's review of where the published schedule makes
+// arrival predictions worse, per route. Shown twice: as "Schedule data" on
+// Integrations & Data Health (mode "summary"), where it is about the schedule
+// MVTA publishes rather than whether a feed answers and so sits below the
+// connectivity checks, with each route linking to the Schedule Review page;
+// and as the body of that page (mode "page"), where a route opens its
+// evidence and run-time profile in place.
 
 type Load =
   | { state: "loading" }
@@ -21,30 +30,19 @@ function errorMessage(error: unknown): string {
   return "The schedule review could not be loaded. Try again shortly.";
 }
 
-const OWNER_LABEL: Record<PredictionRiskCheckDefinition["owner"], string> = {
-  scheduling: "MVTA scheduling",
-  avail: "Avail schedule export",
-  operations: "Operations",
-  structural: "Not a schedule fix",
-};
-
-export function formatRiskValue(definition: PredictionRiskCheckDefinition, value: number | null): string {
-  if (value === null) return "—";
-  if (definition.unit === "%") return `${value}%`;
-  if (definition.unit === "trips") return value.toLocaleString();
-  return `${value} ${definition.unit}`;
-}
-
-// feed_info dates are GTFS YYYYMMDD.
-function feedDate(value: string | null): string | null {
-  const match = value?.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
-    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-export function SchedulePredictionRisk() {
+export function SchedulePredictionRisk({
+  mode = "summary",
+  initialRoute = null,
+}: {
+  mode?: "summary" | "page";
+  /** Page mode: a route id to open on arrival (Integrations & Data Health links with ?route=). */
+  initialRoute?: string | null;
+}) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
+  const [openRoute, setOpenRoute] = useState<string | null>(mode === "page" ? initialRoute : null);
+  // Summary mode links each route to the Schedule Review page. Outside a router
+  // (tests, embedding) the name stays plain text.
+  const inRouter = useInRouterContext();
 
   useEffect(() => {
     let live = true;
@@ -58,20 +56,29 @@ export function SchedulePredictionRisk() {
   const flagged = review?.routes.filter((route) => route.flag_count > 0).length ?? 0;
   const from = feedDate(review?.feed.start_date ?? null);
   const to = feedDate(review?.feed.end_date ?? null);
+  const open = mode === "page" && openRoute ? review?.routes.find((r) => r.route_id === openRoute) ?? null : null;
 
   return (
     <section className="ih-section" aria-labelledby="ih-schedule-title">
       <div className="ih-section-head">
-        <div>
-          <span className="ih-eyebrow">Schedule data</span>
-          <h2 id="ih-schedule-title">Where the schedule makes predictions worse</h2>
-          <p>
-            Checked on every static GTFS import. Each flag is something in the published schedule that leaves the
-            arrival prediction riders see with less to go on. Fixing the schedule improves predictions whichever
-            vendor produces them.
-          </p>
-        </div>
-        {review && <div className="ih-section-aside"><span>Reviewed {whenLabel(review.reviewed_at)}</span></div>}
+        {mode === "page" ? (
+          <h2 id="ih-schedule-title" className="sr-table-title">Routes, most flags first</h2>
+        ) : (
+          <div>
+            <span className="ih-eyebrow">Schedule data</span>
+            <h2 id="ih-schedule-title">Where the schedule makes predictions worse</h2>
+            <p>
+              Checked on every static GTFS import. Each flag is something in the published schedule that leaves the
+              arrival prediction riders see with less to go on. Fixing the schedule improves predictions whichever
+              vendor produces them.
+            </p>
+          </div>
+        )}
+        {review && (
+          <div className="ih-section-aside">
+            <span>Reviewed {whenLabel(review.reviewed_at)}{review.confirmed_at ? `, confirmed ${whenLabel(review.confirmed_at)}` : ""}</span>
+          </div>
+        )}
       </div>
 
       {load.state === "loading" && <p className="ih-table-empty">Loading the schedule review…</p>}
@@ -83,12 +90,16 @@ export function SchedulePredictionRisk() {
       {review && (
         <>
           <p className="ih-risk-summary">
-            <span><strong>{flagged} of {review.routes.length} routes</strong> have at least one flag. Routes with the most flags come first.</span>
+            <span><strong>{flagged} of {review.routes.length} routes</strong> have at least one flag. Routes with the most flags come first; {mode === "page" ? "open a route for the evidence behind each flag." : "a route name opens its evidence on the Schedule Review page."}</span>
             <span className="ih-risk-feed">
               {review.feed.version ? `Feed ${review.feed.version}` : "Feed"}
               {from && to ? ` · ${from} – ${to}` : ""}
             </span>
           </p>
+          <ScheduleReviewChanges mode={mode} checks={review.checks} onOpenRoute={mode === "page" ? setOpenRoute : undefined} />
+          {open ? (
+            <ScheduleRouteView routeId={open.route_id} routeLabel={open.route_short_name} onClose={() => setOpenRoute(null)} />
+          ) : null}
           <div className="ih-risk-scroll">
             <table className="ih-risk" aria-label="Schedule prediction risk by route">
               <thead>
@@ -104,7 +115,19 @@ export function SchedulePredictionRisk() {
                 {review.routes.map((route) => (
                   <tr key={route.route_id}>
                     <th scope="row">
-                      {route.route_short_name}
+                      {mode === "page" ? (
+                        <button
+                          type="button"
+                          className="sr-open"
+                          aria-expanded={openRoute === route.route_id}
+                          aria-label={`${openRoute === route.route_id ? "Hide" : "Open"} schedule review for route ${route.route_short_name}`}
+                          onClick={() => setOpenRoute(openRoute === route.route_id ? null : route.route_id)}
+                        >
+                          {route.route_short_name}
+                        </button>
+                      ) : inRouter ? (
+                        <Link to={scheduleReviewPath(route.route_id)} title="Open this route on the Schedule Review page">{route.route_short_name}</Link>
+                      ) : route.route_short_name}
                       <small>{route.trip_count.toLocaleString()} trips</small>
                     </th>
                     <td className="num"><span className={`ih-risk-count${route.flag_count ? " flagged" : ""}`}>{route.flag_count}</span></td>
@@ -129,10 +152,7 @@ export function SchedulePredictionRisk() {
           <dl className="ih-risk-legend">
             {review.checks.map((definition) => (
               <div key={definition.id}>
-                <dt>
-                  {definition.label}{" "}
-                  <span>flagged at {formatRiskValue(definition, definition.threshold)} or {definition.comparison === "at_most" ? "less" : "more"}</span>
-                </dt>
+                <dt>{definition.label} <span>{thresholdSentence(definition)}</span></dt>
                 <dd>{definition.why}</dd>
                 <dd className="ih-risk-fix"><strong>{OWNER_LABEL[definition.owner]}:</strong> {definition.fix}</dd>
               </div>

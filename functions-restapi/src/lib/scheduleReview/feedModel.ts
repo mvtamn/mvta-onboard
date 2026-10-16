@@ -48,6 +48,13 @@ export interface ModelTrip {
   serviceId: string;
   blockId: string | null;
   directionId: string;
+  /**
+   * N, S, E or W: the cardinal word in the trip's headsign ("West to Apple
+   * Valley TS"), or the one most of the route's trips in the same direction_id
+   * carry when this headsign has none. Avail labels its OTP rows the same way,
+   * which is how a segment is matched to the direction Avail measured.
+   */
+  directionLabel: string | null;
   stopTimes: ModelStopTime[];
   hops: ModelHop[];
   /** Start hour folded to 0-23 for grouping by time of day. */
@@ -168,15 +175,30 @@ export function buildScheduleModel(feed: PredictionRiskFeed): ScheduleModel {
 
   const tripsTable = table(feed.tripsCsv);
   const tIdx = (n: string) => tripsTable.header.indexOf(n);
-  const [tripIdCol, tripRouteCol, serviceCol, blockCol, directionCol] =
-    [tIdx("trip_id"), tIdx("route_id"), tIdx("service_id"), tIdx("block_id"), tIdx("direction_id")];
-  const tripRows = new Map<string, { routeId: string; serviceId: string; blockId: string | null; directionId: string }>();
+  const [tripIdCol, tripRouteCol, serviceCol, blockCol, directionCol, headsignCol] =
+    [tIdx("trip_id"), tIdx("route_id"), tIdx("service_id"), tIdx("block_id"), tIdx("direction_id"), tIdx("trip_headsign")];
+  const tripRows = new Map<string, { routeId: string; serviceId: string; blockId: string | null; directionId: string; headsignLabel: string | null }>();
+  // Votes per route and direction_id, for a headsign with no cardinal word.
+  const labelVotes = new Map<string, Map<string, number>>();
   for (const cols of tripsTable.rows) {
     const tripId = cols[tripIdCol];
     const routeId = cols[tripRouteCol];
     if (!tripId || !routeId) continue;
-    tripRows.set(tripId, { routeId, serviceId: cols[serviceCol] ?? "", blockId: cols[blockCol] || null, directionId: cols[directionCol] ?? "" });
+    const directionId = cols[directionCol] ?? "";
+    const headsignLabel = cardinalLabel(headsignCol === -1 ? null : cols[headsignCol]);
+    tripRows.set(tripId, { routeId, serviceId: cols[serviceCol] ?? "", blockId: cols[blockCol] || null, directionId, headsignLabel });
+    if (headsignLabel) {
+      const key = `${routeId}\u0000${directionId}`;
+      const votes = labelVotes.get(key) ?? new Map<string, number>();
+      votes.set(headsignLabel, (votes.get(headsignLabel) ?? 0) + 1);
+      labelVotes.set(key, votes);
+    }
   }
+  const fallbackLabel = (routeId: string, directionId: string): string | null => {
+    const votes = labelVotes.get(`${routeId}\u0000${directionId}`);
+    if (!votes) return null;
+    return [...votes.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  };
 
   const stTable = table(feed.stopTimesCsv);
   const cIdx = (n: string) => stTable.header.indexOf(n);
@@ -243,6 +265,7 @@ export function buildScheduleModel(feed: PredictionRiskFeed): ScheduleModel {
       serviceId: row.serviceId,
       blockId: row.blockId,
       directionId: row.directionId,
+      directionLabel: row.headsignLabel ?? fallbackLabel(row.routeId, row.directionId),
       stopTimes,
       hops,
       startHour: Math.floor(first.departure / 3600) % 24,
@@ -314,6 +337,12 @@ export function buildScheduleModel(feed: PredictionRiskFeed): ScheduleModel {
   };
 }
 
+
+/** N, S, E or W from the first cardinal word in a headsign; null when it has none. */
+export function cardinalLabel(headsign: string | null | undefined): string | null {
+  const match = headsign?.match(/\b(North|South|East|West)\b/i);
+  return match ? match[1][0].toUpperCase() : null;
+}
 
 /** Seconds on the GTFS clock as HH:MM, folded past midnight. */
 export function clock(secondsOnClock: number): string {
