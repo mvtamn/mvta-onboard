@@ -3,6 +3,7 @@ import { ApiError, type RouteCheckDetail, type RouteScheduleDetailResponse, type
 import { api } from "../../../config.js";
 import { whenLabel } from "../kpiTrustPresentation.js";
 import { OWNER_LABEL, feedSentence, formatRiskValue, thresholdSentence } from "../scheduleReviewPresentation.js";
+import { ObservedGrid } from "./ObservedGrid.js";
 import "./scheduleReview.css";
 
 // One route's schedule review: what in the published schedule makes its
@@ -204,6 +205,8 @@ export function ScheduleRouteView({ routeId, routeLabel, onClose }: { routeId: s
               </p>
             </>
           ) : null}
+
+          <ObservedGrid routeId={route.route_id} routeLabel={routeLabel} hours={hours} />
         </>
       ) : null}
     </section>

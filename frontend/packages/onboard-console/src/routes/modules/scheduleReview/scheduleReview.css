@@ -67,3 +67,31 @@
 .sr-page .sr-table-title { flex: 1 1 220px; }
 .sr-page .ih-section-aside { flex: 0 1 auto; }
 .sr-page .ih-section-aside span { white-space: normal; }
+
+/* What Avail observed (ObservedGrid.tsx). Late and early share one warning
+   scale in two hues, three steps by share; on-time is quiet. A reading is a
+   sentence, not a colour, so the grid never has to carry the conclusion. */
+.sr-observed { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
+.sr-observed-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.sr-observed-head .sr-grid-title { margin: 0; flex: 1 1 280px; }
+.sr-observed-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.sr-seg-ctl { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; }
+.sr-seg-ctl button { all: unset; cursor: pointer; font-size: 11px; padding: 5px 10px; color: var(--text-dim); border-left: 1px solid var(--border-strong); }
+.sr-seg-ctl button:first-child { border-left: none; }
+.sr-seg-ctl button[aria-pressed="true"] { background: var(--brand-green); color: #fff; font-weight: 700; }
+.sr-seg-ctl button:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+.sr-observed .sr-meta { margin-top: 8px; }
+.sr-readings { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sr-readings li { font-size: 12.5px; line-height: 1.5; color: var(--text); background: var(--pill-warning-bg); border-left: 3px solid var(--pill-warning-fg); border-radius: 4px; padding: 7px 10px; }
+.sr-reading-kind { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--pill-warning-fg); margin-bottom: 2px; }
+.sr-no-reading { font-size: 12px; margin: 0 0 12px; }
+.sr-dir { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--text-muted); }
+.sr-observed-grid tr.unscheduled th .sr-seg { color: var(--text-muted); }
+.sr-obs { font-weight: 700; }
+.sr-obs.ontime { color: var(--success-text); font-weight: 400; }
+.sr-obs.late.l0, .sr-obs.early.l0 { color: var(--text-dim); font-weight: 500; }
+.sr-obs.late.l1 { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.sr-obs.late.l2 { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+.sr-obs.early.l1 { background: var(--highlight-bg); color: var(--text); }
+.sr-obs.early.l2 { background: var(--highlight-border); color: #1d1d1b; }
+.sr-readings-more { margin: -4px 0 12px; }

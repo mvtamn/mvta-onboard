@@ -1,7 +1,7 @@
 # Schedule Review Module Plan
 
-Status: increments 1, 2 and 3a built 2026-10-16 (v1.5.324–326, ADR 0040);
-increments 0 (SQL handed over), 3b/3c, 4 and 5 open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
+Status: increments 1–3 built 2026-10-16 (v1.5.324–327, ADR 0040);
+increment 0 (SQL handed over), 4 and 5 open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
 2026-11-01).
 
 Goal: grow the one-table schedule check shipped in v1.5.319
@@ -458,8 +458,8 @@ change, not the change.
 | # | Piece | Size |
 |---|---|---|
 | 3a | `observed.ts` + tests, store, endpoint. **Built, v1.5.326** (the reading rule of 3c came with it; only its render is left). | small–medium |
-| 3b | Console grid + window picker | medium |
-| 3c | Flat-segment sentences (rule + tests + render) | small |
+| 3b | Console grid + window picker. **Built, v1.5.327.** | medium |
+| 3c | Flat-segment sentences (rule + tests + render). **Built**: rule in v1.5.326, render in v1.5.327. | small |
 
 ### Open questions, answered by increment 0 or stated as assumptions
 
