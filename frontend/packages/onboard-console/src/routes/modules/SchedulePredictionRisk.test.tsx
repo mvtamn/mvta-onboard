@@ -7,22 +7,26 @@ const { getGtfsPredictionRisk } = vi.hoisted(() => ({ getGtfsPredictionRisk: vi.
 vi.mock("../../config.js", () => ({ api: { getGtfsPredictionRisk } }));
 
 const CHECKS: PredictionRiskCheckDefinition[] = [
-  { id: "placeholder_times", label: "Placeholder stop times", unit: "%", threshold: 10, why: "Stops scheduled one second apart." },
-  { id: "timepoint_gap", label: "Longest gap between timepoints", unit: "min", threshold: 30, why: "Traffic decides the arrival." },
+  { id: "placeholder_times", label: "Placeholder stop times", unit: "%", threshold: 10, comparison: "at_least", why: "Stops scheduled one second apart.", owner: "avail", fix: "Export interpolated times." },
+  { id: "timepoint_gap", label: "Longest gap between timepoints", unit: "min", threshold: 30, comparison: "at_least", why: "Traffic decides the arrival.", owner: "structural", fix: "Predict from GPS progress." },
+  { id: "recovery_time", label: "Typical recovery time", unit: "min", threshold: 5, comparison: "at_most", why: "Lateness carries over.", owner: "scheduling", fix: "Lengthen the layover." },
 ];
 
 const REVIEW: PredictionRiskReview = {
   reviewed_at: "2026-10-14T09:00:00Z",
+  confirmed_at: null,
   feed: { version: "20260909", start_date: "20260909", end_date: "20261101" },
   checks: CHECKS,
   routes: [
     { route_id: "490", route_short_name: "490", trip_count: 56, flag_count: 2, checks: [
       { id: "placeholder_times", value: 10, flagged: true },
       { id: "timepoint_gap", value: 45, flagged: true },
+      { id: "recovery_time", value: 72, flagged: false },
     ] },
     { route_id: "470", route_short_name: "470", trip_count: 32, flag_count: 0, checks: [
       { id: "placeholder_times", value: 0, flagged: false },
       { id: "timepoint_gap", value: null, flagged: false },
+      { id: "recovery_time", value: 3, flagged: true },
     ] },
   ],
 };
@@ -52,6 +56,17 @@ describe("SchedulePredictionRisk", () => {
     expect(await screen.findByText(/Feed 20260909 · Sep 9, 2026 – Nov 1, 2026/)).toBeInTheDocument();
     expect(screen.getByText("Traffic decides the arrival.")).toBeInTheDocument();
     expect(screen.getByText("flagged at 30 min or more")).toBeInTheDocument();
+  });
+
+  it("reads a check that flags downward as 'or less' and says who owns each fix", async () => {
+    getGtfsPredictionRisk.mockResolvedValue({ review: REVIEW });
+    render(<SchedulePredictionRisk />);
+
+    expect(await screen.findByText("flagged at 5 min or less")).toBeInTheDocument();
+    expect(screen.getByText("MVTA scheduling:")).toBeInTheDocument();
+    expect(screen.getByText(/Lengthen the layover\./)).toBeInTheDocument();
+    expect(screen.getByText("Avail schedule export:")).toBeInTheDocument();
+    expect(screen.getByText("Not a schedule fix:")).toBeInTheDocument();
   });
 
   it("says when no review has been kept yet rather than showing an empty table", async () => {

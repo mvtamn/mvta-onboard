@@ -405,14 +405,31 @@ export type PredictionRiskCheckId =
   | "tight_turnarounds"
   | "interlined"
   | "block_overlaps"
-  | "run_time_spread";
+  | "run_time_spread"
+  | "run_time_flat"
+  | "timepoint_density"
+  | "implied_speed"
+  | "recovery_time";
+
+/** Who can change the thing a check found. */
+export type PredictionRiskOwner = "scheduling" | "avail" | "operations" | "structural";
 
 export interface PredictionRiskCheckDefinition {
   id: PredictionRiskCheckId;
   label: string;
-  unit: "%" | "min" | "mi" | "trips";
+  unit: "%" | "min" | "mi" | "trips" | "stops" | "segments";
   threshold: number;
+  /** at_least: a value at or above the threshold is flagged. at_most: at or below. */
+  comparison: "at_least" | "at_most";
   why: string;
+  owner: PredictionRiskOwner;
+  fix: string;
+}
+
+export interface PredictionRiskCheckResult {
+  id: PredictionRiskCheckId;
+  value: number | null;
+  flagged: boolean;
 }
 
 export interface PredictionRiskRoute {
@@ -420,14 +437,71 @@ export interface PredictionRiskRoute {
   route_short_name: string;
   trip_count: number;
   flag_count: number;
-  checks: { id: PredictionRiskCheckId; value: number | null; flagged: boolean }[];
+  checks: PredictionRiskCheckResult[];
+}
+
+export interface PredictionRiskFeedInfo {
+  version: string | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 export interface PredictionRiskReview {
   reviewed_at: string;
-  feed: { version: string | null; start_date: string | null; end_date: string | null };
+  /** Last static sync that found the same review; null before migration 145. */
+  confirmed_at: string | null;
+  feed: PredictionRiskFeedInfo;
   checks: PredictionRiskCheckDefinition[];
   routes: PredictionRiskRoute[];
+}
+
+/** One row of evidence behind a check: a stop pair, a hand-over, a pattern, a layover bucket. */
+export interface ReviewEvidence {
+  text: string;
+  count: number | null;
+  value: number | null;
+  stop_ids: string[];
+  trip_ids: string[];
+}
+
+export interface RouteCheckDetail extends PredictionRiskCheckResult {
+  evidence: ReviewEvidence[];
+}
+
+export interface TimepointSegmentHour {
+  hour: number;
+  trips: number;
+  min_minutes: number;
+  max_minutes: number;
+}
+
+export interface TimepointSegmentDetail {
+  from_stop_id: string;
+  from_stop_name: string;
+  to_stop_id: string;
+  to_stop_name: string;
+  miles: number | null;
+  hours: TimepointSegmentHour[];
+}
+
+export interface RouteScheduleDetail {
+  route_id: string;
+  route_short_name: string;
+  trip_count: number;
+  stop_count: number;
+  timepoint_count: number;
+  pattern_count: number;
+  flag_count: number;
+  checks: RouteCheckDetail[];
+  segments: TimepointSegmentDetail[];
+}
+
+export interface RouteScheduleDetailResponse {
+  reviewed_at: string;
+  confirmed_at: string | null;
+  feed: PredictionRiskFeedInfo;
+  checks: PredictionRiskCheckDefinition[];
+  route: RouteScheduleDetail;
 }
 
 export interface KpiTrustDependency {
@@ -1214,6 +1288,10 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     },
     getGtfsPredictionRisk() {
       return request<{ review: PredictionRiskReview | null }>("/api/gtfs-prediction-risk", {}, true);
+    },
+    /** The evidence behind one route's flags and its scheduled minutes per timepoint segment by hour. Needs migration 145. */
+    getGtfsPredictionRiskRoute(routeId: string) {
+      return request<RouteScheduleDetailResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}`, {}, true);
     },
 
     getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {
