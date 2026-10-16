@@ -1,7 +1,7 @@
 # Schedule Review Module Plan
 
-Status: increment 1 built 2026-10-16 (v1.5.324, ADR 0040); increments 0 and
-2-5 open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
+Status: increments 1 and 2 built 2026-10-16 (v1.5.324, v1.5.325, ADR 0040);
+increments 0 and 3-5 open. Written 2026-10-15 against main `7129c8e2` (v1.5.323) and the live MVTA feed (`feed_version` 20260909, valid to
 2026-11-01).
 
 Goal: grow the one-table schedule check shipped in v1.5.319
@@ -241,10 +241,14 @@ answers:
   health reader.
 - **B. Put the analysis where the route already is: Compliance › OTP › Route
   Summary.** Its per-route drill-down already shows OTP by timepoint, worst
-  first. A "Schedule" view beside it shows the same timepoints with scheduled
-  minutes by hour, flags and evidence, and the observed overlay is one tab
-  away from the figure it explains. Health keeps the summary table and links
-  to it. **Recommended.**
+  first. Recommended at first, and built that way, then **moved out before
+  landing**: OTP is compliance and the schedule review is analysis (the user's
+  call, 2026-10-16). Putting an analysis view inside the compliance module
+  would have made a schedule flag read like a contract finding.
+- **C. Its own page, `/schedule-review`, under Specialist Operations** beside
+  OCC Tools. Health keeps the summary table and links each route to it. Every
+  signed-in role sees it, matching the endpoint. **Built (v1.5.325).** The
+  observed overlay (increment 3) goes on this page, under the run-time grid.
 
 Views, in build order:
 
@@ -268,7 +272,7 @@ Each is one PR, one changelog entry, tests first on the pure parts.
 |---|---|---|---|
 | 0 | **Confirm the stop join on dev** (one SQL, user runs it since public SQL access is denied): `SELECT COUNT(*) FROM OtpDailyRouteStopHour o JOIN GtfsStops s ON s.stop_id = CAST(o.stop_id AS NVARCHAR(50))` against distinct OTP stops. | — | minutes |
 | 1 | **Module + evidence.** `lib/scheduleReview/` with `feedModel`, `distance` (calibrated), the seven existing checks moved to `checks/` with evidence, four new checks (2a–2d) with owner/fix, `GtfsScheduleReviewRoutes` + write-on-change, route detail endpoint. ADR: *Keep the schedule review's evidence beside its verdict*. CONTEXT.md gains "Schedule review" (distinct from "Schedule snapshot"). | — | large |
-| 2 | **Console route detail + run-time profile** (views 1–2) in Compliance › OTP › Route Summary, Health links in. | 1 | medium |
+| 2 | **Console route detail + run-time profile** (views 1–2) on the Schedule Review page, Health links in. **Built, v1.5.325.** | 1 | medium |
 | 3 | **Observed overlay** (`observed.ts`, view 3). | 0, 1, 2 | medium |
 | 4 | **Feed diff + history** (`diff.ts`, view 4, Health summary gains history). | 1 | small |
 | 5 | Retune thresholds now that evidence is visible; drop `run_time_spread` in favour of 2a or keep both with clear words. | 2 | small |
