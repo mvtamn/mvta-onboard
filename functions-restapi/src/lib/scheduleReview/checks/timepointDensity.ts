@@ -38,7 +38,7 @@ export const timepointDensity: CheckModule = {
     const rows = [...runs.values()]
       .filter((run) => run.stops > 0)
       .sort((a, b) => b.stops - a.stops || b.trips.length - a.trips.length)
-      .map((run) => evidence(`${pairText(model, run.from, run.to)}: ${run.stops} stops in between, ${tripsWord(run.trips.length)}`, {
+      .map((run) => evidence(`${pairText(model, run.from, run.to)}: ${run.stops === 1 ? "1 stop" : `${run.stops} stops`} in between, ${tripsWord(run.trips.length)}`, {
         value: run.stops,
         count: run.trips.length,
         stop_ids: [run.from, run.to],
