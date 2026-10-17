@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.336] - 2026-10-16
+
+Step 14 of `plans/production-environment-plan.md`.
+
+- **Production's own sign-in registration.** `phase1-prod.parameters.json` sets `aadClientId` to `b9d88e43-3e8f-4e89-ad11-d894867e6e93`, which is "MVTA OnBoard (Production)", registered in step 12. It is single tenant, exposes `api://b9d88e43…/access_as_user`, carries the same ten app roles as dev (OCC.* and System.Ingestion), and has SPA redirects for `onboard.mvta.com/console/` and production's Front Door. Each role is assigned to the same Entra group as on dev (step 13). A token issued for dev's registration has the wrong audience for production's API. The next production phase-1 run turns Easy Auth on, because `enableEasyAuth` is `!empty(aadClientId)`.
+- **The app's Entra credential no longer depends on Access Management.** `AZURE_TENANT_ID`, `ONBOARD_API_CLIENT_ID` and `ONBOARD_API_CLIENT_SECRET` were emitted only when `accessManagementConfigJson` was set. The Decision Matrix reads SharePoint with that same credential: app-only through `Sites.Selected` for the library picker, and on-behalf-of the user for documents. So an environment without Access Management would have lost the SOP library without any error. `functionapp.bicep` now takes `enableGraphClient`, which the REST API sets whenever it has a client id. The Access Management settings themselves (`ONBOARD_ACCESS_CONFIG_JSON`, the fallback and the auth context) stay behind `enableAccessManagement`. A what-if against dev shows no app-setting change, because dev has both on.
+- **Production runs without Access Management**, as the owner decided on 2026-10-16. `accessManagementConfigJson` stays empty, and production's registration holds no permission to write Entra role assignments or group membership. Its Graph permissions are sign-in, delegated `Files.Read.All` and `Sites.Read.All`, and application `Sites.Selected`. Dev's `Sites.FullControl.All`, `AppRoleAssignment.ReadWrite.All`, `GroupMember.ReadWrite.All`, `User.Invite.All` and `Mail.Send` are not carried over; several of them are used by nothing in the code.
+- **`deploy.sh` is executable** (mode 100755, as `rotate-sql-credentials.sh` already was). Running it as `./scripts/deploy.sh` failed with "permission denied".
+
 ## [1.5.334] - 2026-10-16
 
 - **Schedule Review redesign, built from the design canvas after the 2026-10-16 critique (21/40).** The critique's four P1 issues: the route table and the route view were two pages with no way back; routes were ranked by raw flag count, so structural flags no scheduler can act on ranked a route first; the run-time and observed grids were two tables per route that had to be read against each other; light-mode muted text and the brand-green focus ring were under 4.5:1.

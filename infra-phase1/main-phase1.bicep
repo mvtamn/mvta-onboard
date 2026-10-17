@@ -173,6 +173,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     spareContractorFaultValues: spareContractorFaultValues
     manageRoleAssignments: manageRoleAssignments
     enableAccessManagement: !empty(accessManagementConfigJson)
+    enableGraphClient: !empty(aadClientId)
     accessManagementConfigJson: accessManagementConfigJson
     accessAdminFallback: accessAdminFallback
     privilegedAuthContext: privilegedAuthContext
