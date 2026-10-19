@@ -5,11 +5,20 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.5.335] - 2026-10-16
+## [1.5.337] - 2026-10-19
 
 - **The prediction capture threw an exception every 30 seconds while it could not write.** v1.5.332 went live on dev at 17:22 UTC before the REST app's identity had Storage Blob Data Contributor on `stmvtapredcapdevmvtajx44` (`manageRoleAssignments` is off on dev, so the template does not grant it). Every run failed with "This request is not authorized to perform this operation". `runFeedIngestion` records a thrown error on the ledger and rethrows it, so each failure was also an App Insights exception: 2,880 a day, and a SQL ledger write every 30 seconds.
 - **A refused write (HTTP 403) is now a ledger failure, not a throw** (`notAuthorizedReason` in `lib/predictionAccuracy/captureStore.ts`). The reason names the account and the missing role. The timer then holds off for 15 minutes (`createWriteGate`) before reading the feeds and trying again, so a missing role costs one ledger row and one error log a quarter-hour. Any other write error still throws as before. Once the role is granted, the next attempt after the hold-off succeeds with no restart.
 - **Verified.** Two new backend checks: the 403 reason, the non-403 errors that still throw, and the gate's timing. All 1,550 API tests run with none failing. Not yet run in Azure.
+
+## [1.5.336] - 2026-10-16
+
+Step 14 of `plans/production-environment-plan.md`.
+
+- **Production's own sign-in registration.** `phase1-prod.parameters.json` sets `aadClientId` to `b9d88e43-3e8f-4e89-ad11-d894867e6e93`, which is "MVTA OnBoard (Production)", registered in step 12. It is single tenant, exposes `api://b9d88e43…/access_as_user`, carries the same ten app roles as dev (OCC.* and System.Ingestion), and has SPA redirects for `onboard.mvta.com/console/` and production's Front Door. Each role is assigned to the same Entra group as on dev (step 13). A token issued for dev's registration has the wrong audience for production's API. The next production phase-1 run turns Easy Auth on, because `enableEasyAuth` is `!empty(aadClientId)`.
+- **The app's Entra credential no longer depends on Access Management.** `AZURE_TENANT_ID`, `ONBOARD_API_CLIENT_ID` and `ONBOARD_API_CLIENT_SECRET` were emitted only when `accessManagementConfigJson` was set. The Decision Matrix reads SharePoint with that same credential: app-only through `Sites.Selected` for the library picker, and on-behalf-of the user for documents. So an environment without Access Management would have lost the SOP library without any error. `functionapp.bicep` now takes `enableGraphClient`, which the REST API sets whenever it has a client id. The Access Management settings themselves (`ONBOARD_ACCESS_CONFIG_JSON`, the fallback and the auth context) stay behind `enableAccessManagement`. A what-if against dev shows no app-setting change, because dev has both on.
+- **Production runs without Access Management**, as the owner decided on 2026-10-16. `accessManagementConfigJson` stays empty, and production's registration holds no permission to write Entra role assignments or group membership. Its Graph permissions are sign-in, delegated `Files.Read.All` and `Sites.Read.All`, and application `Sites.Selected`. Dev's `Sites.FullControl.All`, `AppRoleAssignment.ReadWrite.All`, `GroupMember.ReadWrite.All`, `User.Invite.All` and `Mail.Send` are not carried over; several of them are used by nothing in the code.
+- **`deploy.sh` is executable** (mode 100755, as `rotate-sql-credentials.sh` already was). Running it as `./scripts/deploy.sh` failed with "permission denied".
 
 ## [1.5.334] - 2026-10-16
 
