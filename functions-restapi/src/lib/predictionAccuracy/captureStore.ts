@@ -57,3 +57,32 @@ export async function appendCapture(account: string, blobName: string, lines: re
   await client.appendBlock(member, member.length);
   return member.length;
 }
+
+/** How long the capture waits after a refused write before trying again. */
+export const NOT_AUTHORIZED_RETRY_MS = 15 * 60_000;
+
+/**
+ * The ledger reason for a write the account refused (HTTP 403), or null for
+ * any other error. A 403 here is a missing role assignment, not a passing
+ * fault: on 2026-10-16 every run for three hours threw "This request is not
+ * authorized to perform this operation" until the role was granted, which
+ * made an App Insights exception every 30 seconds.
+ */
+export function notAuthorizedReason(error: unknown, account: string): string | null {
+  const status = typeof error === "object" && error !== null ? (error as { statusCode?: unknown }).statusCode : undefined;
+  if (status !== 403) return null;
+  const minutes = NOT_AUTHORIZED_RETRY_MS / 60_000;
+  return `${account} refused the write (403): the Function App's identity needs Storage Blob Data Contributor on it. Trying again in ${minutes} minutes.`;
+}
+
+/**
+ * Holds the capture off after a refused write. One per process; the clock is
+ * passed in so the test can drive it.
+ */
+export function createWriteGate(retryMs: number = NOT_AUTHORIZED_RETRY_MS) {
+  let closedUntil = 0;
+  return {
+    isOpen: (now: number) => now >= closedUntil,
+    close: (now: number) => { closedUntil = now + retryMs; },
+  };
+}

@@ -19,13 +19,23 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { fetchGtfsRtFeed, gtfsRtFeedUrl } from "../lib/gtfsRtReader";
 import { runFeedIngestion } from "../lib/feedRun";
 import { captureBlobName, captureLines, readsTripUpdates } from "../lib/predictionAccuracy/capture";
-import { appendCapture, predictionCaptureAccount, PREDICTION_CAPTURE_ACCOUNT_SETTING } from "../lib/predictionAccuracy/captureStore";
+import {
+  appendCapture,
+  createWriteGate,
+  notAuthorizedReason,
+  predictionCaptureAccount,
+  PREDICTION_CAPTURE_ACCOUNT_SETTING,
+} from "../lib/predictionAccuracy/captureStore";
 
 /** Shorter than the 30 s cadence, so a slow feed fails its run rather than overlapping the next. */
 const FETCH_TIMEOUT_MS = 20_000;
 
 // Said once per process, not every 30 seconds.
 let warnedUnconfigured = false;
+// Shut for 15 minutes after the account refuses a write (a missing role), so
+// a refusal is one ledger failure and one error a quarter-hour, not an
+// exception every 30 seconds.
+const writeGate = createWriteGate();
 
 app.timer("predictionCapture", {
   schedule: "*/30 * * * * *",
@@ -40,6 +50,7 @@ app.timer("predictionCapture", {
       }
       return;
     }
+    if (!writeGate.isOpen(Date.now())) return;
 
     await runFeedIngestion("prediction_capture", context, async () => {
       const runAt = new Date();
@@ -58,7 +69,14 @@ app.timer("predictionCapture", {
       const vp = vehicles.status === "fulfilled" ? vehicles.value : null;
 
       const captured = captureLines(runAt, tu, vp);
-      await appendCapture(account, captureBlobName(runAt), captured.lines);
+      try {
+        await appendCapture(account, captureBlobName(runAt), captured.lines);
+      } catch (err) {
+        const refused = notAuthorizedReason(err, account);
+        if (!refused) throw err;
+        writeGate.close(Date.now());
+        return { kind: "failed", reason: refused };
+      }
       return {
         kind: "stored",
         received: captured.lines.length,
