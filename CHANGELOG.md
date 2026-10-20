@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.0] - 2026-10-19
+
+- **Sign-in page redesigned as a split panel**, built from direction A of the 2026-10-19 design canvas. The old screen was a small centered card on a radial-gradient backdrop. Now an evergreen brand panel (MVTA wordmark, a one-line description, four of the console's areas, and a faint route-line drawing marked `aria-hidden`) sits beside a sign-in panel with a 52 px Sign in with Microsoft button carrying the Microsoft logo, a "No access yet?" line, and the build version from `__APP_VERSION__`.
+- **Follows the theme.** The sign-in panel uses `--surface-alt-bg`, `--text`, `--text-dim`, `--text-muted`, `--border` and `--focus-ring`, so dark mode works with no extra rules; the brand panel stays `--brand-green`. Below 640 px the brand panel collapses to a header without the module list. The button has a visible `:focus-visible` ring.
+- The canvas also drew a Dev/Production badge. It is left out because the console has no build-time environment flag yet.
+
 ## [1.5.339] - 2026-10-19
 
 Production plan steps 19-20.
