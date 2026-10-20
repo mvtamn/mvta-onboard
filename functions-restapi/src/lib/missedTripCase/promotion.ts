@@ -312,6 +312,16 @@ export async function recordDetectorPromotion(
   return { ok: true, entry: { ...written, promoted: written.promoted === true || (written.promoted as unknown) === 1 } };
 }
 
+/**
+ * Today's service date key. A service date is an agency day, so "does this
+ * count today" is asked in Central time - a UTC date would answer for tomorrow
+ * from 7pm on.
+ */
+export function serviceDateToday(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(now).replaceAll("-", "");
+}
+
 /** Where each detector stands today, for the page that shows it. */
 export interface DetectorStanding {
   detector: MissedTripDetector;

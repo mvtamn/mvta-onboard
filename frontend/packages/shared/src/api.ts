@@ -137,6 +137,8 @@ import type {
   DetectorPromotionEntry,
   DetectorPromotionInput,
   DetectorPromotionView,
+  DetectorScorecard,
+  DetectorScorecardGrouping,
 } from "./types.js";
 
 export interface TokenRequestOptions {
@@ -1260,6 +1262,15 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getMissedTripDetectorPromotions() {
       return request<DetectorPromotionView>("/api/missed-trip-detector-promotions", {}, true);
+    },
+
+    getMissedTripDetectorScorecard(query: { from?: string; to?: string; group?: DetectorScorecardGrouping } = {}) {
+      const params = new URLSearchParams();
+      if (query.from) params.set("from", query.from);
+      if (query.to) params.set("to", query.to);
+      if (query.group) params.set("group", query.group);
+      const search = params.toString();
+      return request<DetectorScorecard>(`/api/missed-trip-detector-scorecard${search ? `?${search}` : ""}`, {}, true);
     },
 
     recordMissedTripDetectorPromotion(input: DetectorPromotionInput) {

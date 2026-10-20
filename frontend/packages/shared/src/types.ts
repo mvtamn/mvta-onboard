@@ -2333,6 +2333,65 @@ export interface DetectorPromotionView {
   ignored: string[];
 }
 
+/**
+ * The Detector scorecard: the evidence a promotion is decided on, per detector
+ * family and per service week or day. See functions-restapi scorecard.ts.
+ */
+export type DetectorScorecardGrouping = "week" | "day";
+
+export interface DetectorPeriodFigures {
+  detector: MissedTripDetectorName;
+  cases: {
+    detected: number;
+    open: number;
+    closed_by_evidence: number;
+    held: number;
+    awaiting_review: number;
+    reviewed: number;
+    legacy: number;
+    evidence_conflicts: number;
+  };
+  outcomes: { confirmed: number; timely_service: number; partial_service_failure: number; indeterminate: number };
+  /** Confirmed over confirmed + Timely service + Partial-service failure; null with no decisive review. */
+  precision: number | null;
+  sample: number;
+  held_reasons: { reason: string; count: number }[];
+  unknown_rate: number | null;
+  /** Null for on-demand, or when the database has no Avail links. */
+  avail: { corroborated: number; partial: number; confirmed_without_avail: number } | null;
+  /** Null for on-demand, or when the database has no Dispatch Log. */
+  dispatcher: { not_observed: number; observed_on_time: number; observed_left_late: number; agreement: number | null } | null;
+  review: { reviewed: number; awaiting_review: number; average_hours_to_review: number | null };
+  /** Week grouping only. */
+  bar: { complete: boolean; meets_bar: boolean; sentence: string } | null;
+}
+
+export interface DetectorScorecardPeriod {
+  start: string;
+  end: string;
+  ended: boolean;
+  detectors: DetectorPeriodFigures[];
+  avail_recall: {
+    whole_misses: number;
+    caught: number;
+    linked_not_flagged: number;
+    awaiting_reviewer: number;
+    unmatched: number;
+    recall: number | null;
+    unmatched_rate: number | null;
+  } | null;
+  dispatcher_recall: { verifications: number; not_observed: number; caught: number; missed: number; recall: number | null } | null;
+}
+
+export interface DetectorScorecard {
+  from: string;
+  to: string;
+  grouping: DetectorScorecardGrouping;
+  precision_bar: number;
+  sources: { avail: boolean; dispatch_log: boolean };
+  periods: DetectorScorecardPeriod[];
+}
+
 export interface DetectorPromotionInput {
   detector: MissedTripDetectorName;
   effective_service_date: string;
