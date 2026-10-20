@@ -5,11 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.6] - 2026-10-20
-
-- **The rider sign-up page publishes three screenshots of its own opt-in flow** at `alerts.mvta.com/opt-in/1-signup-form.png`, `2-consent-box.png` and `3-enter-code.png`, for the toll-free verification of the rider SMS number. Carriers want a link anyone can open, and MVTA's OneDrive does not allow outside sharing. #1 and #2 were taken from production after 1.6.3 went live, so the consent box shows "Message frequency varies." #3, the 6-digit code step, was taken from a local build with the submit stubbed, so no subscriber was created. The number shown is a 555 example number. Nothing links to these files from the page.
-
-## [1.6.5] - 2026-10-20
+## [1.6.8] - 2026-10-20
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -19,6 +15,10 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.6] - 2026-10-20
+
+- **The rider sign-up page publishes three screenshots of its own opt-in flow** at `alerts.mvta.com/opt-in/1-signup-form.png`, `2-consent-box.png` and `3-enter-code.png`, for the toll-free verification of the rider SMS number. Carriers want a link anyone can open, and MVTA's OneDrive does not allow outside sharing. #1 and #2 were taken from production after 1.6.3 went live, so the consent box shows "Message frequency varies." #3, the 6-digit code step, was taken from a local build with the submit stubbed, so no subscriber was created. The number shown is a 555 example number. Nothing links to these files from the page.
 
 ## [1.6.3] - 2026-10-20
 
