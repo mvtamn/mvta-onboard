@@ -1,15 +1,56 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MissedTripDetectorsAdmin } from "./MissedTripDetectorsAdmin.js";
 
 const getMissedTripDetectorPromotions = vi.fn();
 const recordMissedTripDetectorPromotion = vi.fn();
+const getMissedTripDetectorScorecard = vi.fn();
 
 vi.mock("../config.js", () => ({ api: {
   getMissedTripDetectorPromotions: (...args: unknown[]) => getMissedTripDetectorPromotions(...args),
   recordMissedTripDetectorPromotion: (...args: unknown[]) => recordMissedTripDetectorPromotion(...args),
+  getMissedTripDetectorScorecard: (...args: unknown[]) => getMissedTripDetectorScorecard(...args),
 } }));
+
+const figures = (detector: string, overrides: Record<string, unknown> = {}) => ({
+  detector,
+  cases: { detected: 20, open: 0, closed_by_evidence: 2, held: 1, awaiting_review: 0, reviewed: 19, legacy: 0, evidence_conflicts: 1 },
+  outcomes: { confirmed: 18, timely_service: 1, partial_service_failure: 0, indeterminate: 0 },
+  precision: 18 / 19, sample: 19,
+  held_reasons: [{ reason: "unknown_data_gap", count: 1 }],
+  unknown_rate: 0.05,
+  avail: detector === "spare" ? null : { corroborated: 12, partial: 1, confirmed_without_avail: 6 },
+  dispatcher: detector === "spare" ? null : { not_observed: 3, observed_on_time: 1, observed_left_late: 0, agreement: 0.75 },
+  review: { reviewed: 19, awaiting_review: 0, average_hours_to_review: 4.2 },
+  bar: { complete: true, meets_bar: false, sentence: "94.7% precision over 19 case(s) is below 95%." },
+  ...overrides,
+});
+
+const SCORECARD = {
+  from: "20261005", to: "20261018", grouping: "week", precision_bar: 0.95,
+  sources: { avail: true, dispatch_log: true },
+  periods: [
+    {
+      start: "20261005", end: "20261011", ended: true,
+      detectors: [
+        figures("gtfs_cancellation"),
+        figures("gtfs_silent_no_show", {
+          precision: 0.972, sample: 143,
+          bar: { complete: true, meets_bar: true, sentence: "97.2% precision over 143 case(s) meets the bar." },
+        }),
+        figures("spare"),
+      ],
+      avail_recall: { whole_misses: 10, caught: 6, linked_not_flagged: 1, awaiting_reviewer: 1, unmatched: 2, recall: 6 / 9, unmatched_rate: 0.2 },
+      dispatcher_recall: { verifications: 300, not_observed: 4, caught: 3, missed: 1, recall: 0.75 },
+    },
+    {
+      start: "20261012", end: "20261018", ended: true,
+      detectors: [figures("gtfs_cancellation"), figures("gtfs_silent_no_show"), figures("spare")],
+      avail_recall: null, dispatcher_recall: null,
+    },
+  ],
+};
 
 const SHADOW = {
   standings: [
@@ -25,6 +66,7 @@ describe("Missed-trip detector promotion", () => {
   beforeEach(() => {
     getMissedTripDetectorPromotions.mockReset().mockResolvedValue(SHADOW);
     recordMissedTripDetectorPromotion.mockReset();
+    getMissedTripDetectorScorecard.mockReset().mockResolvedValue(SCORECARD);
   });
   afterEach(cleanup);
 
@@ -104,5 +146,43 @@ describe("Missed-trip detector promotion", () => {
     await userEvent.type(screen.getByLabelText("Reason"), "measured");
     await userEvent.click(screen.getByRole("button", { name: "Record promotion" }));
     expect(await screen.findByText("This detector already counts on that service date.")).toBeTruthy();
+  });
+  it("gives every detector its verdict from its latest complete week", async () => {
+    render(<MissedTripDetectorsAdmin />);
+    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    // Both weeks are complete, so the verdict is the later one's (12 October), not the one that met the bar.
+    expect(within(silent).getByText("94.7%")).toBeTruthy();
+    expect(within(silent).getByText(/below 95%/)).toBeTruthy();
+    expect(within(silent).getByText("1 of 2 weeks met the bar")).toBeTruthy();
+    expect(screen.getByRole("article", { name: "Advance cancellations" })).toBeTruthy();
+    expect(screen.getByRole("article", { name: "On-demand service failures" })).toBeTruthy();
+    expect(getMissedTripDetectorScorecard).toHaveBeenCalledWith({ group: "week" });
+  });
+
+  it("reads another week's evidence from the strip", async () => {
+    render(<MissedTripDetectorsAdmin />);
+    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    await userEvent.click(within(silent).getByRole("button", { name: /^Week of .*97\.2% of 143/ }));
+    expect(within(silent).getByText("97.2%")).toBeTruthy();
+    expect(within(silent).getByText(/66\.7% · 2 unmatched · 1 probable/)).toBeTruthy();
+    expect(within(silent).getByText(/75\.0% · 1 missed/)).toBeTruthy();
+  });
+
+  it("fills the promotion form from a week that meets the bar, and goes to the date", async () => {
+    render(<MissedTripDetectorsAdmin />);
+    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    await userEvent.click(within(silent).getByRole("button", { name: /^Week of .*97\.2% of 143/ }));
+    await userEvent.click(within(silent).getByRole("button", { name: "Promote with this week" }));
+    expect((screen.getByLabelText("Measured precision") as HTMLInputElement).value).toBe("97.2");
+    expect((screen.getByLabelText("Cases measured") as HTMLInputElement).value).toBe("143");
+    expect((screen.getByLabelText("Reason") as HTMLTextAreaElement).value).toMatch(/service week of/);
+    expect(document.activeElement).toBe(screen.getByLabelText("From service date"));
+  });
+
+  it("has no Avail or Dispatch Log comparison for on-demand", async () => {
+    render(<MissedTripDetectorsAdmin />);
+    const spare = await screen.findByRole("article", { name: "On-demand service failures" });
+    expect(within(spare).queryByText(/Recall/)).toBeNull();
+    expect(within(spare).getAllByText("—").length).toBeGreaterThan(0);
   });
 });
