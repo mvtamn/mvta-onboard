@@ -91,7 +91,10 @@ export function weekTone(figures: Pick<DetectorPeriodFigures, "bar">): WeekTone 
  * The week a detector's verdict is read from: its latest complete week, or the
  * latest week at all when none is complete yet.
  */
-export function featuredWeek<P extends Pick<DetectorScorecardPeriod, "detectors">>(
+/** The fields of a week these helpers read. */
+type WeekFigures = { detectors: readonly Pick<DetectorPeriodFigures, "detector" | "bar">[] };
+
+export function featuredWeek<P extends WeekFigures>(
   periods: readonly P[],
   detector: DetectorPeriodFigures["detector"],
 ): P | null {
@@ -99,7 +102,7 @@ export function featuredWeek<P extends Pick<DetectorScorecardPeriod, "detectors"
   return complete[complete.length - 1] ?? periods[periods.length - 1] ?? null;
 }
 
-export function weeksMetText(periods: readonly Pick<DetectorScorecardPeriod, "detectors">[], detector: DetectorPeriodFigures["detector"]): string {
+export function weeksMetText(periods: readonly WeekFigures[], detector: DetectorPeriodFigures["detector"]): string {
   const met = periods.filter((p) => p.detectors.find((d) => d.detector === detector)?.bar?.meets_bar).length;
   return `${met} of ${periods.length} weeks met the bar`;
 }

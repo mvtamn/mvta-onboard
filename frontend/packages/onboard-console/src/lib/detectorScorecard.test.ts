@@ -68,18 +68,18 @@ describe("using a week in the promotion form", () => {
 });
 
 describe("reading a detector's weeks", () => {
-  const period = (start: string, bar: { complete: boolean; meets_bar: boolean } | null) =>
-    ({ start, detectors: [{ detector: "spare" as const, bar: bar && { ...bar, sentence: "" } }] }) as never;
+  const period = (start: string, weekBar: { complete: boolean; meets_bar: boolean } | null) =>
+    ({ start, detectors: [{ detector: "spare" as const, bar: weekBar && { ...weekBar, sentence: "" } }] });
 
   it("reads the verdict from the latest complete week", () => {
     const weeks = [period("1", bar(true)), period("2", { complete: true, meets_bar: false }), period("3", { complete: false, meets_bar: false })];
-    expect((featuredWeek(weeks, "spare") as { start: string }).start).toBe("2");
+    expect(featuredWeek(weeks, "spare")?.start).toBe("2");
     expect(weeksMetText(weeks, "spare")).toBe("1 of 3 weeks met the bar");
   });
 
   it("falls back to the latest week when none is complete", () => {
     const weeks = [period("1", { complete: false, meets_bar: false }), period("2", null)];
-    expect((featuredWeek(weeks, "spare") as { start: string }).start).toBe("2");
+    expect(featuredWeek(weeks, "spare")?.start).toBe("2");
     expect(featuredWeek([], "spare")).toBeNull();
   });
 

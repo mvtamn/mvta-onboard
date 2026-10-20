@@ -66,26 +66,26 @@ const CASES = `
 INSERT dbo.MonitoredMissedTrips (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, status,
   validation_status, validated_at, detection_type, data_quality_status, source_system, undecided_reason, evidence_conflict_at)
 VALUES
-  ('S1', '${DAY}', '460', '2026-10-14T14:00', '2026-10-14T14:30', 'escalated', 'confirmed', '2026-10-14T16:30', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
-  ('S2', '${DAY}', '460', '2026-10-14T15:00', '2026-10-14T14:30', 'escalated', 'confirmed', '2026-10-14T16:30', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
+  ('S1', '${DAY}', '460', '2026-10-14T14:00:00', '2026-10-14T14:30:00', 'escalated', 'confirmed', '2026-10-14T16:30:00', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
+  ('S2', '${DAY}', '460', '2026-10-14T15:00:00', '2026-10-14T14:30:00', 'escalated', 'confirmed', '2026-10-14T16:30:00', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
   -- Reviewed before its deadline: counts as no time, never negative.
-  ('S3', '${DAY}', '460', '2026-10-14T16:00', '2026-10-14T14:30', 'escalated', 'timely_service', '2026-10-14T13:30', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
-  ('S4', '${DAY}', '460', '2026-10-14T17:00', '2026-10-14T14:30', 'escalated', 'indeterminate', '2026-10-14T16:30', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
-  ('S5', '${DAY}', '460', '2026-10-14T18:00', '2026-10-14T14:30', 'escalated', 'unreviewed', NULL, 'silent_no_show', 'source_verified', 'gtfs', N'feed_gap', NULL),
-  ('S6', '${DAY}', '770', '2026-10-14T14:00', '2026-10-14T14:30', 'resolved', 'unreviewed', NULL, 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
-  ('S7', '${DAY}', '460', '2026-10-14T19:00', '2026-10-14T14:30', 'escalated', 'confirmed', '2026-10-14T16:30', 'silent_no_show', 'legacy_unverified', 'gtfs', NULL, NULL),
-  ('S8', '${DAY}', '460', '2026-10-14T20:00', '2026-10-14T14:30', 'escalated', 'confirmed', '2026-10-14T16:30', 'silent_no_show', 'source_verified', 'gtfs', NULL, '2026-10-15T03:00'),
-  ('C1', '${DAY}', '460', '2026-10-14T21:00', '2026-10-14T14:30', 'escalated', 'unreviewed', NULL, 'explicit_cancellation', 'source_verified', 'gtfs', NULL, NULL),
-  ('spare:1', '${DAY}', 'MVTA Connect', '2026-10-14T14:00', '2026-10-14T14:30', 'escalated', 'confirmed', '2026-10-14T16:30', 'spare_late_start', 'source_verified', 'spare', NULL, NULL),
+  ('S3', '${DAY}', '460', '2026-10-14T16:00:00', '2026-10-14T14:30:00', 'escalated', 'timely_service', '2026-10-14T13:30:00', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
+  ('S4', '${DAY}', '460', '2026-10-14T17:00:00', '2026-10-14T14:30:00', 'escalated', 'indeterminate', '2026-10-14T16:30:00', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
+  ('S5', '${DAY}', '460', '2026-10-14T18:00:00', '2026-10-14T14:30:00', 'escalated', 'unreviewed', NULL, 'silent_no_show', 'source_verified', 'gtfs', N'feed_gap', NULL),
+  ('S6', '${DAY}', '770', '2026-10-14T14:00:00', '2026-10-14T14:30:00', 'resolved', 'unreviewed', NULL, 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL),
+  ('S7', '${DAY}', '460', '2026-10-14T19:00:00', '2026-10-14T14:30:00', 'escalated', 'confirmed', '2026-10-14T16:30:00', 'silent_no_show', 'legacy_unverified', 'gtfs', NULL, NULL),
+  ('S8', '${DAY}', '460', '2026-10-14T20:00:00', '2026-10-14T14:30:00', 'escalated', 'confirmed', '2026-10-14T16:30:00', 'silent_no_show', 'source_verified', 'gtfs', NULL, '2026-10-15T03:00:00'),
+  ('C1', '${DAY}', '460', '2026-10-14T21:00:00', '2026-10-14T14:30:00', 'escalated', 'unreviewed', NULL, 'explicit_cancellation', 'source_verified', 'gtfs', NULL, NULL),
+  ('spare:1', '${DAY}', 'MVTA Connect', '2026-10-14T14:00:00', '2026-10-14T14:30:00', 'escalated', 'confirmed', '2026-10-14T16:30:00', 'spare_late_start', 'source_verified', 'spare', NULL, NULL),
   -- Outside the week: never counted.
-  ('S9', '20261021', '460', '2026-10-21T14:00', '2026-10-21T14:30', 'escalated', 'timely_service', '2026-10-21T16:30', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL);
+  ('S9', '20261021', '460', '2026-10-21T14:00:00', '2026-10-21T14:30:00', 'escalated', 'timely_service', '2026-10-21T16:30:00', 'silent_no_show', 'source_verified', 'gtfs', NULL, NULL);
 `;
 
 const link = (route: number, start: string, entire: number, confidence: string, trip: string | null,
   extra: { resolution?: string; retracted?: boolean } = {}) =>
   `('${DAY}', ${route}, N'Burnsville Station', N'Mall of America', '${start}', ${entire ? 0 : 1}, 0, ${entire},
     N'${confidence}', 1, N'seeded', ${trip ? `N'${trip}'` : "NULL"}, ${trip ? `N'${DAY}'` : "NULL"},
-    ${extra.resolution ? `N'${extra.resolution}'` : "NULL"}, ${extra.retracted ? "'2026-10-16T03:00'" : "NULL"})`;
+    ${extra.resolution ? `N'${extra.resolution}'` : "NULL"}, ${extra.retracted ? "'2026-10-16T03:00:00'" : "NULL"})`;
 
 const LINKS = `
 INSERT dbo.AvailEvidenceLinks (calendar_date, route_id, departure_stop_name, arrival_stop_name, departure_trip_start_time,
