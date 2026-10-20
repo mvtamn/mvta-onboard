@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.9] - 2026-10-20
+## [1.6.10] - 2026-10-20
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
