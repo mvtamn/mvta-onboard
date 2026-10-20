@@ -12,7 +12,15 @@ on:
     paths:
       - "functions-restapi/**"
       - "functions-dispatch/**"
+  # A push to main deploys dev. Any other environment deploys only from here,
+  # and its GitHub environment's protection rules decide who may approve it.
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        type: choice
+        options: [dev, prod]
+        default: dev
 
 permissions:
   id-token: write
@@ -93,14 +101,18 @@ jobs:
     needs: [test, decision-matrix-contract]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ inputs.environment || 'dev' }}
+    env:
+      RESOURCE_GROUP: rg-mvta-onboard-${{ inputs.environment || 'dev' }}
     strategy:
       matrix:
+        # function_app is the name without its environment; the steps add
+        # -dev or -prod.
         include:
           - app: functions-restapi
-            function_app: func-mvta-restapi-dev
+            function_app: func-mvta-restapi
           - app: functions-dispatch
-            function_app: func-mvta-dispatch-dev
+            function_app: func-mvta-dispatch
           # The Spare webhook receiver's own app. It is built from the REST API
           # package but loads a single entry point, so it runs the receiver and
           # a health check and none of the REST API's timers (see
@@ -108,7 +120,7 @@ jobs:
           # the infra workflow, which can finish after this one on the merge
           # that introduces it.
           - app: functions-restapi
-            function_app: func-mvta-sparehook-dev
+            function_app: func-mvta-sparehook
             entry: dist/src/spareWebhookEntry.js
             expected_functions: '["health","onDemandSpareWebhook"]'
             created_by_infra: true
@@ -141,7 +153,7 @@ jobs:
           registered=$(node scripts/registered-functions.cjs --package . | tail -n 1)
           echo "Registered: $registered"
           if [ "$registered" != '${{ matrix.expected_functions }}' ]; then
-            echo "::error::${{ matrix.function_app }} would register $registered, expected ${{ matrix.expected_functions }}"
+            echo "::error::${{ matrix.function_app }}-${{ inputs.environment || 'dev' }} would register $registered, expected ${{ matrix.expected_functions }}"
             exit 1
           fi
 
@@ -159,17 +171,17 @@ jobs:
         # may not have finished yet. Skip with a notice rather than fail; re-run
         # this workflow once the infra deploy is done.
         run: |
-          if az resource show --resource-group rg-mvta-onboard-dev --name "${{ matrix.function_app }}" \
+          if az resource show --resource-group "$RESOURCE_GROUP" --name "${{ matrix.function_app }}-${{ inputs.environment || 'dev' }}" \
               --resource-type Microsoft.Web/sites --query id -o tsv > /dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::${{ matrix.function_app }} does not exist yet - the infra workflow creates it. Re-run this workflow after that deploy finishes."
+            echo "::notice::${{ matrix.function_app }}-${{ inputs.environment || 'dev' }} does not exist yet - the infra workflow creates it. Re-run this workflow after that deploy finishes."
           fi
 
       - name: Deploy to Function App
         if: steps.target.outputs.exists != 'false'
         uses: Azure/functions-action@v1
         with:
-          app-name: ${{ matrix.function_app }}
+          app-name: ${{ matrix.function_app }}-${{ inputs.environment || 'dev' }}
           package: ${{ matrix.app }}

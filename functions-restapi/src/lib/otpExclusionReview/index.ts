@@ -120,6 +120,23 @@ export async function stopExclusionsForMonth(
   return result.recordset;
 }
 
+/**
+ * Clear every Stop Exclusion decision for one month, putting each Flagged Stop
+ * back to pending. Returns how many decisions were removed.
+ *
+ * Only that month's rows go: other months, and Weather Day Exclusions (which
+ * are withdrawn, never deleted - ADR 0038), are untouched. A finalized
+ * assessment keeps the figure it froze (ADR 0006). Because the timeline is
+ * derived from these rows, the month's review history goes with them.
+ */
+export async function resetStopExclusionsForMonth(executor: Executor, month: string): Promise<number> {
+  if (!(await available(executor)).stops) return 0;
+  const req = request(executor);
+  req.input("service_month", sql.Char(6), month);
+  const result = await req.query(`DELETE FROM OtpStopExclusions WHERE service_month = @service_month`);
+  return result.rowsAffected[0] ?? 0;
+}
+
 /** Interleave two kinds of record into one timeline, newest first. */
 export function mergeAuditEntries(
   stops: readonly StopExclusionRecord[],

@@ -21,8 +21,12 @@ param assessmentMonthBoundaryEnabled bool = false
 param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
 param complianceReportsStorageAccountName string = ''
+@description('Blob account the prediction capture writes to (REST app only). Empty leaves the capture off.')
+param predictionCaptureStorageAccountName string = ''
 param manageRoleAssignments bool = false
 param enableAccessManagement bool = false
+@description('Give the app its own Entra credential (tenant, client id, Key Vault client secret) without turning on Access Management. The Decision Matrix reads SharePoint with it: app-only for the library picker, on-behalf-of the user for documents.')
+param enableGraphClient bool = false
 param accessManagementConfigJson string = ''
 param accessAdminFallback bool = false
 param privilegedAuthContext string = 'c1'
@@ -244,10 +248,14 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // dispatchConfirmation builds the double opt-in email link from this.
         // Unset, the link is relative and lands nowhere from an inbox.
         { name: 'RIDER_APP_BASE_URL', value: riderAppBaseUrl }
-      ] : [], enableAccessManagement ? [
+      ] : [], enableAccessManagement || enableGraphClient ? [
+        // The app's own Entra credential. Access Management needs it, and so
+        // does the Decision Matrix's SharePoint access whether or not Access
+        // Management is on, so it is not gated on Access Management alone.
         { name: 'AZURE_TENANT_ID', value: subscription().tenantId }
         { name: 'ONBOARD_API_CLIENT_ID', value: aadClientId }
         { name: 'ONBOARD_API_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/onboard-api-client-secret/)' }
+      ] : [], enableAccessManagement ? [
         { name: 'ONBOARD_ENVIRONMENT', value: environment }
         { name: 'ONBOARD_ACCESS_CONFIG_JSON', value: accessManagementConfigJson }
         { name: 'ONBOARD_ACCESS_ADMIN_FALLBACK', value: string(accessAdminFallback) }
@@ -293,6 +301,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'DECISION_MATRIX_HEALTH_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/decision-matrix-health-client-secret/)' }
       ] : [], !empty(complianceReportsStorageAccountName) ? [
         { name: 'COMPLIANCE_REPORTS_STORAGE_ACCOUNT', value: complianceReportsStorageAccountName }
+      ] : [], !empty(predictionCaptureStorageAccountName) ? [
+        { name: 'PREDICTION_CAPTURE_STORAGE_ACCOUNT', value: predictionCaptureStorageAccountName }
       ] : [], includeSpareApiKey ? [
         // Spare missed-trip ingestion runs only in the REST app. Keep this
         // reference in Bicep so a redeploy does not remove the setting.

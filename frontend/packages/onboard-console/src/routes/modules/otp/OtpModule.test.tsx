@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { ApiError, type FlaggedStop } from "@mvta/shared";
 import { OtpModule } from "./OtpModule.js";
+import { AppDialogProvider } from "../../../components/AppDialog.js";
 
 const stop = (overrides: Partial<FlaggedStop> = {}): FlaggedStop => ({
   route_id: 490, route_label: "490", stop_id: 13209, stop_name: "Wash/Coffman SW",
@@ -86,7 +87,7 @@ describe("the OTP Review Queue", () => {
 
   it("renders the Flagged Stops the server sent, in the order it sent them", async () => {
     getOtpMonthly.mockResolvedValue(monthly());
-    const { container } = render(<OtpModule />);
+    const { container } = render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
 
     await screen.findByText("Wash/Coffman SW");
 
@@ -97,7 +98,7 @@ describe("the OTP Review Queue", () => {
 
   it("describes a stop from the feed's own fields, with no invented direction", async () => {
     getOtpMonthly.mockResolvedValue(monthly());
-    const { container } = render(<OtpModule />);
+    const { container } = render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
 
     await screen.findByText("Wash/Coffman SW");
 
@@ -109,7 +110,7 @@ describe("the OTP Review Queue", () => {
 
   it("says the feed is empty rather than showing stops nobody can action", async () => {
     getOtpMonthly.mockResolvedValue(monthly({ flagged: [], record_count: 0 }));
-    render(<OtpModule />);
+    render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
 
     expect(
       await screen.findByText(/has no rows for this month yet, so there is nothing to review/),
@@ -121,7 +122,7 @@ describe("the OTP Review Queue", () => {
 
   it("asks for the month's figures without a threshold, so the server applies the stored one", async () => {
     getOtpMonthly.mockResolvedValue(monthly());
-    render(<OtpModule />);
+    render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
 
     await screen.findByText("Wash/Coffman SW");
     expect(getOtpMonthly.mock.calls).toContainEqual([expect.any(String)]);
@@ -138,7 +139,7 @@ describe("approving a weather day", () => {
   });
 
   async function openWeatherPage() {
-    const view = render(<OtpModule />);
+    const view = render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
     await screen.findByRole("button", { name: "Weather Exclusions" });
     await userEvent.click(screen.getByRole("button", { name: "Weather Exclusions" }));
     return view;
@@ -278,7 +279,7 @@ describe("which month's weather days are shown", () => {
   });
 
   it("asks for the month being viewed, not for every date ever recorded", async () => {
-    render(<OtpModule />);
+    render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
     await screen.findByText("Wash/Coffman SW");
     // It used to be fetched once with no month, so the Weather page listed
     // dates from months nobody was looking at and the Dashboard counted all
@@ -291,7 +292,7 @@ describe("which month's weather days are shown", () => {
 
   it("counts the month on the Dashboard card, the same as the sentence beside it", async () => {
     getOtpMonthly.mockResolvedValue(monthly({ weatherRecorded: 2, weatherApplied: 1 }));
-    const { container } = render(<OtpModule />);
+    const { container } = render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
     await screen.findByText("Wash/Coffman SW");
     fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
 
@@ -324,7 +325,7 @@ describe("the trend chart and the card beside it", () => {
     getOtpMonthly.mockResolvedValue(monthly({ target: 0.9 }));
     getDateExclusions.mockResolvedValue({ exclusions: [] });
     getOtpMonthlyTrend.mockResolvedValue({ trend });
-    const { container } = render(<OtpModule />);
+    const { container } = render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
     await screen.findByText("Wash/Coffman SW");
     fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
 
@@ -338,7 +339,7 @@ describe("the trend chart and the card beside it", () => {
     getOtpMonthly.mockResolvedValue(monthly({ target: 0.9 }));
     getDateExclusions.mockResolvedValue({ exclusions: [] });
     getOtpMonthlyTrend.mockResolvedValue({ trend });
-    render(<OtpModule />);
+    render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
     await screen.findByText("Wash/Coffman SW");
     fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
     expect(await screen.findByText(/target of 90%/)).toBeInTheDocument();
@@ -349,7 +350,7 @@ describe("the trend chart and the card beside it", () => {
     getOtpMonthly.mockResolvedValue(monthly({ target: 0.829 }));
     getDateExclusions.mockResolvedValue({ exclusions: [] });
     getOtpMonthlyTrend.mockResolvedValue({ trend });
-    render(<OtpModule />);
+    render(<AppDialogProvider><OtpModule /></AppDialogProvider>);
     await screen.findByText("Wash/Coffman SW");
     fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
     expect(screen.getByText("Routes below 82.9%")).toBeInTheDocument();

@@ -165,7 +165,7 @@
 .evmon-refresh-button { display: inline-flex; min-height: 31px; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--brand-green) 55%, var(--border)); border-radius: 999px; color: var(--brand-green-text); background: var(--success-bg); box-shadow: 0 1px 2px rgba(0,0,0,.06); font: inherit; font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
 .evmon-refresh-button svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .evmon-refresh-button:hover:not(:disabled) { border-color: var(--brand-green); box-shadow: 0 3px 8px rgba(0,85,61,.14); transform: translateY(-1px); }
-.evmon-refresh-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand-green) 25%, transparent); outline-offset: 2px; }
+.evmon-refresh-button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .evmon-refresh-button:disabled { opacity: .72; cursor: wait; }
 .evmon-refresh-button:disabled svg { animation: evmon-refresh-spin .8s linear infinite; }
 @keyframes evmon-refresh-spin { to { transform: rotate(360deg); } }
@@ -199,7 +199,7 @@
 .evmon-roster-scroll { flex: 1; overflow: auto; }
 .evmon-roster-scroll .evmon-table { table-layout: fixed; }
 .evmon-roster-scroll .evmon-table td { cursor: pointer; }
-.evmon-roster-scroll tr.is-selected { outline: 2px solid var(--brand-green); outline-offset: -2px; background: var(--success-bg); }
+.evmon-roster-scroll tr.is-selected { outline: 2px solid var(--focus-ring); outline-offset: -2px; background: var(--success-bg); }
 .evmon-vehicle-detail { display: grid; gap: 3px; padding: 12px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
 .evmon-vehicle-detail strong { color: var(--text); }
 .evmon-attention-explanation { display: grid; gap: 2px; margin: 2px 0 0; color: var(--text-muted); line-height: 1.35; }

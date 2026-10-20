@@ -5,11 +5,13 @@ import { useOtpReview } from "./useOtpReview";
 
 const getStopExclusions = vi.fn();
 const putStopExclusion = vi.fn();
+const resetStopExclusions = vi.fn();
 
 vi.mock("../../../config.js", () => ({
   api: {
     getStopExclusions: (...a: unknown[]) => getStopExclusions(...a),
     putStopExclusion: (...a: unknown[]) => putStopExclusion(...a),
+    resetStopExclusions: (...a: unknown[]) => resetStopExclusions(...a),
   },
 }));
 
@@ -42,10 +44,12 @@ const setup = (over: { serviceMonth?: string | null; flaggedStops?: FlaggedStop[
 beforeEach(() => {
   getStopExclusions.mockResolvedValue({ exclusions: [] });
   putStopExclusion.mockResolvedValue({});
+  resetStopExclusions.mockResolvedValue({ service_month: "202609", deleted: 1 });
 });
 afterEach(() => {
   getStopExclusions.mockReset();
   putStopExclusion.mockReset();
+  resetStopExclusions.mockReset();
 });
 
 describe("reading a month's decisions", () => {
@@ -212,5 +216,46 @@ describe("copying last month's decisions", () => {
     expect(putStopExclusion).toHaveBeenCalledTimes(1);
     expect(result.current.actionError).toBe("Internal server error");
     expect(result.current.copyingAll).toBe(false);
+  });
+});
+
+describe("resetting a month", () => {
+  it("clears the month, re-reads it, and says the figure has moved", async () => {
+    getStopExclusions.mockResolvedValue({ exclusions: [decision()] });
+    const { result } = setup();
+    await waitFor(() => expect(result.current.decidedCount).toBe(1));
+    const before = result.current.decisionsVersion;
+    getStopExclusions.mockResolvedValue({ exclusions: [] });
+
+    let reset = false;
+    await act(async () => { reset = await result.current.resetMonth(); });
+
+    expect(reset).toBe(true);
+    expect(resetStopExclusions).toHaveBeenCalledWith("202609");
+    expect(result.current.statusOf(stop())).toBe("pending");
+    expect(result.current.decidedCount).toBe(0);
+    expect(result.current.decisionsVersion).toBe(before + 1);
+    expect(result.current.resetting).toBe(false);
+  });
+
+  it("keeps the decisions and shows the error when the reset fails", async () => {
+    getStopExclusions.mockResolvedValue({ exclusions: [decision()] });
+    const { result } = setup();
+    await waitFor(() => expect(result.current.decidedCount).toBe(1));
+    resetStopExclusions.mockRejectedValue(new ApiError(403, "Forbidden"));
+
+    let reset = true;
+    await act(async () => { reset = await result.current.resetMonth(); });
+
+    expect(reset).toBe(false);
+    expect(result.current.actionError).toBe("Forbidden");
+    expect(result.current.statusOf(stop())).toBe("approved");
+    expect(result.current.resetting).toBe(false);
+  });
+
+  it("resets nothing when no month is resolved", async () => {
+    const { result } = setup({ serviceMonth: null });
+    await act(async () => { await result.current.resetMonth(); });
+    expect(resetStopExclusions).not.toHaveBeenCalled();
   });
 });

@@ -11,10 +11,13 @@
   --border-soft: #eee;
   --text: #2c2c2a;
   --text-dim: #4f4f4f;
-  --text-muted: #8a8a82;
+  /* #8a8a82 was 3.5:1 on white; this is 5.4:1 (4.9:1 on --surface-alt-bg). */
+  --text-muted: #6b6b64;
 
   --brand-green: #00553d;
   --brand-green-hover: #003d2c;
+  /* Every :focus-visible outline reads this. Light: the brand green, 8.9:1 on white. */
+  --focus-ring: #00553d;
   /* Evergreen as *foreground text*. --brand-green is a fill token and stays
      constant across themes, so it drops to ~1.9:1 when used as text on a dark
      surface; this variant lightens under [data-theme="dark"] instead. */
@@ -57,6 +60,8 @@
   /* Lightened evergreen for foreground text; --brand-green itself stays the
      constant dark fill used by the nav, toolbars, and chips. */
   --brand-green-text: #6fc9a0;
+  /* The brand green is 1.9:1 on the dark panel; its light text tint is 8.3:1. */
+  --focus-ring: #6fc9a0;
 
   /* Nav sidebar goes near-black-green in dark mode instead of staying the
      bright brand fill - matches the reference's fully-dark cohesion rather
@@ -260,7 +265,7 @@ body {
 .changelog-entry summary::after { border: 1px solid var(--border); border-radius: 50%; color: var(--text-muted); content: "⌄"; display: grid; font-size: 15px; height: 26px; line-height: 1; margin-left: auto; place-items: center; transition: transform .15s ease; width: 26px; }
 .changelog-entry[open] summary::after { transform: rotate(180deg); }
 .changelog-entry summary:hover { background: var(--surface-alt-bg); }
-.changelog-entry summary:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -3px; }
+.changelog-entry summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
 .changelog-version { background: var(--pill-success-bg); border-radius: 7px; color: var(--pill-success-fg); font-size: 12px; font-weight: 900; padding: 6px 8px; }
 .changelog-entry.is-current .changelog-version { background: var(--brand-green); color: #fff; }
 .changelog-entry-meta { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
@@ -718,7 +723,7 @@ body {
 .prototype-freehand { color: var(--text-dim); font-size: 9px; font-weight: 800; letter-spacing: .04em; }
 .prototype-notes { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: inherit; font-size: 12px; min-height: 82px; padding: 10px; resize: vertical; width: 100%; }
 .prototype-notes:focus { border-color: var(--brand-green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green) 14%, transparent); outline: 0; }
-.prototype-field input:focus { border-color: var(--brand-green); outline: 2px solid color-mix(in srgb, var(--brand-green) 18%, transparent); }
+.prototype-field input:focus { border-color: var(--focus-ring); outline: 2px solid color-mix(in srgb, var(--focus-ring) 40%, transparent); }
 .prototype-actions, .prototype-decision-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 .prototype-rail { display: grid; gap: 8px; }
 .prototype-rail h3 { margin: 2px 0 4px; }
@@ -904,7 +909,7 @@ table.data tr.review-focus-row td:first-child {
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 .sr-only { height: 1px; margin: -1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); }
 
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand-green) 22%, transparent); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 @media (max-width: 760px) {
   .field-grid,
@@ -927,30 +932,79 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 /* ---------- sign-in screen ---------- */
-.signin-backdrop {
+/* The console pads <body> by 24px; the sign-in page runs edge to edge. */
+body:has(.signin-page) { padding: 0; }
+.signin-page { min-height: 100vh; display: flex; flex-wrap: wrap; background: var(--surface-alt-bg); color: var(--text); }
+.signin-brand {
+  position: relative;
+  overflow: hidden;
+  flex: 1 1 520px;
   min-height: 100vh;
+  box-sizing: border-box;
+  padding: 56px 64px;
+  background: var(--brand-green);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+}
+.signin-routes { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+.signin-routes path { stroke-width: 10; stroke-opacity: 0.10; }
+.signin-routes path.faint { stroke-opacity: 0.07; }
+.signin-routes circle { stroke-width: 4; stroke-opacity: 0.22; }
+.signin-wordmark, .signin-pitch, .signin-org { position: relative; }
+.signin-wordmark { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 600; }
+.signin-logo { background: #fff; color: var(--brand-green); font-weight: 800; font-size: 15px; letter-spacing: 0.04em; padding: 7px 12px; border-radius: 8px; }
+.signin-pitch { max-width: 520px; display: flex; flex-direction: column; gap: 28px; }
+.signin-pitch h1 { margin: 0; font-size: 48px; line-height: 1.08; font-weight: 800; letter-spacing: -0.02em; color: #fff; }
+.signin-pitch ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; font-size: 16px; color: rgba(255, 255, 255, 0.86); }
+.signin-pitch li { display: flex; align-items: center; gap: 12px; }
+.signin-pitch li::before { content: ""; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: #6fc9a0; }
+.signin-org { margin: 0; font-size: 13px; color: rgba(255, 255, 255, 0.78); }
+.signin-panel {
+  flex: 1 1 480px;
+  box-sizing: border-box;
+  padding: 56px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+}
+.signin-form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 24px; }
+.signin-heading { display: flex; flex-direction: column; gap: 10px; }
+.signin-form h2 { margin: 0; font-size: 32px; line-height: 1.15; font-weight: 800; letter-spacing: -0.015em; color: var(--text); }
+.signin-desc { margin: 0; font-size: 15px; line-height: 1.55; color: var(--text-dim); }
+.signin-btn {
+  height: 52px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: radial-gradient(circle at 30% 20%, var(--brand-green-hover), var(--brand-green) 65%);
+  gap: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--brand-green);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease;
 }
-.signin-card {
-  background: var(--surface-bg);
-  color: var(--text);
-  border-radius: 16px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
-  padding: 40px 36px 32px;
-  max-width: 360px;
-  width: 100%;
-  text-align: center;
+.signin-btn:hover { background: var(--brand-green-hover); }
+.signin-btn:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+.signin-help { margin: 0; padding-top: 20px; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+.signin-version { margin: 0; font-size: 12px; color: var(--text-muted); }
+/* Phone: the brand panel shrinks to a header and drops the module list. */
+@media (max-width: 640px) {
+  .signin-brand { min-height: 0; padding: 48px 24px 36px; gap: 32px; }
+  .signin-pitch h1 { font-size: 30px; line-height: 1.12; }
+  .signin-pitch ul, .signin-org { display: none; }
+  .signin-panel { padding: 32px 24px 28px; justify-content: space-between; }
+  .signin-form h2 { font-size: 26px; }
 }
-.signin-logo { display: inline-block; background: var(--brand-green); color: #fff; font-weight: bold; font-size: 15px; padding: 7px 14px; border-radius: 8px; letter-spacing: 0.5px; margin-bottom: 18px; }
-.signin-eyebrow { color: var(--brand-green); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 8px; }
-.signin-card h1 { font-size: 19px; font-weight: 800; color: var(--text); margin: 0 0 10px; line-height: 1.3; }
-.signin-desc { color: var(--text-muted); font-size: 12.5px; line-height: 1.5; margin: 0 0 22px; }
-.signin-btn.btn-primary { width: 100%; padding: 11px 18px; border-radius: 999px; font-size: 13.5px; }
-.signin-footer { color: var(--text-muted); font-size: 11px; margin: 18px 0 0; }
 
 .role-denied { padding: 40px 8px; }
 .role-denied h1 { color: var(--danger-text); font-size: 18px; margin: 0 0 8px; }
@@ -1186,7 +1240,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .seg { background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; display: inline-flex; overflow: hidden; }
 .seg button { background: transparent; border: 0; color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; padding: 8px 12px; }
 .seg button[aria-pressed="true"] { background: var(--brand-green); color: #fff; }
-.seg button:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+.seg button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .choice-cards { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .choice-card { align-items: center; background: var(--surface-bg); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); cursor: pointer; display: flex; font: inherit; gap: 10px; padding: 10px 12px; text-align: left; }
 .choice-card svg { color: var(--text-muted); flex-shrink: 0; }
@@ -1220,7 +1274,7 @@ textarea.directions-input { line-height: 1.45; min-height: 84px; resize: vertica
 /* A channel this record still names that OnBoard no longer offers: selected,
    removable, and visibly not one of the choices. */
 .chip-toggle.is-retired[aria-pressed="true"] { background: var(--surface-bg); border-color: var(--border-strong); border-style: dashed; color: var(--text-muted); font-weight: 600; text-decoration: line-through; }
-.chip-toggle:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.chip-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 /* Per-channel progress on one required audience: the wording differs per
    channel, so each is drafted, published and shown separately. */
 .comm-channel-marks { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }

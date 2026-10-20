@@ -62,7 +62,7 @@
    Segments reuse the adherence strip's .seg colours, on-time leftmost so its
    edge reads against the target line. */
 .otp-route-btn { all: unset; cursor: pointer; border-radius: 5px; }
-.otp-route-btn:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.otp-route-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .otp-route-btn[aria-expanded="true"] .route-chip { box-shadow: 0 0 0 2px var(--surface-bg), 0 0 0 4px var(--brand-green); }
 .otp-route-btn .otp-route-hint { font-size: 11px; color: var(--text-muted); }
 .otp-route-btn:hover .otp-route-hint { color: var(--brand-green-text); text-decoration: underline; }

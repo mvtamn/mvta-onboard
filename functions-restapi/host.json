@@ -6,6 +6,14 @@
         "isEnabled": true,
         "excludedTypes": "Request"
       }
+    },
+    "logLevel": {
+      "Function.onDemandSpareWebhook": "Warning",
+      "Function.onDemandSpareWebhook.User": "Information",
+      "Function.health": "Warning",
+      "Function.health.User": "Information",
+      "Function.predictionCapture": "Warning",
+      "Function.predictionCapture.User": "Warning"
     }
   },
   "extensionBundle": {

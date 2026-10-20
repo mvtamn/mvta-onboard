@@ -21,7 +21,10 @@ export type KpiFeedName =
   // Ledgered for delivery evidence on the Integrations & Data Health page; no
   // KPI declares them, so they never decide a trust state.
   | "gtfs_alerts"
-  | "avail_detours";
+  | "avail_detours"
+  // The 30-second prediction capture (functions/predictionCapture.ts): its
+  // own delivery, not the GTFS-RT feeds', which keep their five-minute rows.
+  | "prediction_capture";
 
 export interface KpiFeedHealth {
   feed_name: KpiFeedName;

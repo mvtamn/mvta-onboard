@@ -1321,6 +1321,28 @@ snapshot, which is retained and does not change under an existing Missed-trip
 case.
 _Avoid_: schedule snapshot, service day, schedule import
 
+**Prediction accuracy**:
+How often the arrival predictions riders are shown come true, scored by the ETA
+Accuracy Benchmark that Transit and Swiftly publish: each prediction sampled in
+the 15 minutes before the bus actually reached the stop is accurate when the
+bus arrived within its bucket's window around the predicted time (0-3 minutes
+away: no earlier than 30 seconds before, no later than 90 seconds after), and
+the figure is the straight average of the four buckets' shares. Measured from
+the GTFS-realtime feeds riders' apps read, forward from when capture began.
+_Avoid_: ETA accuracy %, OTP, prediction OTP
+
+**Schedule review**:
+The per-route reading of one published static schedule for what makes arrival
+predictions worse - placeholder stop times, timepoint gaps and density,
+stop-free miles, running times that never change across the day, implausible
+scheduled speeds, tight turnarounds and short recovery, interlining, impossible
+blocks - each with its evidence (the stop pairs, segments, hand-overs or
+patterns behind it) and the owner of the fix. It describes the schedule as
+published and is kept per feed version; it is not a Schedule snapshot, which
+is retained per service date for Missed-trip cases, and it changes no OTP
+figure.
+_Avoid_: prediction risk table, GTFS lint, schedule audit
+
 **Post-publication cancellation**:
 A cancellation of a run after it was present in the effective Schedule
 snapshot. It creates an Advance cancellation; removing a run before the

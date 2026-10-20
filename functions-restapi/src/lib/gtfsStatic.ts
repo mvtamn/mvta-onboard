@@ -10,6 +10,7 @@
 // static schedule doesn't change intraday, so there's no reason to fetch it
 // twice in the same sync run.
 import AdmZip from "adm-zip";
+import { reviewSchedule, type ScheduleReview } from "./scheduleReview";
 
 export interface GtfsStopRow {
   stop_id: string;
@@ -448,6 +449,10 @@ export interface GtfsStaticData {
   stopRoutes: GtfsStopRouteRow[];
   calendar: GtfsCalendarRow[];
   calendarDates: GtfsCalendarDateRow[];
+  // null when the review itself failed: a bug in a diagnostic must not stop
+  // the schedule the detectors depend on from importing.
+  predictionRisk: ScheduleReview | null;
+  predictionRiskError: string | null;
 }
 
 export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> {
@@ -484,16 +489,34 @@ export async function fetchAndParseStatic(url: string): Promise<GtfsStaticData> 
 
   const tripsCsv = tripsEntry.getData().toString("utf-8");
   const stopTimesCsv = stopTimesEntry.getData().toString("utf-8");
+  const stopsCsv = stopsEntry.getData().toString("utf-8");
+  const routesCsv = routesEntry.getData().toString("utf-8");
   const trips = parseTripsCsv(tripsCsv);
+  let predictionRisk: ScheduleReview | null = null;
+  let predictionRiskError: string | null = null;
+  try {
+    const feedInfoEntry = zip.getEntry("feed_info.txt");
+    predictionRisk = reviewSchedule({
+      routesCsv,
+      tripsCsv,
+      stopsCsv,
+      stopTimesCsv,
+      feedInfoCsv: feedInfoEntry ? feedInfoEntry.getData().toString("utf-8") : null,
+    });
+  } catch (err) {
+    predictionRiskError = err instanceof Error ? err.message : String(err);
+  }
   return {
-    stops: parseStopsCsv(stopsEntry.getData().toString("utf-8")),
+    stops: parseStopsCsv(stopsCsv),
     trips,
-    routes: parseRoutesCsv(routesEntry.getData().toString("utf-8")),
+    routes: parseRoutesCsv(routesCsv),
     scheduledTrips: parseStopTimesCsv(stopTimesCsv),
     stopRoutes: parseStopRouteLinksCsv(stopTimesCsv, trips),
     calendar: calendarEntry ? parseCalendarCsv(calendarEntry.getData().toString("utf-8")) : [],
     calendarDates: calendarDatesEntry
       ? parseCalendarDatesCsv(calendarDatesEntry.getData().toString("utf-8"))
       : [],
+    predictionRisk,
+    predictionRiskError,
   };
 }

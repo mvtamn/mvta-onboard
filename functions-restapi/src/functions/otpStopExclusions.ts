@@ -7,12 +7,21 @@
 //
 //   GET /otp-stop-exclusions?month=  - compliance-review.view
 //   PUT /otp-stop-exclusions          - compliance-review.review
+//   DELETE /otp-stop-exclusions?month= - compliance-review.review
+//     Resets a month: every decision for it is removed and its Flagged Stops
+//     return to pending. `month` is required - a destructive call never
+//     falls back to the current month the way GET does.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateStopExclusion } from "../lib/validation";
 import { serviceMonthOf } from "../lib/otpMonthlyFeed";
-import { recordStopExclusion, stopExclusionsForMonth, type StopExclusionDecision } from "../lib/otpExclusionReview";
+import {
+  recordStopExclusion,
+  resetStopExclusionsForMonth,
+  stopExclusionsForMonth,
+  type StopExclusionDecision,
+} from "../lib/otpExclusionReview";
 
 function resolveMonth(request: HttpRequest): string {
   const param = request.query.get("month");
@@ -70,6 +79,37 @@ app.http("otpStopExclusionsUpsert", {
       return { status: 200, jsonBody: record };
     } catch (err) {
       context.error("PUT /otp-stop-exclusions failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("otpStopExclusionsResetMonth", {
+  route: "otp-stop-exclusions",
+  methods: ["DELETE"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const authResult = await requireAccess(request, "compliance-review.review");
+    if (!authResult.authorized) {
+      return { status: authResult.status, jsonBody: { error: authResult.message } };
+    }
+
+    const month = request.query.get("month");
+    if (!month || !/^\d{4}(0[1-9]|1[0-2])$/.test(month)) {
+      return { status: 400, jsonBody: { error: "month is required as YYYYMM" } };
+    }
+
+    try {
+      const pool = await getPool();
+      const deleted = await resetStopExclusionsForMonth(pool, month);
+      // The rows are the only record of these decisions, so the reset itself
+      // is logged: who cleared which month, and how many decisions it took.
+      context.log(
+        `Stop exclusions reset for ${month} by ${authResult.principal.userDetails || "system"}: ${deleted} removed`,
+      );
+      return { status: 200, jsonBody: { service_month: month, deleted } };
+    } catch (err) {
+      context.error("DELETE /otp-stop-exclusions failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

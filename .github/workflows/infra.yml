@@ -11,22 +11,31 @@ on:
       - "infra-stage0/**"
       - "infra-phase1/**"
       - ".github/workflows/infra.yml"
+  # A push to main deploys dev. Any other environment deploys only from here,
+  # and its GitHub environment's protection rules decide who may approve it.
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        type: choice
+        options: [dev, prod]
+        default: dev
 
 permissions:
   id-token: write # required for OIDC
   contents: read
 
 concurrency:
-  group: infra-${{ github.ref }}
+  group: infra-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ inputs.environment || 'dev' }}
     env:
-      RESOURCE_GROUP: rg-mvta-onboard-dev
+      ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+      RESOURCE_GROUP: rg-mvta-onboard-${{ inputs.environment || 'dev' }}
       LOCATION: westus2
     steps:
       - uses: actions/checkout@v7
@@ -45,7 +54,7 @@ jobs:
             az deployment group what-if \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-stage0/main.bicep \
-              --parameters infra-stage0/parameters/dev.parameters.json \
+              --parameters "infra-stage0/parameters/$ENVIRONMENT.parameters.json" \
               --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
 
       - name: Deploy stage 0 (network, KV, SQL, monitoring)
@@ -55,11 +64,11 @@ jobs:
             az deployment group create \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-stage0/main.bicep \
-              --parameters infra-stage0/parameters/dev.parameters.json \
+              --parameters "infra-stage0/parameters/$ENVIRONMENT.parameters.json" \
               --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
 
-      # dev is the ONLY live environment (no test/prod yet) - it is effectively
-      # production. what-if before every phase-1 deploy so changes to the live
+      # Every environment here is live: dev until production cuts over, and
+      # production after. what-if before every phase-1 deploy so changes to the
       # Function Apps / SWAs / Service Bus are reviewed in the run log first.
       - name: Validate (what-if) phase 1
         uses: azure/cli@v2
@@ -68,7 +77,7 @@ jobs:
             az deployment group what-if \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-phase1/main-phase1.bicep \
-              --parameters infra-phase1/parameters/phase1-dev.parameters.json \
+              --parameters "infra-phase1/parameters/phase1-$ENVIRONMENT.parameters.json" \
               --parameters frontDoorId="${{ vars.FRONT_DOOR_ID }}"
 
       - name: Deploy phase 1 (functions, SWAs, Service Bus, WAF policy)
@@ -76,24 +85,31 @@ jobs:
         with:
           inlineScript: |
             az deployment group create \
+              --name "phase1-$ENVIRONMENT" \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-phase1/main-phase1.bicep \
-              --parameters infra-phase1/parameters/phase1-dev.parameters.json \
+              --parameters "infra-phase1/parameters/phase1-$ENVIRONMENT.parameters.json" \
               --parameters frontDoorId="${{ vars.FRONT_DOOR_ID }}"
 
       - name: Configure Azure Maps client identifier on REST API
         uses: azure/cli@v2
         with:
           inlineScript: |
+            # Names come from the phase-1 deployment's outputs, so they follow
+            # whatever main-phase1.bicep calls them in this environment.
+            maps_account=$(az deployment group show --resource-group "$RESOURCE_GROUP" \
+              --name "phase1-$ENVIRONMENT" --query properties.outputs.mapsAccountName.value -o tsv)
+            rest_api=$(az deployment group show --resource-group "$RESOURCE_GROUP" \
+              --name "phase1-$ENVIRONMENT" --query properties.outputs.restApiFunctionName.value -o tsv)
             maps_client_id=$(az resource show \
               --resource-group "$RESOURCE_GROUP" \
               --resource-type Microsoft.Maps/accounts \
-              --name mvta-onboard-maps \
+              --name "$maps_account" \
               --query properties.uniqueId -o tsv)
             test -n "$maps_client_id"
             az functionapp config appsettings set \
               --resource-group "$RESOURCE_GROUP" \
-              --name func-mvta-restapi-dev \
+              --name "$rest_api" \
               --settings AZURE_MAPS_CLIENT_ID="$maps_client_id"
 
       - name: Smoke-test the live API after infra changes
@@ -104,8 +120,20 @@ jobs:
           # azurewebsites.net probe would be blocked by design once the
           # Front-Door-only inbound restriction is enabled. Fail loudly so a
           # code redeploy (func publish --force) can be triggered immediately.
+          # HEALTH_CHECK_URL is a variable on each GitHub environment. Dev falls
+          # back to its Front Door endpoint. A new environment has no Front
+          # Door until it is built in the portal, so until the variable is set
+          # the check is skipped with a notice rather than failed.
           inlineScript: |
-            status=$(curl -s -o /dev/null -w "%{http_code}" "https://endpoint-mvta-onboard-dev-haehgsbbe6esd8cc.z03.azurefd.net/api/health" || true)
+            url="${{ vars.HEALTH_CHECK_URL }}"
+            if [ -z "$url" ] && [ "$ENVIRONMENT" = "dev" ]; then
+              url="https://endpoint-mvta-onboard-dev-haehgsbbe6esd8cc.z03.azurefd.net/api/health"
+            fi
+            if [ -z "$url" ]; then
+              echo "::notice::No HEALTH_CHECK_URL on the $ENVIRONMENT environment - skipping the smoke test."
+              exit 0
+            fi
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)
             echo "Health check returned: $status"
             if [ "$status" != "200" ]; then
               echo "::error::/api/health returned $status after infra deploy - the app may need a code redeploy (see HANDOFF §5.4)."

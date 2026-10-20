@@ -5,6 +5,7 @@ import {
   KPI_TRUST_STREAMS, STREAM_LABELS, STREAM_MODULES, contractLabel, dateLabel, feedDisplayName,
   kpiTrustStateLabel, kpiTrustStateTone, oldestRequiredDependency, rankTrustState, whenLabel,
 } from "./kpiTrustPresentation.js";
+import { SchedulePredictionRisk } from "./SchedulePredictionRisk.js";
 import "./integrationsHealth.css";
 
 // Admin > Integrations & Data Health. Two questions, answered in this order:
@@ -12,6 +13,8 @@ import "./integrationsHealth.css";
 // ingestion evidence, loaded as the page opens), and whether each upstream
 // source answers right now (an explicit, bounded check, because it calls the
 // vendors). A reachable feed is not a current KPI; the page keeps them apart.
+// Below both, a third: where the published schedule itself makes arrival
+// predictions worse, from the review kept with each static GTFS import.
 
 type Sort = "attention" | "module";
 
@@ -292,6 +295,8 @@ export function IntegrationsHealth() {
           })}
         </div>
       </section>
+
+      <SchedulePredictionRisk />
     </div>
   );
 }

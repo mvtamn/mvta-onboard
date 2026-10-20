@@ -4,6 +4,8 @@ import { api } from "../../../config.js";
 import { type StopExclusionStatus } from "./otpData.js";
 import { type QueueRow } from "./otpFigures.js";
 import { auditLines } from "./otpAuditEntries.js";
+import { formatServiceMonth } from "./otpServiceMonth.js";
+import { useAppDialog } from "../../../components/AppDialog.js";
 
 function AdherenceStrip({ row }: { row: QueueRow }) {
   const other = Math.max(0, 100 - row.earlyPct - row.ontimePct - row.latePct - row.missedPct);
@@ -34,6 +36,9 @@ export function ReviewQueuePage({
   onCopy,
   onCopyAll,
   copyingAll,
+  decidedCount,
+  onResetMonth,
+  resetting,
 }: {
   flaggedStops: FlaggedStop[];
   queueRows: QueueRow[];
@@ -48,7 +53,11 @@ export function ReviewQueuePage({
   onCopy: (stop: FlaggedStop) => void;
   onCopyAll: () => void;
   copyingAll: boolean;
+  decidedCount: number;
+  onResetMonth: () => Promise<boolean>;
+  resetting: boolean;
 }) {
+  const { confirm } = useAppDialog();
   // A decided stop can be decided again - the API has always allowed it
   // (PUT upserts in place), but the row rendered as static text, so a reviewer
   // who approved the wrong stop had no way back through the console. Reopening
@@ -82,6 +91,26 @@ export function ReviewQueuePage({
       .catch(() => setTimeline([]));
   }, [serviceMonth, auditRefreshTick]);
 
+  // Deleting is the point - a reset month reads as never reviewed - so the
+  // reviewer is told exactly what goes, including the month's review history,
+  // which is derived from the same rows.
+  async function resetMonth() {
+    if (!serviceMonth) return;
+    const month = formatServiceMonth(serviceMonth);
+    const decisions = `${decidedCount} stop exclusion decision${decidedCount === 1 ? "" : "s"}`;
+    const ok = await confirm({
+      title: `Reset ${month} decisions?`,
+      description:
+        `This deletes all ${decisions} for ${month} and their review history. Every flagged stop goes back to pending. ` +
+        "Weather days and finalized assessments are not affected.",
+      confirmLabel: `Reset ${decisions}`,
+      danger: true,
+    });
+    if (!ok) return;
+    const reset = await onResetMonth();
+    if (reset) setReopened({});
+  }
+
   const reasonLabel = (code: string) => reasonCodes.find((r) => r.code === code)?.label ?? code;
 
   const copyableCount = flaggedStops.filter(
@@ -102,6 +131,11 @@ export function ReviewQueuePage({
             <option value="resolved">Resolved only</option>
           </select>
           <input placeholder="Search stop name…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {serviceMonth && decidedCount > 0 ? (
+            <button className="btn-sm danger" style={{ marginLeft: "auto" }} disabled={resetting} onClick={() => void resetMonth()}>
+              {resetting ? "Resetting…" : `Reset ${formatServiceMonth(serviceMonth)} decisions`}
+            </button>
+          ) : null}
         </div>
 
         {copyableCount > 0 ? (

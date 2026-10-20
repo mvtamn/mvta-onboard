@@ -396,6 +396,230 @@ export interface FeedCheck {
   last_success_at?: string;
 }
 
+// The static sync's review of where the published schedule makes arrival
+// predictions worse (functions-restapi/src/lib/gtfsPredictionRisk.ts).
+export type PredictionRiskCheckId =
+  | "placeholder_times"
+  | "timepoint_gap"
+  | "longest_hop"
+  | "tight_turnarounds"
+  | "interlined"
+  | "block_overlaps"
+  | "run_time_spread"
+  | "run_time_flat"
+  | "timepoint_density"
+  | "implied_speed"
+  | "recovery_time";
+
+/** Who can change the thing a check found. */
+export type PredictionRiskOwner = "scheduling" | "avail" | "operations" | "structural";
+
+export interface PredictionRiskCheckDefinition {
+  id: PredictionRiskCheckId;
+  label: string;
+  unit: "%" | "min" | "mi" | "trips" | "stops" | "segments";
+  threshold: number;
+  /** at_least: a value at or above the threshold is flagged. at_most: at or below. */
+  comparison: "at_least" | "at_most";
+  why: string;
+  owner: PredictionRiskOwner;
+  fix: string;
+}
+
+export interface PredictionRiskCheckResult {
+  id: PredictionRiskCheckId;
+  value: number | null;
+  flagged: boolean;
+}
+
+export interface PredictionRiskRoute {
+  route_id: string;
+  route_short_name: string;
+  trip_count: number;
+  flag_count: number;
+  checks: PredictionRiskCheckResult[];
+  /** Flags the schedule can fix (owner other than "structural"); decided by the server. */
+  fixable_flag_count?: number;
+  /** Flags that describe the route, not its schedule. */
+  structural_flag_count?: number;
+  route_long_name?: string | null;
+}
+
+export interface PredictionRiskFeedInfo {
+  version: string | null;
+  start_date: string | null;
+  end_date: string | null;
+}
+
+export interface PredictionRiskReview {
+  reviewed_at: string;
+  /** Last static sync that found the same review; null before migration 145. */
+  confirmed_at: string | null;
+  feed: PredictionRiskFeedInfo;
+  checks: PredictionRiskCheckDefinition[];
+  routes: PredictionRiskRoute[];
+}
+
+/** One row of evidence behind a check: a stop pair, a hand-over, a pattern, a layover bucket. */
+export interface ReviewEvidence {
+  text: string;
+  count: number | null;
+  value: number | null;
+  stop_ids: string[];
+  trip_ids: string[];
+}
+
+export interface RouteCheckDetail extends PredictionRiskCheckResult {
+  evidence: ReviewEvidence[];
+}
+
+export interface TimepointSegmentHour {
+  hour: number;
+  trips: number;
+  min_minutes: number;
+  max_minutes: number;
+}
+
+export interface TimepointSegmentDetail {
+  from_stop_id: string;
+  from_stop_name: string;
+  to_stop_id: string;
+  to_stop_name: string;
+  /** N, S, E or W when the segment's trips agree; absent in detail kept before v1.5.330. */
+  direction?: string | null;
+  /** Scheduled the same in every hour, peak and off-peak; absent in detail kept before v1.5.334. */
+  flat_all_day?: boolean;
+  miles: number | null;
+  hours: TimepointSegmentHour[];
+}
+
+export interface RouteScheduleDetail {
+  route_id: string;
+  route_short_name: string;
+  trip_count: number;
+  stop_count: number;
+  timepoint_count: number;
+  pattern_count: number;
+  flag_count: number;
+  checks: RouteCheckDetail[];
+  segments: TimepointSegmentDetail[];
+}
+
+export interface RouteScheduleDetailResponse {
+  reviewed_at: string;
+  confirmed_at: string | null;
+  feed: PredictionRiskFeedInfo;
+  checks: PredictionRiskCheckDefinition[];
+  route: RouteScheduleDetail;
+  route_long_name?: string | null;
+}
+
+// The schedule review's history and what changed between two reviews
+// (functions-restapi/src/lib/scheduleReview/history.ts and diff.ts).
+export interface ReviewHistoryEntry {
+  review_id: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  feed_version: string | null;
+  route_count: number;
+  flagged_route_count: number;
+}
+
+export interface ReviewFlagChange {
+  route_id: string;
+  route_short_name: string;
+  check_id: PredictionRiskCheckId;
+  from_value: number | null;
+  to_value: number | null;
+}
+
+export interface ReviewDiff {
+  from: { review_id: number; reviewed_at: string; feed_version: string | null };
+  to: { review_id: number; reviewed_at: string; feed_version: string | null };
+  /** feed: the published schedule changed. checks: same feed, the review itself changed. */
+  cause: "feed" | "checks";
+  gained: ReviewFlagChange[];
+  lost: ReviewFlagChange[];
+  checks_added: PredictionRiskCheckId[];
+  checks_removed: PredictionRiskCheckId[];
+  routes_added: { route_id: string; route_short_name: string; flag_count: number }[];
+  routes_removed: { route_id: string; route_short_name: string }[];
+  flagged_routes: { from: number; to: number };
+}
+
+export interface ReviewHistoryResponse {
+  history: ReviewHistoryEntry[];
+  diff: ReviewDiff | null;
+}
+
+// What Avail observed at a route's timepoints by hour, beside the schedule
+// (functions-restapi/src/lib/scheduleReview/observed.ts). Avail's own
+// early/on-time/late classification over a window; not the official OTP figure.
+export type ObservedDayKind = "weekday" | "saturday" | "sunday";
+
+export interface ObservedCell {
+  hour: number;
+  departures: number;
+  early_pct: number;
+  ontime_pct: number;
+  late_pct: number;
+}
+
+export interface ObservedTimepoint {
+  stop_id: string;
+  stop_name: string;
+  direction: string | null;
+  departures: number;
+  in_schedule: boolean;
+  hours: ObservedCell[];
+}
+
+export interface ObservedReading {
+  kind: "peak_under_run" | "off_peak_over_run";
+  /** am / pm: that peak is under-run. midday: midday is over-run. */
+  period: "am" | "pm" | "midday";
+  /** N, S, E or W; null when the segment was read across both directions. */
+  direction: string | null;
+  from_stop_id: string;
+  to_stop_id: string;
+  from_stop_name: string;
+  to_stop_name: string;
+  scheduled_minutes: number;
+  peak_pct: number;
+  /** The same share at midday (10am–3pm). */
+  off_peak_pct: number;
+  /** Under-run: the late share at the timepoint before, same peak; null when not measured. */
+  upstream_pct: number | null;
+  text: string;
+}
+
+/** Every route's readings for the ranked route list (GET /gtfs-prediction-risk/observed-summary). */
+export interface ObservedRouteSummary {
+  route_id: string;
+  /** Avail has rows for this route in the window. */
+  measured: boolean;
+  departures: number;
+  readings: number;
+  /** Distinct segments with at least one reading: "confirmed by Avail". */
+  confirmed_segments: number;
+  worst: ObservedReading | null;
+}
+
+export interface ObservedSummaryResponse {
+  window: ObservedOtpResponse["window"];
+  schedule_available: boolean;
+  routes: ObservedRouteSummary[];
+}
+
+export interface ObservedOtpResponse {
+  window: { days: number; dow: ObservedDayKind; first_day: string | null; last_day: string | null; service_days: number };
+  departures: number;
+  timepoints: ObservedTimepoint[];
+  readings: ObservedReading[];
+  /** false when migration 145 has no detail for the route: the grid is in Avail's order and has no readings. */
+  schedule_available: boolean;
+}
+
 export interface KpiTrustDependency {
   feed_name: string;
   required: boolean;
@@ -1178,6 +1402,37 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     getKpiTrust() {
       return request<{ checked_at: string; streams: KpiTrust }>("/api/kpi-trust", {}, true);
     },
+    getGtfsPredictionRisk() {
+      return request<{ review: PredictionRiskReview | null }>("/api/gtfs-prediction-risk", {}, true);
+    },
+    /** The evidence behind one route's flags and its scheduled minutes per timepoint segment by hour. Needs migration 145. */
+    getGtfsPredictionRiskRoute(routeId: string) {
+      return request<RouteScheduleDetailResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}`, {}, true);
+    },
+    /** One entry per distinct schedule review, newest first, and what changed between two (default: the newest two). */
+    getGtfsPredictionRiskHistory(options: { from?: number; to?: number } = {}) {
+      const params = new URLSearchParams();
+      if (options.from !== undefined) params.set("from", String(options.from));
+      if (options.to !== undefined) params.set("to", String(options.to));
+      const query = params.toString();
+      return request<ReviewHistoryResponse>(`/api/gtfs-prediction-risk/history${query ? `?${query}` : ""}`, {}, true);
+    },
+    /** Every route's readings, for ranking the route list. Needs compliance-review.view. */
+    getGtfsPredictionRiskObservedSummary(options: { days?: 7 | 28 | 90; dow?: ObservedDayKind } = {}) {
+      const params = new URLSearchParams();
+      if (options.days) params.set("days", String(options.days));
+      if (options.dow) params.set("dow", options.dow);
+      const query = params.toString();
+      return request<ObservedSummaryResponse>(`/api/gtfs-prediction-risk/observed-summary${query ? `?${query}` : ""}`, {}, true);
+    },
+    /** What Avail observed at the route's timepoints by hour. Needs compliance-review.view. */
+    getGtfsPredictionRiskRouteObserved(routeId: string, options: { days?: 7 | 28 | 90; dow?: ObservedDayKind } = {}) {
+      const params = new URLSearchParams();
+      if (options.days) params.set("days", String(options.days));
+      if (options.dow) params.set("dow", options.dow);
+      const query = params.toString();
+      return request<ObservedOtpResponse>(`/api/gtfs-prediction-risk/routes/${encodeURIComponent(routeId)}/observed${query ? `?${query}` : ""}`, {}, true);
+    },
 
     getMissedTrips(view: "queue" | "history" | "all" = "queue", limit = 200, offset = 0) {
       return request<{
@@ -1692,6 +1947,15 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<OtpStopExclusion>(
         "/api/otp-stop-exclusions",
         { method: "PUT", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
+    /** Clear every Stop Exclusion decision for a month; its Flagged Stops return to pending. */
+    resetStopExclusions(month: string) {
+      return request<{ service_month: string; deleted: number }>(
+        `/api/otp-stop-exclusions?month=${encodeURIComponent(month)}`,
+        { method: "DELETE" },
         true,
       );
     },

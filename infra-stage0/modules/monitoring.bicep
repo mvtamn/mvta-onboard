@@ -9,6 +9,11 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
       name: 'PerGB2018'
     }
     retentionInDays: environment == 'prod' ? 90 : 30
+    // A guard against a runaway log loop, not a budget: normal ingestion is
+    // ~0.6 GB/day, so this only bites at three times that.
+    workspaceCapping: {
+      dailyQuotaGb: 2
+    }
   }
 }
 

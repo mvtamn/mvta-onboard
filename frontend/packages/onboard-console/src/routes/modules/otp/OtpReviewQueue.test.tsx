@@ -7,6 +7,7 @@ import type { FlaggedStop, ReasonCode } from "@mvta/shared";
 // stop nobody has decided yet rather than a row with a status.
 import type { StopExclusionStatus } from "./otpData.js";
 import { ReviewQueuePage } from "./OtpReviewQueue.js";
+import { AppDialogProvider } from "../../../components/AppDialog.js";
 import type { QueueRow } from "./otpFigures.js";
 
 vi.mock("../../../config.js", () => ({ api: { getOtpAuditStream: vi.fn().mockResolvedValue({ entries: [] }) } }));
@@ -25,8 +26,10 @@ const reasonCodes: ReasonCode[] = [
 ];
 
 const onResolve = vi.fn();
-function renderQueue(status: StopExclusionStatus) {
+const onResetMonth = vi.fn();
+function renderQueue(status: StopExclusionStatus, decidedCount = status === "pending" ? 0 : 1) {
   return render(
+    <AppDialogProvider>
     <ReviewQueuePage
       flaggedStops={[stop]}
       queueRows={[row]}
@@ -41,7 +44,11 @@ function renderQueue(status: StopExclusionStatus) {
       onCopy={vi.fn()}
       onCopyAll={vi.fn()}
       copyingAll={false}
-    />,
+      decidedCount={decidedCount}
+      onResetMonth={onResetMonth}
+      resetting={false}
+    />
+    </AppDialogProvider>,
   );
 }
 
@@ -51,8 +58,11 @@ async function showResolved() {
   await userEvent.selectOptions(screen.getAllByRole("combobox")[1]!, "resolved");
 }
 
-beforeEach(() => { onResolve.mockReset(); onResolve.mockResolvedValue(true); });
-afterEach(() => cleanup());
+beforeEach(() => {
+  onResolve.mockReset(); onResolve.mockResolvedValue(true);
+  onResetMonth.mockReset(); onResetMonth.mockResolvedValue(true);
+});
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("changing a decision that is already made", () => {
   // The API always allowed this - PUT /otp-stop-exclusions upserts in place -
@@ -108,5 +118,32 @@ describe("changing a decision that is already made", () => {
     renderQueue("pending");
     expect(screen.queryByRole("button", { name: /Change the decision/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+});
+
+describe("resetting the month", () => {
+  // A decision could be changed but never undone, so a month reviewed against
+  // the wrong figures had no way back to pending through the console.
+  it("resets the month once the reviewer confirms in the app's own dialog", async () => {
+    renderQueue("approved", 3);
+    await userEvent.click(screen.getByRole("button", { name: "Reset 09/2026 decisions" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Reset 09/2026 decisions?" });
+    expect(dialog).toHaveTextContent(/deletes all 3 stop exclusion decisions for 09\/2026/);
+    await userEvent.click(screen.getByRole("button", { name: "Reset 3 stop exclusion decisions" }));
+    expect(onResetMonth).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when the reviewer cancels", async () => {
+    renderQueue("approved");
+    await userEvent.click(screen.getByRole("button", { name: "Reset 09/2026 decisions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onResetMonth).not.toHaveBeenCalled();
+  });
+
+  it("is not offered when the month has no decisions to clear", () => {
+    renderQueue("pending", 0);
+    expect(screen.queryByRole("button", { name: /Reset .* decisions/ })).not.toBeInTheDocument();
   });
 });

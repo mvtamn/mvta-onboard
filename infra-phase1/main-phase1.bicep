@@ -95,6 +95,9 @@ param onDemandOperationalZoneIds string = ''
 @description('Keep the Spare webhook receiver running on the REST API app. True until Spare is repointed at func-mvta-sparehook-<env>; then false disables it there. See HANDOFF.md, "Spare webhook receiver on its own app".')
 param spareWebhookOnRestApi bool = true
 
+@description('Run the REST API app\'s timers. False disables every one of them, so a new environment can be deployed and signed in to before it starts polling feeds or writing to its database. Flip to true at cutover. See plans/production-environment-plan.md, steps 20 and 23.')
+param restApiTimersEnabled bool = true
+
 @description('GTFS-Realtime VehiclePosition feed used for fixed-route vehicle monitoring.')
 param gtfsRtVehicleUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true'
 
@@ -130,6 +133,39 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-09-01' existing = {
   name: 'vnet-mvta-onboard-${environment}'
 }
 
+// Every timer the REST API package registers. functions-restapi/src/lib/
+// restApiTimers.test.ts fails when this list and the code disagree, so a new
+// timer cannot slip past restApiTimersEnabled = false.
+var restApiTimerNames = [
+  'assessmentPeriodOpen'
+  'availAvlPoll'
+  'availDetoursSync'
+  'availMissedTripsPoll'
+  'complianceCandidatesPoll'
+  'decisionMatrixDocumentHealth'
+  'decisionMatrixSopFolderWalk'
+  'detourImagesPurge'
+  'eventTelemetryMaintenance'
+  'fixedRouteDeparturesPoll'
+  'gtfsAlertsPoll'
+  'gtfsDelaysPoll'
+  'gtfsMissedTripsPoll'
+  'gtfsStopsSync'
+  'gtfsVehiclePositionsPoll'
+  'onDemandDeparturesPoll'
+  'onDemandInterventionsEvaluate'
+  'onDemandSpareReconcile'
+  'onDemandZonesSync'
+  'otpDailyFeedPoll'
+  'otpMonthlyFeedPoll'
+  'predictionCapture'
+  'spareMissedTripsEvaluate'
+  'spareMissedTripsIngest'
+  'suggestedAlertsExpire'
+  'tripStartActualsPoll'
+  'tripStartLogMaterialize'
+]
+
 module restApiFunction 'modules/functionapp.bicep' = {
   name: 'rest-api-function-deployment'
   params: {
@@ -143,6 +179,10 @@ module restApiFunction 'modules/functionapp.bicep' = {
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
+    // A new environment is deployed before its app registration exists, and
+    // Easy Auth with an empty client id cannot validate anyone. Once the id is
+    // filled in, the next deploy turns it on.
+    enableEasyAuth: !empty(aadClientId)
     decisionMatrixLibrarySiteId: decisionMatrixLibrarySiteId
     decisionMatrixLibraryDriveId: decisionMatrixLibraryDriveId
     decisionMatrixSopFolder: decisionMatrixSopFolder
@@ -158,6 +198,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     riderAppBaseUrl: riderAppBaseUrl
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
+    predictionCaptureStorageAccountName: take('stmvtapredcap${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
     onDemandDeparturesEnabled: onDemandDeparturesEnabled
     assessmentMonthBoundaryEnabled: assessmentMonthBoundaryEnabled
@@ -168,6 +209,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     spareContractorFaultValues: spareContractorFaultValues
     manageRoleAssignments: manageRoleAssignments
     enableAccessManagement: !empty(accessManagementConfigJson)
+    enableGraphClient: !empty(aadClientId)
     accessManagementConfigJson: accessManagementConfigJson
     accessAdminFallback: accessAdminFallback
     privilegedAuthContext: privilegedAuthContext
@@ -184,7 +226,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     availPulloutUrl: availPulloutUrl
     // Retired here only once Spare delivers to the receiver's own app below;
     // switching it off first would drop deliveries.
-    disabledFunctions: spareWebhookOnRestApi ? [] : ['onDemandSpareWebhook']
+    disabledFunctions: concat(spareWebhookOnRestApi ? [] : ['onDemandSpareWebhook'], restApiTimersEnabled ? [] : restApiTimerNames)
   }
 }
 
@@ -331,6 +373,18 @@ module detourImagesStorage 'modules/storage-detour-images.bicep' = {
   }
 }
 
+// Raw prediction capture for the prediction accuracy benchmark
+// (plans/prediction-accuracy-evaluation.md). Expires its own files.
+module predictionCaptureStorage 'modules/storage-prediction-capture.bicep' = {
+  name: 'prediction-capture-storage-deployment'
+  params: {
+    location: location
+    storageAccountName: take('stmvtapredcap${environment}${cleanSuffix}', 24)
+    functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+    manageRoleAssignments: manageRoleAssignments
+  }
+}
+
 module complianceReportsStorage 'modules/storage-compliance-reports.bicep' = {
   name: 'compliance-reports-storage-deployment'
   params: {
@@ -347,12 +401,13 @@ module complianceReportsStorage 'modules/storage-compliance-reports.bicep' = {
 // same "built outside Bicep first" pattern as Front Door (see this file's
 // own header comment). Name matches the real resource
 // (rg-mvta-onboard-dev/mvta-onboard-maps) so a future deployment manages it
-// in place instead of creating a second, unused account.
+// in place instead of creating a second, unused account. Dev keeps that
+// unsuffixed name; every other environment carries its own.
 module maps 'modules/maps.bicep' = {
   name: 'maps-deployment'
   params: {
     location: location
-    mapsAccountName: 'mvta-onboard-maps'
+    mapsAccountName: environment == 'dev' ? 'mvta-onboard-maps' : 'mvta-onboard-maps-${environment}'
     functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
   }
 }
