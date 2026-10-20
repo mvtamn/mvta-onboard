@@ -430,7 +430,7 @@ lesson 7 above.
   available", manual Mark published still works). To turn it on: create the
   secret with the channel's incoming-webhook URL and restart the REST app.
   Do not chase this as an open defect.
-- TO DO TO TURN ON TEAMS POSTS FOR ANNOUNCEMENTS (1.6.5): the dispatch app
+- TO DO TO TURN ON TEAMS POSTS FOR ANNOUNCEMENTS (1.6.7): the dispatch app
   posts "Notify Teams" announcements per audience, but until these exist every
   post is recorded as `skipped`. Portal/CLI steps, not code, in this order:
   1. Apply migration 144 (`TeamsDeliveryLog`) to the dev database.

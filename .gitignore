@@ -45,6 +45,8 @@ mvta-functions-prod-source.zip
 *.png
 !frontend/packages/onboard-console/public/favicon.png
 !frontend/packages/rider-app/public/favicon.png
+# Opt-in screenshots the toll-free verification links to (served at alerts.mvta.com/opt-in/).
+!frontend/packages/rider-app/public/opt-in/*.png
 *.jpg
 *.csv
 # THIS REPOSITORY IS PUBLIC. *.docx already covered Word contract exhibits,
