@@ -562,8 +562,9 @@ export function OptIn() {
                   aria-describedby={describedBy("consent")}
                 />
                 <span>
-                  I agree to receive automated service alerts from MVTA. Message and data rates may
-                  apply. Reply STOP to unsubscribe, HELP for help. See MVTA&rsquo;s{" "}
+                  I agree to receive automated service alerts from MVTA. Message frequency varies.
+                  Message and data rates may apply. Reply STOP to unsubscribe, HELP for help. See
+                  MVTA&rsquo;s{" "}
                   <a href="https://www.mvta.com/rider-alerts-policy/" target="_blank" rel="noopener noreferrer">
                     Terms &amp; Conditions
                   </a>{" "}

@@ -16,6 +16,10 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
 
+## [1.6.3] - 2026-10-20
+
+- **The rider consent box now says "Message frequency varies."** It sits between "from MVTA" and "Message and data rates may apply", the order carriers expect. The toll-free verification for +1 866-366-7126 was sent back on 2026-10-12 (code 1305, opt-in workflow must match the submission) because the application quoted a frequency line the page did not have. The design canvas files in `design/rider-subscribe/` carry the same wording. Nothing else on the form changes.
+
 ## [1.6.1] - 2026-10-20
 
 Step 11 of `plans/production-environment-plan.md`.
