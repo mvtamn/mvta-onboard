@@ -1,6 +1,6 @@
 // Each feed's deadline comes from feedFreshness.ts, which the endpoints and
 // pollers that judge the same feeds also read, so the limits cannot drift apart.
-import { FEED_STALE_AFTER_MINUTES as LIMIT } from "./feedFreshness";
+import { FEED_STALE_AFTER_MINUTES } from "./feedFreshness";
 
 export type KpiTrustState = "current" | "stale" | "unavailable" | "current_but_empty";
 
@@ -57,12 +57,14 @@ export interface KpiTrustStream {
   dependencies: KpiTrustDependency[];
 }
 
-type DependencyContract = { feedName: KpiFeedName; staleAfterMinutes?: number };
+// A contract lists feed names only: how stale each may get belongs to the feed
+// (FEED_STALE_AFTER_MINUTES), not to the KPI that happens to read it.
+type DependencyContract = { feedName: KpiFeedName };
 type Contract = { required: readonly DependencyContract[]; supporting?: readonly DependencyContract[] };
 
 const CONTRACTS = {
-  fixed_route_delay: { required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: LIMIT.gtfs_trip_updates }, { feedName: "gtfs_static" }], supporting: [{ feedName: "gtfs_vehicle_positions", staleAfterMinutes: LIMIT.gtfs_vehicle_positions }] },
-  fixed_route_departures: { required: [{ feedName: "avail_pullout", staleAfterMinutes: LIMIT.avail_pullout }] },
+  fixed_route_delay: { required: [{ feedName: "gtfs_trip_updates" }, { feedName: "gtfs_static" }], supporting: [{ feedName: "gtfs_vehicle_positions" }] },
+  fixed_route_departures: { required: [{ feedName: "avail_pullout" }] },
   // The on-demand half of garage departure (ADR 0028). onDemandDeparturesPoll
   // reads Spare duties every fifteen minutes, so 45 minutes is three missed
   // runs, the same allowance the other Spare ingestion feeds get. It learns
@@ -70,11 +72,11 @@ const CONTRACTS = {
   // evidence: without it the duty list goes quiet, but the duties it already
   // knows keep being measured.
   on_demand_departures: {
-    required: [{ feedName: "spare_duties", staleAfterMinutes: LIMIT.spare_duties }],
-    supporting: [{ feedName: "spare_requests", staleAfterMinutes: LIMIT.spare_requests }],
+    required: [{ feedName: "spare_duties" }],
+    supporting: [{ feedName: "spare_requests" }],
   },
   otp: { required: [{ feedName: "avail_otp_monthly" }], supporting: [{ feedName: "avail_otp_daily" }] },
-  event_avl: { required: [{ feedName: "avail_avl", staleAfterMinutes: LIMIT.avail_avl }] },
+  event_avl: { required: [{ feedName: "avail_avl" }] },
   // Only the hourly authoritative reconciliation can establish On-Demand
   // currency, and it runs independently of missed-trip activation. The Spare
   // ingestion feeds stay supporting evidence so SPARE_MISSED_TRIPS_ENABLED
@@ -87,10 +89,10 @@ const CONTRACTS = {
   // as unavailable. Supporting dependencies do not set contract_pending, so
   // declaring it here does not put the On-Demand stream back into review.
   on_demand: {
-    required: [{ feedName: "spare_on_demand_reconciliation", staleAfterMinutes: LIMIT.spare_on_demand_reconciliation }],
+    required: [{ feedName: "spare_on_demand_reconciliation" }],
     supporting: [
-      { feedName: "spare_requests", staleAfterMinutes: LIMIT.spare_requests },
-      { feedName: "spare_slots", staleAfterMinutes: LIMIT.spare_slots },
+      { feedName: "spare_requests" },
+      { feedName: "spare_slots" },
       { feedName: "on_demand_zones" },
     ],
   },
@@ -98,24 +100,34 @@ const CONTRACTS = {
   // it explains reduced context without invalidating a current result, so it is
   // declared supporting rather than required.
   fixed_route_missed_trips: {
-    required: [{ feedName: "gtfs_trip_updates", staleAfterMinutes: LIMIT.gtfs_trip_updates }, { feedName: "gtfs_vehicle_positions", staleAfterMinutes: LIMIT.gtfs_vehicle_positions }],
+    required: [{ feedName: "gtfs_trip_updates" }, { feedName: "gtfs_vehicle_positions" }],
     supporting: [{ feedName: "avail_missed_trips" }],
   },
   spare_missed_trips: {
-    required: [{ feedName: "spare_requests", staleAfterMinutes: LIMIT.spare_requests }, { feedName: "spare_slots", staleAfterMinutes: LIMIT.spare_slots }],
+    required: [{ feedName: "spare_requests" }, { feedName: "spare_slots" }],
     supporting: [{ feedName: "avail_missed_trips" }],
   },
 } as const satisfies Record<string, Contract>;
 
 export type KpiTrust = { [K in keyof typeof CONTRACTS]: KpiTrustStream };
 
-function dependency(
+// How long a feed may go without a usable delivery, or undefined when it has no
+// deadline (contract pending, or reference data such as zone geometry).
+function feedStaleAfterMinutes(feedName: KpiFeedName): number | undefined {
+  return (FEED_STALE_AFTER_MINUTES as Partial<Record<KpiFeedName, number>>)[feedName];
+}
+
+// The one freshness rule for a feed. KPI trust reads every declared dependency
+// through it, and the feed connection checks read every ledger row through it -
+// including feeds no KPI declares, such as the prediction capture - so a feed
+// cannot be Current in one place and Stale in another.
+export function feedDependency(
   feedName: KpiFeedName,
-  required: boolean,
   health: KpiFeedHealth | undefined,
-  staleAfterMinutes: number | undefined,
   now: Date,
+  required = false,
 ): KpiTrustDependency {
+  const staleAfterMinutes = feedStaleAfterMinutes(feedName);
   const lastSuccess = health?.last_success_at ?? null;
   // A successful delivery of old data is not current coverage. When a source
   // timestamp is supplied, it is the limiting freshness signal.
@@ -149,13 +161,13 @@ function dependency(
 
 function stream(contract: Contract, healthByFeed: Map<KpiFeedName, KpiFeedHealth>, now: Date): KpiTrustStream {
   const dependencies = [
-    ...contract.required.map((item) => dependency(item.feedName, true, healthByFeed.get(item.feedName), item.staleAfterMinutes, now)),
-    ...(contract.supporting ?? []).map((item) => dependency(item.feedName, false, healthByFeed.get(item.feedName), item.staleAfterMinutes, now)),
+    ...contract.required.map((item) => feedDependency(item.feedName, healthByFeed.get(item.feedName), now, true)),
+    ...(contract.supporting ?? []).map((item) => feedDependency(item.feedName, healthByFeed.get(item.feedName), now)),
   ];
   const required = dependencies.filter((item) => item.required);
   const unavailable = required.some((item) => item.state === "unavailable");
   const stale = required.some((item) => item.state === "stale");
-  const contractPending = contract.required.some((item) => !item.staleAfterMinutes);
+  const contractPending = contract.required.some((item) => !feedStaleAfterMinutes(item.feedName));
   const successfulCounts = contract.required.map((item) => healthByFeed.get(item.feedName)?.last_entity_count);
   const currentButEmpty = !unavailable && !stale && successfulCounts.length > 0 && successfulCounts.every((count) => count === 0);
   const state: KpiTrustState = unavailable ? "unavailable" : stale ? "stale" : currentButEmpty ? "current_but_empty" : "current";
@@ -229,5 +241,5 @@ export function underwayEvidenceCoverage(
   );
   // The contract declares it required, so this is unreachable; failing closed
   // (treating coverage as unproven) is the safe reading if that ever changes.
-  return resolved ?? dependency("gtfs_vehicle_positions", true, undefined, undefined, now);
+  return resolved ?? feedDependency("gtfs_vehicle_positions", undefined, now, true);
 }
