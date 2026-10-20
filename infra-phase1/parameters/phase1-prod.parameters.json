@@ -76,6 +76,9 @@
         "https://onboard.mvta.com",
         "https://alerts.mvta.com"
       ]
+    },
+    "restApiTimersEnabled": {
+      "value": false
     }
   }
 }
