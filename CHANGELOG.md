@@ -18,6 +18,10 @@ Step 4 of Phase 7 in `plans/missed-trip-feature-finish-plan.md` ("publish precis
 - A database without `AvailEvidenceLinks` or `TripStartVerifications` gets null comparisons and a note, not zeros. `serviceDateToday` moved from the promotions handler into `promotion.ts` so both handlers share it.
 - Tests: `scorecard.test.ts` (rollup, ranges, bar sentences), `scorecard.db.contract.test.ts` (the four queries on SQL Server, cross-checked against `classifyMissedTripCase`; added to `test:decision-matrix-contract`), and console tests for the helpers and the page.
 
+## [1.6.3] - 2026-10-20
+
+- **The rider consent box now says "Message frequency varies."** It sits between "from MVTA" and "Message and data rates may apply", the order carriers expect. The toll-free verification for +1 866-366-7126 was sent back on 2026-10-12 (code 1305, opt-in workflow must match the submission) because the application quoted a frequency line the page did not have. The design canvas files in `design/rider-subscribe/` carry the same wording. Nothing else on the form changes.
+
 ## [1.6.1] - 2026-10-20
 
 Step 11 of `plans/production-environment-plan.md`.
