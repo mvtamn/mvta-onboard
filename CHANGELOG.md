@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.3] - 2026-10-20
+
+- **The rider consent box now says "Message frequency varies."** It sits between "from MVTA" and "Message and data rates may apply", the order carriers expect. The toll-free verification for +1 866-366-7126 was sent back on 2026-10-12 (code 1305, opt-in workflow must match the submission) because the application quoted a frequency line the page did not have. The design canvas files in `design/rider-subscribe/` carry the same wording. Nothing else on the form changes.
+
 ## [1.6.1] - 2026-10-20
 
 Step 11 of `plans/production-environment-plan.md`.
