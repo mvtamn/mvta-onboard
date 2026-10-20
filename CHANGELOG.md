@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.5.339] - 2026-10-19
+
+Production plan steps 19-20.
+
+- **Production can carry code before it starts working.** `main-phase1.bicep` gains `restApiTimersEnabled`, which defaults to true. False adds every timer the REST API registers, 27 today from `assessmentPeriodOpen` to `tripStartLogMaterialize`, to the app's `disabledFunctions`, so each is written as `AzureWebJobs.<name>.Disabled = true`. Before this, the only switch of that kind covered the Spare webhook. Deploying the API to production would have started every poller - Spare, Avail, GTFS-RT, prediction capture, the missed-trip evaluations - against a database with no schema, and doubled the load on Spare's and Avail's APIs before cutover.
+- **`phase1-prod.parameters.json` sets it false.** The plan's step 20 signs in to production "with production's timers still off". At cutover (step 23), setting it true and running production's infra deploy turns them all on together. Dev keeps the default, so nothing changes there.
+- **The list cannot fall behind the code.** `restApiTimerNames` is declared once in Bicep, and `functions-restapi/src/lib/restApiTimers.test.ts` compares it with every `app.timer("…")` in `src/functions`. Deleting one name from the list fails the test, which was mutation-checked. HTTP functions stay on, so health, sign-in and `/api/me/access` can be tested. The dispatch app has no timers; its Service Bus triggers receive nothing until the REST app writes to its queues. The Spare receiver's app gets no deliveries until Spare is repointed (step 24).
+
 ## [1.5.337] - 2026-10-19
 
 - **The prediction capture threw an exception every 30 seconds while it could not write.** v1.5.332 went live on dev at 17:22 UTC before the REST app's identity had Storage Blob Data Contributor on `stmvtapredcapdevmvtajx44` (`manageRoleAssignments` is off on dev, so the template does not grant it). Every run failed with "This request is not authorized to perform this operation". `runFeedIngestion` records a thrown error on the ledger and rethrows it, so each failure was also an App Insights exception: 2,880 a day, and a SQL ledger write every 30 seconds.
