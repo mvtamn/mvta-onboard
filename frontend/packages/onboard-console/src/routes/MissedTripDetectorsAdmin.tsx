@@ -5,8 +5,8 @@
 // decision used to be a deployment setting with no date, no evidence and no
 // author (ADR-0035). It is made here now, and it is made for a service date, so
 // promoting a detector cannot change a month already measured.
-import { useEffect, useState } from "react";
-import type { DetectorPromotionView, DetectorScorecard, DetectorScorecardGrouping } from "@mvta/shared";
+import { useEffect, useRef, useState } from "react";
+import type { DetectorPromotionView, DetectorScorecard } from "@mvta/shared";
 import { api } from "../config.js";
 import {
   decisionTitle,
@@ -21,18 +21,7 @@ import {
   standingSentence,
   type PromotionDraft,
 } from "../lib/detectorPromotion.js";
-import {
-  availRecallText,
-  availText,
-  dispatcherRecallText,
-  dispatcherText,
-  draftFromWeek,
-  heldReasonsText,
-  periodLabel,
-  precisionText,
-  rateText,
-  reviewBurdenText,
-} from "../lib/detectorScorecard.js";
+import { DetectorReadiness } from "./DetectorReadiness.js";
 import "./modules/serviceRisk.css";
 import "./detectorPromotion.css";
 
@@ -44,8 +33,8 @@ export function MissedTripDetectorsAdmin() {
   const [message, setMessage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [scorecard, setScorecard] = useState<DetectorScorecard | null>(null);
-  const [grouping, setGrouping] = useState<DetectorScorecardGrouping>("week");
   const [scorecardFailure, setScorecardFailure] = useState<string | null>(null);
+  const effectiveDateInput = useRef<HTMLInputElement>(null);
 
   const errors = draftErrors(draft);
   const set = (patch: Partial<PromotionDraft>) => setDraft((current) => ({ ...current, ...patch }));
@@ -61,16 +50,18 @@ export function MissedTripDetectorsAdmin() {
   useEffect(() => {
     let current = true;
     setScorecardFailure(null);
-    api.getMissedTripDetectorScorecard({ group: grouping })
+    api.getMissedTripDetectorScorecard({ group: "week" })
       .then((next) => { if (current) setScorecard(next); })
       .catch(() => { if (current) setScorecardFailure("The scorecard is unavailable."); });
     return () => { current = false; };
-  }, [grouping]);
+  }, []);
 
   function applyWeek(fill: Partial<PromotionDraft>) {
     set(fill);
     setShowErrors(false);
     setMessage("The week's measurement is in the form. Choose the service date it applies from.");
+    // The date is the one thing the week cannot supply, so that is where to go next.
+    effectiveDateInput.current?.focus();
   }
 
   async function record() {
@@ -119,75 +110,8 @@ export function MissedTripDetectorsAdmin() {
       {!view && <p className="detector-empty">Loading the promotion history.</p>}
     </section>
 
-    <section className="detector-scorecard" aria-label="Detector scorecard">
-      <header className="detector-scorecard-head">
-        <div>
-          <h3>Scorecard</h3>
-          <p className="detector-note">
-            Precision is confirmed cases over every decisive review; indeterminate reviews and held cases are counted
-            apart. Avail and the Dispatch Log are checked against fixed-route cases only. Service weeks run Monday to Sunday.
-          </p>
-        </div>
-        <div className="detector-toggle" role="group" aria-label="Group by">
-          {(["week", "day"] as const).map((value) => <button key={value} type="button" className="btn-sm"
-            aria-pressed={grouping === value} onClick={() => setGrouping(value)}>{value === "week" ? "Weeks" : "Days"}</button>)}
-        </div>
-      </header>
-      <div className="detector-toggle" role="group" aria-label="Scorecard detector">
-        {(view?.standings ?? []).map((standing) => <button key={standing.detector} type="button" className="btn-sm"
-          aria-pressed={draft.detector === standing.detector} onClick={() => set({ detector: standing.detector })}>
-          {detectorLabel(standing.detector)}
-        </button>)}
-      </div>
-      {scorecardFailure && <p className="detector-error">{scorecardFailure}</p>}
-      {!scorecard && !scorecardFailure && <p className="detector-empty">Loading the scorecard.</p>}
-      {scorecard && <div className="detector-scorecard-scroll">
-        <table className="data detector-scorecard-table">
-          <thead>
-            <tr>
-              <th scope="col">{scorecard.grouping === "week" ? "Service week" : "Service date"}</th>
-              <th scope="col">Precision</th>
-              <th scope="col">Held / indeterminate</th>
-              <th scope="col">Avail</th>
-              <th scope="col">Dispatcher agrees</th>
-              <th scope="col">Review burden</th>
-              <th scope="col">Fixed-route recall vs Avail</th>
-              <th scope="col">vs Dispatch Log</th>
-              {scorecard.grouping === "week" && <th scope="col">Promotion bar</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {[...scorecard.periods].reverse().map((period) => {
-              const figures = period.detectors.find((d) => d.detector === draft.detector);
-              if (!figures) return null;
-              const fixedRoute = figures.detector !== "spare";
-              const fill = draftFromWeek(period, figures);
-              return <tr key={period.start}>
-                <th scope="row">{periodLabel(period, scorecard.grouping)}</th>
-                <td>{precisionText(figures)}</td>
-                <td>
-                  {figures.cases.held} held · {figures.outcomes.indeterminate} indeterminate
-                  <small>{rateText(figures.unknown_rate)} of {figures.cases.detected}{figures.held_reasons.length > 0 ? ` · ${heldReasonsText(figures.held_reasons)}` : ""}</small>
-                </td>
-                <td>{availText(figures)}</td>
-                <td>{dispatcherText(figures)}</td>
-                <td>{reviewBurdenText(figures.review)}</td>
-                <td>{fixedRoute ? availRecallText(period.avail_recall) : "—"}</td>
-                <td>{fixedRoute ? dispatcherRecallText(period.dispatcher_recall) : "—"}</td>
-                {scorecard.grouping === "week" && <td className={figures.bar?.meets_bar ? "detector-bar is-met" : "detector-bar"}>
-                  <span>{figures.bar?.sentence}</span>
-                  {fill && <button type="button" className="btn-sm" onClick={() => applyWeek(fill)}>Use this week</button>}
-                </td>}
-              </tr>;
-            })}
-          </tbody>
-        </table>
-      </div>}
-      {scorecard && (!scorecard.sources.avail || !scorecard.sources.dispatch_log) && <p className="detector-note">
-        {!scorecard.sources.avail && "This database has no Avail evidence links (migration 136), so Avail is not compared. "}
-        {!scorecard.sources.dispatch_log && "This database has no Dispatch Log verifications, so dispatchers are not compared."}
-      </p>}
-    </section>
+    <DetectorReadiness scorecard={scorecard} failure={scorecardFailure} onUseWeek={applyWeek}
+      detectors={scorecard?.periods[0]?.detectors.map((figures) => figures.detector) ?? []} />
 
     <section className="detector-decision" aria-label="Record a decision">
       <h3>Record a decision</h3>
@@ -215,7 +139,7 @@ export function MissedTripDetectorsAdmin() {
 
         <label>
           <span>From service date</span>
-          <input aria-label="From service date" type="date" value={draft.effectiveDate} onChange={(event) => set({ effectiveDate: event.target.value })} aria-invalid={Boolean(showErrors && errors.effectiveDate)} />
+          <input ref={effectiveDateInput} aria-label="From service date" type="date" value={draft.effectiveDate} onChange={(event) => set({ effectiveDate: event.target.value })} aria-invalid={Boolean(showErrors && errors.effectiveDate)} />
           {showErrors && errors.effectiveDate && <small className="detector-error">{errors.effectiveDate}</small>}
           <small>Cases on this service date and after. Earlier months keep the figures they were measured with.</small>
         </label>

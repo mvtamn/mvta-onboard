@@ -78,3 +78,35 @@ export function draftFromWeek(
     reason: `${percent}% precision over ${figures.sample} reviewed cases in the service week of ${serviceDateLabel(period.start)} (Detector scorecard).`,
   };
 }
+
+/** How a week reads against the bar: met, short of it, or not yet decidable. */
+export type WeekTone = "met" | "short" | "open";
+
+export function weekTone(figures: Pick<DetectorPeriodFigures, "bar">): WeekTone {
+  if (!figures.bar?.complete) return "open";
+  return figures.bar.meets_bar ? "met" : "short";
+}
+
+/**
+ * The week a detector's verdict is read from: its latest complete week, or the
+ * latest week at all when none is complete yet.
+ */
+export function featuredWeek<P extends Pick<DetectorScorecardPeriod, "detectors">>(
+  periods: readonly P[],
+  detector: DetectorPeriodFigures["detector"],
+): P | null {
+  const complete = periods.filter((p) => p.detectors.find((d) => d.detector === detector)?.bar?.complete);
+  return complete[complete.length - 1] ?? periods[periods.length - 1] ?? null;
+}
+
+export function weeksMetText(periods: readonly Pick<DetectorScorecardPeriod, "detectors">[], detector: DetectorPeriodFigures["detector"]): string {
+  const met = periods.filter((p) => p.detectors.find((d) => d.detector === detector)?.bar?.meets_bar).length;
+  return `${met} of ${periods.length} weeks met the bar`;
+}
+
+/** "20261012" as "Oct 12", for a strip label. */
+export function shortDateLabel(key: string): string {
+  if (!/^\d{8}$/.test(key)) return key;
+  return new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(4, 6)) - 1, Number(key.slice(6, 8))))
+    .toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}

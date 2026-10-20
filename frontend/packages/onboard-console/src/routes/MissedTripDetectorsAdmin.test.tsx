@@ -147,39 +147,42 @@ describe("Missed-trip detector promotion", () => {
     await userEvent.click(screen.getByRole("button", { name: "Record promotion" }));
     expect(await screen.findByText("This detector already counts on that service date.")).toBeTruthy();
   });
-  it("shows the scorecard for the detector chosen, newest week first", async () => {
+  it("gives every detector its verdict from its latest complete week", async () => {
     render(<MissedTripDetectorsAdmin />);
-    const table = await screen.findByRole("table");
-    const rows = within(table).getAllByRole("row");
-    expect(rows[1].textContent).toMatch(/94\.7% of 19/);
-    expect(rows[2].textContent).toMatch(/97\.2% of 143/);
-    expect(rows[2].textContent).toMatch(/66\.7% · 2 unmatched · 1 probable/);
-    expect(rows[2].textContent).toMatch(/75\.0% · 1 missed/);
+    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    // Both weeks are complete, so the verdict is the later one's (12 October), not the one that met the bar.
+    expect(within(silent).getByText("94.7%")).toBeTruthy();
+    expect(within(silent).getByText(/below 95%/)).toBeTruthy();
+    expect(within(silent).getByText("1 of 2 weeks met the bar")).toBeTruthy();
+    expect(screen.getByRole("article", { name: "Advance cancellations" })).toBeTruthy();
+    expect(screen.getByRole("article", { name: "On-demand service failures" })).toBeTruthy();
     expect(getMissedTripDetectorScorecard).toHaveBeenCalledWith({ group: "week" });
   });
 
-  it("fills the promotion form from a week that meets the bar", async () => {
+  it("reads another week's evidence from the strip", async () => {
     render(<MissedTripDetectorsAdmin />);
-    await screen.findByRole("table");
-    await userEvent.click(screen.getByRole("button", { name: "Use this week" }));
+    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    await userEvent.click(within(silent).getByRole("button", { name: /^Week of .*97\.2% of 143/ }));
+    expect(within(silent).getByText("97.2%")).toBeTruthy();
+    expect(within(silent).getByText(/66\.7% · 2 unmatched · 1 probable/)).toBeTruthy();
+    expect(within(silent).getByText(/75\.0% · 1 missed/)).toBeTruthy();
+  });
+
+  it("fills the promotion form from a week that meets the bar, and goes to the date", async () => {
+    render(<MissedTripDetectorsAdmin />);
+    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    await userEvent.click(within(silent).getByRole("button", { name: /^Week of .*97\.2% of 143/ }));
+    await userEvent.click(within(silent).getByRole("button", { name: "Promote with this week" }));
     expect((screen.getByLabelText("Measured precision") as HTMLInputElement).value).toBe("97.2");
     expect((screen.getByLabelText("Cases measured") as HTMLInputElement).value).toBe("143");
     expect((screen.getByLabelText("Reason") as HTMLTextAreaElement).value).toMatch(/service week of/);
+    expect(document.activeElement).toBe(screen.getByLabelText("From service date"));
   });
 
   it("has no Avail or Dispatch Log comparison for on-demand", async () => {
     render(<MissedTripDetectorsAdmin />);
-    await screen.findByRole("table");
-    await userEvent.click(screen.getByRole("button", { name: "On-demand service failures" }));
-    const rows = within(screen.getByRole("table")).getAllByRole("row");
-    expect(rows[2].textContent).not.toMatch(/unmatched/);
-    expect(screen.queryByRole("button", { name: "Use this week" })).toBeNull();
-  });
-
-  it("can be read by service date", async () => {
-    render(<MissedTripDetectorsAdmin />);
-    await screen.findByRole("table");
-    await userEvent.click(screen.getByRole("button", { name: "Days" }));
-    await waitFor(() => expect(getMissedTripDetectorScorecard).toHaveBeenLastCalledWith({ group: "day" }));
+    const spare = await screen.findByRole("article", { name: "On-demand service failures" });
+    expect(within(spare).queryByText(/Recall/)).toBeNull();
+    expect(within(spare).getAllByText("—").length).toBeGreaterThan(0);
   });
 });

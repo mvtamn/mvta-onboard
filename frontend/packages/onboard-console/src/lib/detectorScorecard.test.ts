@@ -4,10 +4,14 @@ import {
   availRecallText,
   dispatcherText,
   draftFromWeek,
+  featuredWeek,
   heldReasonsText,
   precisionText,
   rateText,
   reviewBurdenText,
+  shortDateLabel,
+  weeksMetText,
+  weekTone,
 } from "./detectorScorecard.js";
 
 const bar = (meets: boolean) => ({ complete: meets, meets_bar: meets, sentence: "" });
@@ -60,5 +64,33 @@ describe("using a week in the promotion form", () => {
   it("offers nothing for a week short of the bar", () => {
     expect(draftFromWeek({ start: "20261012" }, figures({ bar: bar(false) }))).toBeNull();
     expect(draftFromWeek({ start: "20261012" }, figures({ bar: null }))).toBeNull();
+  });
+});
+
+describe("reading a detector's weeks", () => {
+  const period = (start: string, bar: { complete: boolean; meets_bar: boolean } | null) =>
+    ({ start, detectors: [{ detector: "spare" as const, bar: bar && { ...bar, sentence: "" } }] }) as never;
+
+  it("reads the verdict from the latest complete week", () => {
+    const weeks = [period("1", bar(true)), period("2", { complete: true, meets_bar: false }), period("3", { complete: false, meets_bar: false })];
+    expect((featuredWeek(weeks, "spare") as { start: string }).start).toBe("2");
+    expect(weeksMetText(weeks, "spare")).toBe("1 of 3 weeks met the bar");
+  });
+
+  it("falls back to the latest week when none is complete", () => {
+    const weeks = [period("1", { complete: false, meets_bar: false }), period("2", null)];
+    expect((featuredWeek(weeks, "spare") as { start: string }).start).toBe("2");
+    expect(featuredWeek([], "spare")).toBeNull();
+  });
+
+  it("tones a week met, short, or open", () => {
+    expect(weekTone({ bar: bar(true) })).toBe("met");
+    expect(weekTone({ bar: { complete: true, meets_bar: false, sentence: "" } })).toBe("short");
+    expect(weekTone({ bar: null })).toBe("open");
+  });
+
+  it("labels the strip briefly", () => {
+    expect(shortDateLabel("20261012")).toMatch(/12/);
+    expect(shortDateLabel("bad")).toBe("bad");
   });
 });

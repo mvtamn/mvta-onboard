@@ -85,42 +85,86 @@
   .detector-fields { grid-template-columns: 1fr; }
 }
 
-/* The scorecard: one row per service week (or day) for the detector chosen. */
+/* Ready to promote? One row per detector: verdict, weekly precision strip,
+   and the selected week's evidence (DetectorReadiness.tsx). */
 .detector-scorecard {
   border: 1px solid var(--border, #d8d8d2);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 20px;
   background: var(--surface, #fff);
-  display: grid;
-  gap: 12px;
 }
 
 .detector-scorecard h3 { margin: 0 0 6px; }
-.detector-scorecard-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: start; }
-.detector-scorecard-head .detector-note { margin: 0; }
 
-.detector-toggle { display: flex; flex-wrap: wrap; gap: 6px; }
-.detector-toggle button[aria-pressed="true"] { background: #205640; border-color: #205640; color: #fff; }
-
-/* Its own scroll box: the console scrolls as one document, so a wide table
-   scrolls sideways inside the section rather than widening the page. */
-.detector-scorecard-scroll { overflow-x: auto; }
-.detector-scorecard-table { min-width: 960px; font-size: 0.88rem; }
-/* table.data paints every th as a header band; a row's own label is a cell. */
-.detector-scorecard-table th[scope="row"] {
-  background: transparent;
-  color: var(--text);
-  border-bottom: 1px solid var(--border-soft);
-  border-radius: 0;
-  font-size: inherit;
-  letter-spacing: normal;
-  white-space: nowrap;
-  font-weight: 600;
+.readiness-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(240px, 1fr) minmax(260px, 1.1fr);
+  gap: 24px;
+  align-items: start;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-soft, #eee);
 }
-.detector-scorecard-table tr:nth-child(even) th[scope="row"] { background: var(--table-stripe); }
-.detector-scorecard-table td, .detector-scorecard-table th { vertical-align: top; }
-.detector-scorecard-table td small { display: block; color: var(--muted, #6b6b66); font-size: 0.78rem; }
-.detector-bar { display: grid; gap: 6px; max-width: 26ch; }
-.detector-bar button { justify-self: start; }
-.detector-bar.is-met span { color: #205640; font-weight: 600; }
+
+.readiness-verdict { display: grid; gap: 3px; }
+.readiness-verdict small { color: var(--muted, #6b6b66); }
+.readiness-verdict p { margin: 4px 0; font-size: 0.85rem; }
+.readiness-verdict button { justify-self: start; }
+.readiness-figure { font-size: 2.2rem; font-weight: 700; line-height: 1.1; margin-top: 6px; color: var(--text, #222); }
+.readiness-row.is-met .readiness-figure { color: #205640; }
+.readiness-row.is-short .readiness-figure { color: #9a2a2a; }
+
+.readiness-strip { display: grid; gap: 4px; max-width: 440px; }
+.readiness-strip-plot {
+  position: relative;
+  height: 84px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  border-bottom: 1px solid var(--border, #d8d8d2);
+}
+.readiness-strip-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #205640;
+  font-size: 0.68rem;
+  color: #205640;
+  line-height: 1;
+  padding-top: 2px;
+  pointer-events: none;
+}
+.readiness-strip-week {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px 4px 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+.readiness-strip-week[aria-pressed="true"] { background: #ece9e1; }
+.readiness-strip-week:focus-visible { outline: 2px solid var(--focus-ring, #205640); outline-offset: 1px; }
+.readiness-strip-col { width: 14px; border-radius: 2px 2px 0 0; background: #c9c5bb; }
+.readiness-strip-week.is-met .readiness-strip-col { background: #2f7d57; }
+.readiness-strip-week.is-short .readiness-strip-col { background: #b34a3c; }
+.readiness-strip-axis {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: var(--muted, #6b6b66);
+  text-align: center;
+}
+
+.readiness-evidence { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+.readiness-evidence dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, #6b6b66); }
+.readiness-evidence dd { margin: 2px 0 0; font-size: 0.88rem; }
+.readiness-evidence dd small { display: block; color: var(--muted, #6b6b66); font-size: 0.76rem; }
+
+@media (max-width: 960px) {
+  .readiness-row { grid-template-columns: 1fr; gap: 14px; }
+}
