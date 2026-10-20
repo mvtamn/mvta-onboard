@@ -5,8 +5,8 @@
 // decision used to be a deployment setting with no date, no evidence and no
 // author (ADR-0035). It is made here now, and it is made for a service date, so
 // promoting a detector cannot change a month already measured.
-import { useEffect, useState } from "react";
-import type { DetectorPromotionView } from "@mvta/shared";
+import { useEffect, useRef, useState } from "react";
+import type { DetectorPromotionView, DetectorScorecard } from "@mvta/shared";
 import { api } from "../config.js";
 import {
   decisionTitle,
@@ -21,6 +21,7 @@ import {
   standingSentence,
   type PromotionDraft,
 } from "../lib/detectorPromotion.js";
+import { DetectorReadiness } from "./DetectorReadiness.js";
 import "./modules/serviceRisk.css";
 import "./detectorPromotion.css";
 
@@ -31,6 +32,9 @@ export function MissedTripDetectorsAdmin() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [scorecard, setScorecard] = useState<DetectorScorecard | null>(null);
+  const [scorecardFailure, setScorecardFailure] = useState<string | null>(null);
+  const effectiveDateInput = useRef<HTMLInputElement>(null);
 
   const errors = draftErrors(draft);
   const set = (patch: Partial<PromotionDraft>) => setDraft((current) => ({ ...current, ...patch }));
@@ -42,6 +46,23 @@ export function MissedTripDetectorsAdmin() {
   useEffect(() => {
     void refresh().catch(() => setFailure("The promotion history is unavailable."));
   }, []);
+
+  useEffect(() => {
+    let current = true;
+    setScorecardFailure(null);
+    api.getMissedTripDetectorScorecard({ group: "week" })
+      .then((next) => { if (current) setScorecard(next); })
+      .catch(() => { if (current) setScorecardFailure("The scorecard is unavailable."); });
+    return () => { current = false; };
+  }, []);
+
+  function applyWeek(fill: Partial<PromotionDraft>) {
+    set(fill);
+    setShowErrors(false);
+    setMessage("The week's measurement is in the form. Choose the service date it applies from.");
+    // The date is the one thing the week cannot supply, so that is where to go next.
+    effectiveDateInput.current?.focus();
+  }
 
   async function record() {
     setShowErrors(true);
@@ -89,6 +110,9 @@ export function MissedTripDetectorsAdmin() {
       {!view && <p className="detector-empty">Loading the promotion history.</p>}
     </section>
 
+    <DetectorReadiness scorecard={scorecard} failure={scorecardFailure} onUseWeek={applyWeek}
+      detectors={scorecard?.periods[0]?.detectors.map((figures) => figures.detector) ?? []} />
+
     <section className="detector-decision" aria-label="Record a decision">
       <h3>Record a decision</h3>
       <p className="detector-note">
@@ -115,7 +139,7 @@ export function MissedTripDetectorsAdmin() {
 
         <label>
           <span>From service date</span>
-          <input aria-label="From service date" type="date" value={draft.effectiveDate} onChange={(event) => set({ effectiveDate: event.target.value })} aria-invalid={Boolean(showErrors && errors.effectiveDate)} />
+          <input ref={effectiveDateInput} aria-label="From service date" type="date" value={draft.effectiveDate} onChange={(event) => set({ effectiveDate: event.target.value })} aria-invalid={Boolean(showErrors && errors.effectiveDate)} />
           {showErrors && errors.effectiveDate && <small className="detector-error">{errors.effectiveDate}</small>}
           <small>Cases on this service date and after. Earlier months keep the figures they were measured with.</small>
         </label>

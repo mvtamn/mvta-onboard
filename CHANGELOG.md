@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.8] - 2026-10-20
+## [1.6.9] - 2026-10-20
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,19 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.8] - 2026-10-20
+
+Step 4 of Phase 7 in `plans/missed-trip-feature-finish-plan.md` ("publish precision, unknown-data rate, unmatched-vendor rate, and review burden by source"), and the evidence ADR-0036's promotion record asks for.
+
+- **Detector scorecard.** `GET /api/missed-trip-detector-scorecard?from=YYYYMMDD&to=YYYYMMDD&group=week|day` (compliance-review.view) reports, per detector family (`gtfs_cancellation`, `gtfs_silent_no_show`, `spare`) and per service week (Monday to Sunday) or service date: lifecycle counts, reviewer outcomes, precision and its sample, held cases by `held_reason`, the unknown-data rate (held plus Indeterminate over everything detected), evidence conflicts, Avail corroboration, Dispatch Log agreement, and review burden (reviewed, still waiting, average hours from deadline or operating-window end to review). It defaults to the last eight weeks and caps a range at 26 weeks. The logic is `functions-restapi/src/lib/missedTripCase/scorecard.ts`; every query classifies through `missedTripCaseSql`, so nothing re-derives what held, reviewed or ready for review means.
+- **Precision** is Confirmed over Confirmed + Timely service + Partial-service failure. Indeterminate reviews and held cases are reported apart, as CONTEXT's Shadow detection bar asks. Legacy records and cases closed by evidence before review are left out.
+- **Recall against Avail** is read from `AvailEvidenceLinks` (migration 136), which already keeps every Avail record in the window one row each, unmatched ones included. No new table was needed: the nightly poll's unmatched tally was a summary of rows that table already holds. A whole-trip miss counts as caught when its exact or reviewer-confirmed link names a case the detectors raised. A link to a case that was closed by evidence, still watching, or legacy counts as a miss. Unmatched records and rejected probable links count as misses. Unresolved probable links are left out until a reviewer places them. Retracted records count for nothing. Avail names no detector, so recall is reported for fixed route as a whole.
+- **Dispatch Log.** `TripStartVerifications` gives agreement per detector (`not_observed` agrees; `observed_on_time` and `observed_left_late` disagree) and a second recall: `not_observed` trips with no flagged case.
+- **Promotion bar per week.** A week is complete when it has ended and no case in it is still open or waiting for review. It meets the bar at 95% precision over at least one decisive review. The on-demand detector's extra conditions (two weeks, dispatcher agreement) are named but not measured.
+- **On the Missed-trip Detectors page**, a "Ready to promote?" section sits between the detector standings and the decision form (`DetectorReadiness.tsx`). It has one row per detector. The verdict comes first: the latest complete week's precision against the bar, and the bar sentence. Next is a strip of weekly precision with the 95% line; each week is a button coloured met, short or not yet decidable. Last is the selected week's evidence: held/indeterminate, Avail, dispatcher agreement and recall, and review burden. A week that meets the bar has **Promote with this week**, which fills the form's precision, case count and reason and moves focus to the service date. The percentage is rounded down, so a week can never be rounded up over the bar. This layout won over a week-by-week table and a one-week sources comparison in a prototype; all three are kept on branch `prototype/detector-scorecard-variants`. The page asks for weeks only. The endpoint's `group=day` stays available for anyone reading the API directly.
+- A database without `AvailEvidenceLinks` or `TripStartVerifications` gets null comparisons and a note, not zeros. `serviceDateToday` moved from the promotions handler into `promotion.ts` so both handlers share it.
+- Tests: `scorecard.test.ts` (rollup, ranges, bar sentences), `scorecard.db.contract.test.ts` (the four queries on SQL Server, cross-checked against `classifyMissedTripCase`; added to `test:decision-matrix-contract`), and console tests for the helpers and the page.
 
 ## [1.6.6] - 2026-10-20
 
