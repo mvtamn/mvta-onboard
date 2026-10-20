@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.6] - 2026-10-20
+
+- **The rider sign-up page publishes three screenshots of its own opt-in flow** at `alerts.mvta.com/opt-in/1-signup-form.png`, `2-consent-box.png` and `3-enter-code.png`, for the toll-free verification of the rider SMS number. Carriers want a link anyone can open, and MVTA's OneDrive does not allow outside sharing. #1 and #2 were taken from production after 1.6.3 went live, so the consent box shows "Message frequency varies." #3, the 6-digit code step, was taken from a local build with the submit stubbed, so no subscriber was created. The number shown is a 555 example number. Nothing links to these files from the page.
+
 ## [1.6.3] - 2026-10-20
 
 - **The rider consent box now says "Message frequency varies."** It sits between "from MVTA" and "Message and data rates may apply", the order carriers expect. The toll-free verification for +1 866-366-7126 was sent back on 2026-10-12 (code 1305, opt-in workflow must match the submission) because the application quoted a frequency line the page did not have. The design canvas files in `design/rider-subscribe/` carry the same wording. Nothing else on the form changes.
