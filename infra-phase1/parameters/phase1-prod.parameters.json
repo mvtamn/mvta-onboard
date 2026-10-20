@@ -60,7 +60,7 @@
       "value": "https://acs-mvta-onboard-prod.unitedstates.communication.azure.com"
     },
     "acsEmailFrom": {
-      "value": ""
+      "value": "alerts@mvta.com"
     },
     "acsSmsFrom": {
       "value": ""
