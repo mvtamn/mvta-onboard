@@ -27,6 +27,7 @@ import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, Ob
 export * from "./types";
 export { classifyMissedTripCase, missedTripCaseSql, missedTripSourceRefSql } from "./classify";
 export * from "./promotion";
+export { readDetectorScorecard, scorecardQuery, type DetectorScorecard } from "./scorecard";
 export { missedTripDetectionSettings, type MissedTripDetectionSettings } from "./settings";
 export {
   caseQuery,
