@@ -63,6 +63,8 @@ model, every check, and the evidence behind each check's value.
   increment (`plans/schedule-review-module-plan.md`).
 - `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` remain as
   re-exports so PR #405's tests still prove the summary unchanged.
+  (v1.6.5 deleted both; the PR #405 test now imports `lib/scheduleReview` and
+  still proves the summary unchanged.)
 - Thresholds are declared beside each check and were set against the 20260909
   feed. They are a starting point; the evidence now visible is what will tune
   them, and a later increment pairs them with the OTP Avail measured by hour.
