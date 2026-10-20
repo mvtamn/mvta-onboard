@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.1] - 2026-10-20
+
+Step 11 of `plans/production-environment-plan.md`.
+
+- **Production sends rider email as `alerts@mvta.com`.** `phase1-prod.parameters.json` sets `acsEmailFrom`, which becomes the dispatch app's `ACS_EMAIL_FROM` on the next production infra run. Dev keeps its Azure-managed `DoNotReply@…azurecomm.net` sender.
+- **The domain behind it is already verified.** `mvta.com` is a customer-managed domain on the email service `acs-email-mvta-onboard-prod`, with sender `alerts` ("MVTA Alerts"). Its Domain, SPF, DKIM and DKIM2 checks passed on 2026-10-19 after the State of MN DNS admin published the verification TXT record and the two `selector*-azurecomm-prod-net._domainkey` CNAMEs. It is linked to `acs-mvta-onboard-prod`, whose endpoint `acsEndpoint` already names. No SPF change was needed, because mvta.com's SPF already includes `spf.protection.outlook.com`. Mail is DKIM-signed for mvta.com, so it aligns with the domain's existing `p=quarantine` DMARC policy.
+- **Nothing is sent yet.** Production has no code deployed, and rider messaging there starts only at cutover.
+
 ## [1.6.0] - 2026-10-19
 
 - **Sign-in page redesigned as a split panel**, built from direction A of the 2026-10-19 design canvas. The old screen was a small centered card on a radial-gradient backdrop. Now an evergreen brand panel (MVTA wordmark, a one-line description, four of the console's areas, and a faint route-line drawing marked `aria-hidden`) sits beside a sign-in panel with a 52 px Sign in with Microsoft button carrying the Microsoft logo, a "No access yet?" line, and the build version from `__APP_VERSION__`.
