@@ -221,20 +221,50 @@ export function App() {
 
   if (!account) {
     return (
-      <div className="signin-backdrop">
-        <div className="signin-card">
-          <span className="signin-logo">MVTA</span>
-          <div className="signin-eyebrow">Staff Console</div>
-          <h1>Welcome to the MVTA OnBoard console</h1>
-          <p className="signin-desc">
-            Sign in with your MVTA Microsoft 365 account to manage service alerts and rider
-            notifications.
-          </p>
-          <button className="btn-primary signin-btn" onClick={signIn}>
-            Sign in with Microsoft
-          </button>
-          <p className="signin-footer">Internal MVTA use only</p>
-        </div>
+      <div className="signin-page">
+        <section className="signin-brand">
+          <svg className="signin-routes" aria-hidden="true" viewBox="0 0 720 900" preserveAspectRatio="xMidYMid slice">
+            <path d="M-40 640 H220 L320 540 H520 L600 460 H780" />
+            <path d="M-40 720 H160 L260 620 V420 L340 340 H780" className="faint" />
+            <path d="M460 940 V700 L540 620 V240 L620 160 H780" className="faint" />
+            <circle cx="320" cy="540" r="9" />
+            <circle cx="520" cy="540" r="9" />
+            <circle cx="540" cy="620" r="9" />
+          </svg>
+          <div className="signin-wordmark">
+            <span className="signin-logo">MVTA</span>
+            <span>OnBoard</span>
+          </div>
+          <div className="signin-pitch">
+            <h1>The staff console for running MVTA service.</h1>
+            <ul>
+              <li>Service alerts and rider notifications</li>
+              <li>Detours and closures</li>
+              <li>On-time performance monitoring</li>
+              <li>Garage departures and the dispatch log</li>
+            </ul>
+          </div>
+          <p className="signin-org">Minnesota Valley Transit Authority · Internal staff use only</p>
+        </section>
+        <section className="signin-panel">
+          <div className="signin-form">
+            <div className="signin-heading">
+              <h2>Sign in to OnBoard</h2>
+              <p className="signin-desc">Use your MVTA Microsoft 365 work account.</p>
+            </div>
+            <button className="signin-btn" onClick={signIn}>
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 21 21">
+                <rect x="0" y="0" width="10" height="10" fill="#f25022" />
+                <rect x="11" y="0" width="10" height="10" fill="#7fba00" />
+                <rect x="0" y="11" width="10" height="10" fill="#00a4ef" />
+                <rect x="11" y="11" width="10" height="10" fill="#ffb900" />
+              </svg>
+              Sign in with Microsoft
+            </button>
+            <p className="signin-help">No access yet? Ask an OnBoard administrator to add you.</p>
+          </div>
+          <p className="signin-version">OnBoard v{__APP_VERSION__}</p>
+        </section>
       </div>
     );
   }
