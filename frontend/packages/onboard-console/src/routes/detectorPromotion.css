@@ -84,3 +84,43 @@
 @media (max-width: 720px) {
   .detector-fields { grid-template-columns: 1fr; }
 }
+
+/* The scorecard: one row per service week (or day) for the detector chosen. */
+.detector-scorecard {
+  border: 1px solid var(--border, #d8d8d2);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  background: var(--surface, #fff);
+  display: grid;
+  gap: 12px;
+}
+
+.detector-scorecard h3 { margin: 0 0 6px; }
+.detector-scorecard-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: start; }
+.detector-scorecard-head .detector-note { margin: 0; }
+
+.detector-toggle { display: flex; flex-wrap: wrap; gap: 6px; }
+.detector-toggle button[aria-pressed="true"] { background: #205640; border-color: #205640; color: #fff; }
+
+/* Its own scroll box: the console scrolls as one document, so a wide table
+   scrolls sideways inside the section rather than widening the page. */
+.detector-scorecard-scroll { overflow-x: auto; }
+.detector-scorecard-table { min-width: 960px; font-size: 0.88rem; }
+/* table.data paints every th as a header band; a row's own label is a cell. */
+.detector-scorecard-table th[scope="row"] {
+  background: transparent;
+  color: var(--text);
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 0;
+  font-size: inherit;
+  letter-spacing: normal;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.detector-scorecard-table tr:nth-child(even) th[scope="row"] { background: var(--table-stripe); }
+.detector-scorecard-table td, .detector-scorecard-table th { vertical-align: top; }
+.detector-scorecard-table td small { display: block; color: var(--muted, #6b6b66); font-size: 0.78rem; }
+.detector-bar { display: grid; gap: 6px; max-width: 26ch; }
+.detector-bar button { justify-self: start; }
+.detector-bar.is-met span { color: #205640; font-weight: 600; }
