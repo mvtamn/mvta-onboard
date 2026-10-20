@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.4] - 2026-10-20
+## [1.6.8] - 2026-10-20
 
 Step 4 of Phase 7 in `plans/missed-trip-feature-finish-plan.md` ("publish precision, unknown-data rate, unmatched-vendor rate, and review burden by source"), and the evidence ADR-0036's promotion record asks for.
 
@@ -17,6 +17,10 @@ Step 4 of Phase 7 in `plans/missed-trip-feature-finish-plan.md` ("publish precis
 - **On the Missed-trip Detectors page**, a "Ready to promote?" section sits between the detector standings and the decision form (`DetectorReadiness.tsx`). It has one row per detector. The verdict comes first: the latest complete week's precision against the bar, and the bar sentence. Next is a strip of weekly precision with the 95% line; each week is a button coloured met, short or not yet decidable. Last is the selected week's evidence: held/indeterminate, Avail, dispatcher agreement and recall, and review burden. A week that meets the bar has **Promote with this week**, which fills the form's precision, case count and reason and moves focus to the service date. The percentage is rounded down, so a week can never be rounded up over the bar. This layout won over a week-by-week table and a one-week sources comparison in a prototype; all three are kept on branch `prototype/detector-scorecard-variants`. The page asks for weeks only. The endpoint's `group=day` stays available for anyone reading the API directly.
 - A database without `AvailEvidenceLinks` or `TripStartVerifications` gets null comparisons and a note, not zeros. `serviceDateToday` moved from the promotions handler into `promotion.ts` so both handlers share it.
 - Tests: `scorecard.test.ts` (rollup, ranges, bar sentences), `scorecard.db.contract.test.ts` (the four queries on SQL Server, cross-checked against `classifyMissedTripCase`; added to `test:decision-matrix-contract`), and console tests for the helpers and the page.
+
+## [1.6.6] - 2026-10-20
+
+- **The rider sign-up page publishes three screenshots of its own opt-in flow** at `alerts.mvta.com/opt-in/1-signup-form.png`, `2-consent-box.png` and `3-enter-code.png`, for the toll-free verification of the rider SMS number. Carriers want a link anyone can open, and MVTA's OneDrive does not allow outside sharing. #1 and #2 were taken from production after 1.6.3 went live, so the consent box shows "Message frequency varies." #3, the 6-digit code step, was taken from a local build with the submit stubbed, so no subscriber was created. The number shown is a 555 example number. Nothing links to these files from the page.
 
 ## [1.6.3] - 2026-10-20
 
