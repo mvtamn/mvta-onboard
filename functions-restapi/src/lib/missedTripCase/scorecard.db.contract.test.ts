@@ -92,13 +92,13 @@ INSERT dbo.AvailEvidenceLinks (calendar_date, route_id, departure_stop_name, arr
   departure_missed, arrival_missed, entire_trip_missed, match_confidence, candidate_count, match_reason, trip_id, service_date,
   resolution, retracted_at)
 VALUES
-  ${link(460, "2026-10-14T14:00", 1, "exact", "S1")},
-  ${link(770, "2026-10-14T14:00", 1, "exact", "S6")},
-  ${link(999, "2026-10-14T14:00", 1, "unmatched", null)},
-  ${link(460, "2026-10-14T09:00", 1, "probable", null)},
-  ${link(460, "2026-10-14T10:00", 1, "probable", null, { resolution: "rejected" })},
-  ${link(460, "2026-10-14T11:00", 1, "exact", "S4", { retracted: true })},
-  ${link(460, "2026-10-14T15:00", 0, "exact", "S2")};
+  ${link(460, "2026-10-14T14:00:00", 1, "exact", "S1")},
+  ${link(770, "2026-10-14T14:00:00", 1, "exact", "S6")},
+  ${link(999, "2026-10-14T14:00:00", 1, "unmatched", null)},
+  ${link(460, "2026-10-14T09:00:00", 1, "probable", null)},
+  ${link(460, "2026-10-14T10:00:00", 1, "probable", null, { resolution: "rejected" })},
+  ${link(460, "2026-10-14T11:00:00", 1, "exact", "S4", { retracted: true })},
+  ${link(460, "2026-10-14T15:00:00", 0, "exact", "S2")};
 `;
 
 const VERIFICATIONS = `
