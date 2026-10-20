@@ -11,6 +11,10 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
 
+## [1.6.3] - 2026-10-20
+
+- **The rider consent box now says "Message frequency varies."** It sits between "from MVTA" and "Message and data rates may apply", the order carriers expect. The toll-free verification for +1 866-366-7126 was sent back on 2026-10-12 (code 1305, opt-in workflow must match the submission) because the application quoted a frequency line the page did not have. The design canvas files in `design/rider-subscribe/` carry the same wording. Nothing else on the form changes.
+
 ## [1.6.1] - 2026-10-20
 
 Step 11 of `plans/production-environment-plan.md`.
