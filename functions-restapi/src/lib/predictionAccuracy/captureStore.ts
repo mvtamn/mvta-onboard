@@ -13,7 +13,7 @@
 //
 // Access is the Function App's managed identity (Storage Blob Data
 // Contributor on the account), never a key - same as the other two accounts.
-import { gzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import { DefaultAzureCredential } from "@azure/identity";
 
@@ -85,4 +85,15 @@ export function createWriteGate(retryMs: number = NOT_AUTHORIZED_RETRY_MS) {
     isOpen: (now: number) => now >= closedUntil,
     close: (now: number) => { closedUntil = now + retryMs; },
   };
+}
+
+/**
+ * A day's capture file read back, as lines; null when no file was written
+ * that day. The whole blob is one gzip stream of concatenated members.
+ */
+export async function readCapture(account: string, blobName: string): Promise<string[] | null> {
+  const client = (await containerFor(account)).getBlobClient(blobName);
+  if (!(await client.exists())) return null;
+  const compressed = await client.downloadToBuffer();
+  return gunzipSync(compressed).toString("utf-8").split("\n");
 }

@@ -94,6 +94,19 @@ async function predictionCaptureCheck(): Promise<FeedCheck> {
   return check;
 }
 
+// The nightly prediction accuracy score, from its ledger row.
+async function predictionScoreCheck(): Promise<FeedCheck> {
+  const name = "Prediction accuracy scoring";
+  if (!predictionCaptureAccount()) return { name, configured: false, error: `${PREDICTION_CAPTURE_ACCOUNT_SETTING} is not set` };
+  try {
+    const pool = await getPool();
+    if (!await feedHealthTableReady(pool)) return { name, configured: true, error: "Pipeline health table is not ready" };
+    return ledgerFeedChecks([{ name, feedName: "prediction_score" }], await loadKpiFeedHealthRecords(pool))[0];
+  } catch (error) {
+    return { name, configured: true, error: error instanceof Error ? error.message : "Scoring health check failed" };
+  }
+}
+
 app.http("feedChecks", {
   route: "feed-checks",
   methods: ["GET"],
@@ -132,6 +145,7 @@ app.http("feedChecks", {
       // else says so - see lib/schemaDrift.ts.
       checkSchema(),
       predictionCaptureCheck(),
+      predictionScoreCheck(),
     ]);
     return {
       status: 200,

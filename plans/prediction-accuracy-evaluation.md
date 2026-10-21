@@ -203,3 +203,25 @@ and a stable route figure after about two weeks of weekdays.
   feed gap reads as a coverage gap and not as bad predictions.
 - **Ask Avail** whether a per trip-stop arrival export exists. If it does, it
   becomes the actual and section 3's derivation becomes the fallback.
+
+## 7. Increment 2 as built (v1.6.11)
+
+- **Modules.** `captureFile.ts` reads the capture back, `actuals.ts` derives arrival intervals, `score.ts` scores one service day, `store.ts` writes the tallies, and `functions/predictionScore.ts` runs nightly at 09:15 UTC. Migration 147 adds the three tables.
+- **Service day.** A service day runs 03:00 to 03:00 Central. Vehicle positions carry no start date, so the day is taken from the sample time, and trips past midnight are read from the next day's file.
+- **Settled while building.** Stale TripUpdates means over 150 s old at the run. Positions more than 120 s apart give no actual. A bus first seen standing at a stop is timed by when it leaves. Direction comes from `GtfsTripDirections`, and is null when the trip is not there.
+- **Not built.** The variance percentiles in section 4 are left out: percentiles do not add across days, so they wait for the page that needs them. Completeness is increment 4, as planned.
+
+### What the first sample showed (10 minutes, late evening, scored locally)
+
+| Measure | Value |
+|---|---|
+| Scored predictions | 131 |
+| Indeterminate | 59 |
+| Avail's kept time against the derived arrival, median | 32 s earlier |
+| Kept times within 15 s of the derived interval | 16 of 33 |
+| Same verdict, where both methods can judge | 92 of 101 |
+
+Two questions for the first full day on dev, before any comparison with Swiftly:
+
+1. **Is the indeterminate share still about a third?** If it is, the 0-3 minute figure rests on two thirds of its predictions, and the page has to say so.
+2. **Does the derived arrival still run about 30 s behind Avail's kept time?** The vehicle reports "stopped" after Avail marks the arrival, and at 30-second sampling most stops are only seen once the bus is past them. Avail's kept times exist on about a third of trips. Either the method stays and the bias is reported, or kept times become the actual where they exist. Either way that is a new ADR, because it changes what the figure means (ADR 0041, Consequences).

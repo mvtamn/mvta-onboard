@@ -24,7 +24,9 @@ export type KpiFeedName =
   | "avail_detours"
   // The 30-second prediction capture (functions/predictionCapture.ts): its
   // own delivery, not the GTFS-RT feeds', which keep their five-minute rows.
-  | "prediction_capture";
+  | "prediction_capture"
+  // The nightly prediction accuracy score (functions/predictionScore.ts).
+  | "prediction_score";
 
 export interface KpiFeedHealth {
   feed_name: KpiFeedName;

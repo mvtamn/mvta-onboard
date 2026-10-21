@@ -122,7 +122,10 @@ export async function recordAvailLinks(
       .query(`
         DECLARE @moved BIT;
         UPDATE dbo.AvailEvidenceLinks
-        SET @moved = CASE WHEN match_confidence <> @confidence OR ISNULL(trip_id, N'') <> ISNULL(@trip, N'')
+        -- A confirmed link names its own case, so the feed's match differing
+        -- from it is not movement; only a changed confidence is.
+        SET @moved = CASE WHEN match_confidence <> @confidence
+                            OR (ISNULL(resolution, N'') <> N'confirmed' AND ISNULL(trip_id, N'') <> ISNULL(@trip, N''))
                           THEN 1 ELSE 0 END,
             departure_missed = @departure_missed, arrival_missed = @arrival_missed, entire_trip_missed = @entire,
             match_confidence = @confidence, candidate_count = @candidates, match_reason = @reason,
