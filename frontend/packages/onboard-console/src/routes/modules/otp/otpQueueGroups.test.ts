@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FlaggedStop, OtpStopExclusion } from "@mvta/shared";
 import { queueRow } from "./otpFigures.js";
-import { decidedSummary, matchesFilter, previousSummary, queueGroups, weekdayIndex } from "./otpQueueGroups.js";
+import { carriedDays, decidedLastMonth, decidedSummary, matchesFilter, previousSummary, queueGroups, weekdayIndex } from "./otpQueueGroups.js";
 
 const stop = (over: Partial<FlaggedStop> = {}): FlaggedStop => ({
   route_id: 475, route_label: "475", stop_id: 41243, stop_name: "Oak St SE at University Av SE SE corner",
@@ -99,5 +99,27 @@ describe("one line for what was already decided", () => {
     expect(decidedSummary(allKept, () => "", label)).toBe("Kept in OTP calc");
     const half = queueGroups(rows, rows.map(queueRow), (s) => (s.day_of_week === "Mon" ? "approved" : "rejected"), none)[0]!;
     expect(decidedSummary(half, () => "RECOVERY", label)).toBe("1 of 2 days excluded");
+  });
+});
+
+describe("stops last month already decided", () => {
+  const rows = [stop(), stop({ day_of_week: "Tues" }), stop({ day_of_week: "Wed" })];
+
+  it("is every pending day decided last month, and nothing already finished", () => {
+    const all = queueGroups(rows, rows.map(queueRow), pending, () => previous())[0]!;
+    expect(decidedLastMonth(all)).toBe(true);
+    expect(carriedDays([all])).toHaveLength(3);
+
+    // One day new this month makes the whole stop a judgement.
+    const oneNew = (s: FlaggedStop) => (s.day_of_week === "Wed" ? undefined : previous());
+    expect(decidedLastMonth(queueGroups(rows, rows.map(queueRow), pending, oneNew)[0]!)).toBe(false);
+
+    // A decided day needs no copy, so it does not stop the stop folding away.
+    const wedDone = (s: FlaggedStop) => (s.day_of_week === "Wed" ? "approved" as const : "pending" as const);
+    const partly = queueGroups(rows, rows.map(queueRow), wedDone, oneNew)[0]!;
+    expect(decidedLastMonth(partly)).toBe(true);
+    expect(carriedDays([partly]).map((d) => d.dayLabel)).toEqual(["Mon", "Tue"]);
+
+    expect(decidedLastMonth(queueGroups(rows, rows.map(queueRow), () => "approved", () => previous())[0]!)).toBe(false);
   });
 });

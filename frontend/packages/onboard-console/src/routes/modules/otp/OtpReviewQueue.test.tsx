@@ -55,8 +55,6 @@ function renderQueue({
         auditRefreshTick={0}
         previousDecisionFor={previousDecisionFor}
         onCopy={onCopy}
-        onCopyAll={vi.fn()}
-        copyingAll={false}
         decidedCount={decidedCount}
         onResetMonth={onResetMonth}
         resetting={false}
@@ -133,6 +131,38 @@ describe("deciding a stop", () => {
   });
 });
 
+describe("stops last month already decided", () => {
+  const fresh = stop({ stop_id: 60000, stop_name: "Burnsville Transit Station" });
+  const lastMonth = (s: FlaggedStop) =>
+    s.stop_id === 51234 ? ({ status: "approved", reason_code: "RECOVERY", day_of_week: s.day_of_week } as OtpStopExclusion) : undefined;
+
+  it("folds them below the stops that need a fresh look", async () => {
+    renderQueue({ stops: [...week, fresh], previousDecisionFor: lastMonth });
+    expect(screen.getByRole("article", { name: /Burnsville Transit Station/ })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: /Apple Valley Transit Station/ })).not.toBeInTheDocument();
+    const fold = screen.getByRole("button", { name: /1 stop decided last month/ });
+    expect(fold).toHaveAttribute("aria-expanded", "false");
+    expect(fold).toHaveTextContent("3 stop-days: 3 excluded, 0 kept");
+
+    await userEvent.click(fold);
+    const card = screen.getByRole("article", { name: /Apple Valley Transit Station/ });
+    // Confirming is what a carried card is for, so it leads.
+    expect(within(card).getAllByRole("button").find((b) => b.className.includes("otp-group-primary"))).toHaveTextContent("Copy last month");
+  });
+
+  it("copies last month for every folded stop in one click", async () => {
+    renderQueue({ stops: [...week, fresh], previousDecisionFor: lastMonth });
+    await userEvent.click(screen.getByRole("button", { name: "Copy last month for 1 stop" }));
+    expect(onCopy).toHaveBeenCalledWith(week, expect.any(Function));
+  });
+
+  it("opens by itself when nothing new is left", () => {
+    renderQueue({ previousDecisionFor: lastMonth });
+    expect(screen.getByRole("button", { name: /1 stop decided last month/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/Nothing new this month/)).toBeInTheDocument();
+  });
+});
+
 describe("changing a decision that is already made", () => {
   // The API always allowed this - PUT /otp-stop-exclusions upserts in place -
   // but a decided stop rendered as static text, so a reviewer who excluded the
@@ -202,7 +232,7 @@ describe("working through the list", () => {
           flaggedStops={twoStops} queueRows={twoStops.map(queueRow)} statusOf={(s) => statusOf(s)}
           reasonOf={() => "RECOVERY"} reasonCodes={reasonCodes} onResolve={onResolve} onReason={onReason}
           serviceMonth="202609" auditRefreshTick={0} previousDecisionFor={() => undefined} onCopy={onCopy}
-          onCopyAll={vi.fn()} copyingAll={false} decidedCount={decided.size} onResetMonth={onResetMonth} resetting={false}
+          decidedCount={decided.size} onResetMonth={onResetMonth} resetting={false}
         />
       </AppDialogProvider>
     );

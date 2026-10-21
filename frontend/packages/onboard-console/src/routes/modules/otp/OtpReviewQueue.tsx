@@ -7,6 +7,8 @@ import { auditLines } from "./otpAuditEntries.js";
 import { formatServiceMonth } from "./otpServiceMonth.js";
 import { useAppDialog } from "../../../components/AppDialog.js";
 import {
+  carriedDays,
+  decidedLastMonth,
   decidedSummary,
   matchesFilter,
   previousSummary,
@@ -80,8 +82,6 @@ export function ReviewQueuePage({
   auditRefreshTick,
   previousDecisionFor,
   onCopy,
-  onCopyAll,
-  copyingAll,
   decidedCount,
   onResetMonth,
   resetting,
@@ -96,9 +96,7 @@ export function ReviewQueuePage({
   serviceMonth: string | null;
   auditRefreshTick: number;
   previousDecisionFor: (stop: FlaggedStop) => OtpStopExclusion | undefined;
-  onCopy: (stops: readonly FlaggedStop[]) => void | Promise<void>;
-  onCopyAll: () => void;
-  copyingAll: boolean;
+  onCopy: (stops: readonly FlaggedStop[], onProgress?: (written: number) => void) => void | Promise<void>;
   decidedCount: number;
   onResetMonth: () => Promise<boolean>;
   resetting: boolean;
@@ -145,6 +143,33 @@ export function ReviewQueuePage({
   const pendingGroups = groups.filter((g) => g.pending > 0).length;
   const filter: QueueFilter = { route: routeFilter, status: statusFilter, search };
   const visible = groups.filter((g) => matchesFilter(g, filter));
+  // Stops last month already decided sit below the ones that need a fresh
+  // look, folded into one line, so "All routes" opens on the judgements and
+  // not on a few hundred confirmations. Copying writes the same per-day rows
+  // as deciding each card would.
+  const fresh = visible.filter((g) => !decidedLastMonth(g));
+  const carried = visible.filter(decidedLastMonth);
+  const carriedPending = carriedDays(carried);
+  const carriedExcluded = carriedPending.filter((d) => d.previous!.status === "approved").length;
+  const [carriedOpenChoice, setCarriedOpen] = useState<boolean | null>(null);
+  // Open by itself when it is all that is left, so the list is never a lone fold.
+  const carriedOpen = carriedOpenChoice ?? fresh.length === 0;
+  // Rows written so far by the fold's copy, or null when it is not copying.
+  const [copiedSoFar, setCopiedSoFar] = useState<number | null>(null);
+  const carriedRef = useRef<HTMLElement>(null);
+
+  // Opening the fold lifts it to the top of the list; otherwise the stops it
+  // reveals land below the scroll box and opening looks like it did nothing.
+  function toggleCarried() {
+    const opening = !carriedOpen;
+    setCarriedOpen(opening);
+    if (!opening) return;
+    requestAnimationFrame(() => {
+      const list = listRef.current;
+      const section = carriedRef.current;
+      if (list && section) list.scrollTop += section.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    });
+  }
   const filtered = Boolean(routeFilter || search || statusFilter !== "pending");
 
   const [timeline, setTimeline] = useState<OtpAuditEntry[]>([]);
@@ -177,10 +202,6 @@ export function ReviewQueuePage({
   }
 
   const reasonLabel = (code: string) => reasonCodes.find((r) => r.code === code)?.label ?? code;
-
-  const copyableCount = flaggedStops.filter(
-    (stop) => statusOf(stop) === "pending" && previousDecisionFor(stop),
-  ).length;
 
   const selectedDays = (group: QueueGroup): QueueDay[] => {
     const keys = selected[group.key];
@@ -227,6 +248,15 @@ export function ReviewQueuePage({
       setFocusIndex(index);
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function copyCarried() {
+    setCopiedSoFar(0);
+    try {
+      await onCopy(carriedPending.map((d) => d.stop), setCopiedSoFar);
+    } finally {
+      setCopiedSoFar(null);
     }
   }
 
@@ -283,17 +313,6 @@ export function ReviewQueuePage({
           </div>
         </div>
 
-        {copyableCount > 0 ? (
-          <div className="subcard otp-copy-banner">
-            <span>
-              {copyableCount} pending stop-day{copyableCount === 1 ? "" : "s"} matched last month's decision.
-            </span>
-            <button className="btn-post" disabled={copyingAll} onClick={onCopyAll}>
-              {copyingAll ? "Copying…" : `Copy all ${copyableCount} matching last month's decisions`}
-            </button>
-          </div>
-        ) : null}
-
         {groups.length === 0 ? (
           <div className="subcard empty-note" style={{ textAlign: "center", padding: "30px 20px" }}>
             {serviceMonth
@@ -318,109 +337,36 @@ export function ReviewQueuePage({
         ) : null}
 
         <div className="otp-group-list" ref={listRef}>
-          {visible.map((group, index) => {
-            const days = selectedDays(group);
-            const selectedKeys = new Set(days.map((d) => d.row.key));
-            const reopening = days.some((d) => d.status !== "pending");
-            const busy = saving === group.key;
-            const copyable = days.filter((d) => d.previous).length;
-            const lastMonth = previousSummary(group.days, reasonLabel);
-            const reasonStop = days[0]?.stop;
-
-            return (
-              <article
-                className={`otp-group${group.pending > 0 ? " highlight" : ""}`}
-                key={group.key}
-                tabIndex={-1}
-                aria-label={`${group.stopName}, route ${group.routeLabel}`}
-              >
-                <div className="otp-group-head">
-                  <div className="otp-group-title">
-                    <span className="route-chip">RT {group.routeLabel}</span>
-                    <span className="otp-group-name">{group.stopName}</span>
-                  </div>
-                  <div className="otp-group-meta">
-                    Stop {group.stopId} · {group.biasLabel} · {plural(group.days.length, "day")} · {plural(group.sampled, "departure")}
-                    {group.otherRoutes.length > 0 ? ` · also flagged on RT ${group.otherRoutes.join(", RT ")}` : ""}
-                  </div>
-                  <AdherenceStrip mix={group} />
-                </div>
-
-                <div className="otp-days" role="group" aria-label={`Days flagged at ${group.stopName}`}>
-                  {group.days.map((day) => (
-                    <button
-                      type="button"
-                      key={day.row.key}
-                      className={`otp-day ${day.status}${selectedKeys.has(day.row.key) ? " selected" : ""}`}
-                      aria-pressed={selectedKeys.has(day.row.key)}
-                      aria-label={dayDescription(day)}
-                      title={dayTooltip(day, reasonLabel)}
-                      disabled={busy}
-                      onClick={() => toggleDay(group, day)}
-                    >
-                      <span className="otp-day-name">{day.dayLabel}</span>
-                      <AdherenceStrip mix={day.row} compact />
-                      <span className={`otp-day-status ${day.status}`}>
-                        {day.status === "approved" ? "\u2713 excluded" : day.status === "rejected" ? "\u2715 kept" : leanText(day.row)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="otp-group-actions">
-                  {days.length > 0 && reasonStop ? (
-                    <>
-                      <select
-                        value={reasonOf(reasonStop)}
-                        onChange={(e) => setGroupReason(group, e.target.value)}
-                        aria-label={`Reason for ${group.stopName}`}
-                        disabled={busy}
-                      >
-                        {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
-                      </select>
-                      <button
-                        className="btn-post otp-group-primary"
-                        disabled={busy}
-                        onClick={() => void decide(group, "approve", index)}
-                      >
-                        {busy ? "Saving…" : actionLabel("Exclude", days)}
-                      </button>
-                      <button className="btn-sm" disabled={busy} onClick={() => void decide(group, "reject", index)}>
-                        {actionLabel("Keep", days)}
-                      </button>
-                      {copyable > 0 ? (
-                        <button className="btn-sm" disabled={busy} onClick={() => void copyGroup(group, index)}>
-                          Copy last month
-                        </button>
-                      ) : null}
-                      {reopening ? (
-                        <button className="btn-sm" disabled={busy} onClick={() => clearSelection(group.key)}>Cancel</button>
-                      ) : null}
-                    </>
-                  ) : group.pending === 0 ? (
-                    <>
-                      <span className={group.approved > 0 ? "ok-text" : "muted"}>
-                        {decidedSummary(group, reasonOf, reasonLabel)}
-                      </span>
-                      <button
-                        className="btn-sm"
-                        onClick={() => setSelected((s) => ({ ...s, [group.key]: group.days.map((d) => d.row.key) }))}
-                        aria-label={`Change the decision for ${group.stopName}`}
-                      >
-                        Change decision
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="muted">Pick the days to decide.</span>
-                      <button className="btn-sm" onClick={() => clearSelection(group.key)}>Select pending days</button>
-                    </>
-                  )}
-                  {lastMonth ? <span className="muted otp-group-last">{lastMonth}</span> : null}
-                </div>
-              </article>
-            );
-          })}
+          {fresh.map((group, index) => card(group, index))}
+          {carried.length > 0 ? (
+            <section className="otp-carried" ref={carriedRef} aria-label="Decided last month">
+              <div className="otp-carried-head">
+                <button
+                  type="button"
+                  className="otp-carried-toggle"
+                  aria-expanded={carriedOpen}
+                  onClick={toggleCarried}
+                >
+                  <span className="otp-carried-caret" aria-hidden="true">{carriedOpen ? "\u25BE" : "\u25B8"}</span>
+                  <span>
+                    <b>{plural(carried.length, "stop")} decided last month</b>
+                    <span className="muted">
+                      {" "}· {plural(carriedPending.length, "stop-day")}: {carriedExcluded} excluded, {carriedPending.length - carriedExcluded} kept
+                    </span>
+                  </span>
+                </button>
+                <button className="btn-post" disabled={copiedSoFar !== null} onClick={() => void copyCarried()}>
+                  {copiedSoFar !== null
+                    ? `Copying ${copiedSoFar} of ${carriedPending.length}…`
+                    : `Copy last month for ${plural(carried.length, "stop")}`}
+                </button>
+              </div>
+              {fresh.length === 0 && !filtered ? (
+                <p className="muted otp-carried-note">Nothing new this month: every stop left was decided last month.</p>
+              ) : null}
+              {carriedOpen ? carried.map((group, i) => card(group, fresh.length + i, true)) : null}
+            </section>
+          ) : null}
         </div>
       </div>
 
@@ -436,4 +382,114 @@ export function ReviewQueuePage({
       </aside>
     </div>
   );
+
+  // A carried card leads with "Copy last month": confirming is what it is for.
+  function card(group: QueueGroup, index: number, carry = false) {
+    const days = selectedDays(group);
+    const selectedKeys = new Set(days.map((d) => d.row.key));
+    const reopening = days.some((d) => d.status !== "pending");
+    const busy = saving === group.key;
+    const copyable = days.filter((d) => d.previous).length;
+    const lastMonth = previousSummary(group.days, reasonLabel);
+    const reasonStop = days[0]?.stop;
+
+    return (
+      <article
+        className={`otp-group${group.pending > 0 ? " highlight" : ""}`}
+        key={group.key}
+        tabIndex={-1}
+        aria-label={`${group.stopName}, route ${group.routeLabel}`}
+      >
+        <div className="otp-group-head">
+          <div className="otp-group-title">
+            <span className="route-chip">RT {group.routeLabel}</span>
+            <span className="otp-group-name">{group.stopName}</span>
+          </div>
+          <div className="otp-group-meta">
+            Stop {group.stopId} · {group.biasLabel} · {plural(group.days.length, "day")} · {plural(group.sampled, "departure")}
+            {group.otherRoutes.length > 0 ? ` · also flagged on RT ${group.otherRoutes.join(", RT ")}` : ""}
+          </div>
+          <AdherenceStrip mix={group} />
+        </div>
+
+        <div className="otp-days" role="group" aria-label={`Days flagged at ${group.stopName}`}>
+          {group.days.map((day) => (
+            <button
+              type="button"
+              key={day.row.key}
+              className={`otp-day ${day.status}${selectedKeys.has(day.row.key) ? " selected" : ""}`}
+              aria-pressed={selectedKeys.has(day.row.key)}
+              aria-label={dayDescription(day)}
+              title={dayTooltip(day, reasonLabel)}
+              disabled={busy}
+              onClick={() => toggleDay(group, day)}
+            >
+              <span className="otp-day-name">{day.dayLabel}</span>
+              <AdherenceStrip mix={day.row} compact />
+              <span className={`otp-day-status ${day.status}`}>
+                {day.status === "approved" ? "\u2713 excluded" : day.status === "rejected" ? "\u2715 kept" : leanText(day.row)}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="otp-group-actions">
+          {days.length > 0 && reasonStop ? (
+            <>
+              <select
+                value={reasonOf(reasonStop)}
+                onChange={(e) => setGroupReason(group, e.target.value)}
+                aria-label={`Reason for ${group.stopName}`}
+                disabled={busy}
+              >
+                {reasonCodes.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+              </select>
+              {carry && copyable > 0 ? (
+                <button className="btn-post otp-group-primary" disabled={busy} onClick={() => void copyGroup(group, index)}>
+                  {busy ? "Saving…" : "Copy last month"}
+                </button>
+              ) : null}
+              <button
+                className={carry ? "btn-sm" : "btn-post otp-group-primary"}
+                disabled={busy}
+                onClick={() => void decide(group, "approve", index)}
+              >
+                {busy && !carry ? "Saving…" : actionLabel("Exclude", days)}
+              </button>
+              <button className="btn-sm" disabled={busy} onClick={() => void decide(group, "reject", index)}>
+                {actionLabel("Keep", days)}
+              </button>
+              {!carry && copyable > 0 ? (
+                <button className="btn-sm" disabled={busy} onClick={() => void copyGroup(group, index)}>
+                  Copy last month
+                </button>
+              ) : null}
+              {reopening ? (
+                <button className="btn-sm" disabled={busy} onClick={() => clearSelection(group.key)}>Cancel</button>
+              ) : null}
+            </>
+          ) : group.pending === 0 ? (
+            <>
+              <span className={group.approved > 0 ? "ok-text" : "muted"}>
+                {decidedSummary(group, reasonOf, reasonLabel)}
+              </span>
+              <button
+                className="btn-sm"
+                onClick={() => setSelected((s) => ({ ...s, [group.key]: group.days.map((d) => d.row.key) }))}
+                aria-label={`Change the decision for ${group.stopName}`}
+              >
+                Change decision
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="muted">Pick the days to decide.</span>
+              <button className="btn-sm" onClick={() => clearSelection(group.key)}>Select pending days</button>
+            </>
+          )}
+          {lastMonth ? <span className="muted otp-group-last">{lastMonth}</span> : null}
+        </div>
+      </article>
+    );
+  }
 }

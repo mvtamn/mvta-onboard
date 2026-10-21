@@ -24,7 +24,6 @@
 .otp-progress-track { height: 5px; border-radius: 3px; background: var(--surface-alt-bg); overflow: hidden; }
 .otp-progress-fill { height: 100%; background: var(--brand-green); border-radius: 3px; transition: width .2s ease; }
 
-.otp-copy-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .otp-queue-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 20px; }
 
 /* One card per stop on a route. The header, the week and the actions stack
@@ -68,6 +67,15 @@
 .otp-group-actions select { font-family: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text); max-width: 100%; }
 .otp-group-actions .btn-sm { margin-right: 0; }
 .otp-group-last { font-size: 12px; margin-left: auto; }
+
+/* Stops last month already decided, folded below the ones that need a fresh
+   look. The fold is one line until opened, so "All routes" is a short list. */
+.otp-carried { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.otp-carried-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.otp-carried-toggle { display: flex; align-items: baseline; gap: 8px; background: none; border: 0; padding: 6px 2px; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.otp-carried-toggle:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; border-radius: 4px; }
+.otp-carried-caret { width: 10px; color: var(--text-muted); }
+.otp-carried-note { margin: 0; font-size: 12.5px; }
 
 .otp-timeline { width: 280px; flex-shrink: 0; }
 @media (max-width: 1000px) {

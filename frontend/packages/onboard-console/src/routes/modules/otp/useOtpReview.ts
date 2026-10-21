@@ -44,9 +44,8 @@ export interface OtpReview {
    * was written; false stops at the first failure and leaves actionError set.
    */
   resolve: (stops: readonly FlaggedStop[], action: "approve" | "reject") => Promise<boolean>;
-  copyFromPrevious: (stops: readonly FlaggedStop[]) => Promise<void>;
-  copyAllFromPrevious: () => Promise<void>;
-  copyingAll: boolean;
+  /** onProgress hears the running count of rows written, for a long copy's button. */
+  copyFromPrevious: (stops: readonly FlaggedStop[], onProgress?: (written: number) => void) => Promise<void>;
   /** How many decisions the month holds, including stops no longer flagged. */
   decidedCount: number;
   /** Clear the month's decisions. True when the reset was written. */
@@ -71,7 +70,6 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
   const [previousMonthExclusions, setPreviousMonthExclusions] = useState<OtpStopExclusion[]>([]);
   const [draftReason, setDraftReason] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
-  const [copyingAll, setCopyingAll] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [auditRefreshTick, setAuditRefreshTick] = useState(0);
   const [decisionsVersion, setDecisionsVersion] = useState(0);
@@ -211,7 +209,7 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
   // forward: a human takes an explicit action for every month, it is just one
   // click applying last month's answer instead of re-deriving it.
   const copyFromPrevious = useCallback(
-    async (stops: readonly FlaggedStop[]) => {
+    async (stops: readonly FlaggedStop[], onProgress?: (written: number) => void) => {
       setActionError(null);
       let written = 0;
       for (const stop of stops) {
@@ -224,36 +222,12 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
         );
         if (!saved) break;
         written += 1;
+        onProgress?.(written);
       }
       if (written > 0) await refreshDecisions();
     },
     [previousDecisionFor, record, refreshDecisions],
   );
-
-  // One click, still N real per-stop PUTs - one dated row each, the same as
-  // clicking them individually - so the audit trail keeps its shape.
-  const copyAllFromPrevious = useCallback(async () => {
-    setActionError(null);
-    setCopyingAll(true);
-    try {
-      const targets = flaggedStops
-        .map((stop) => ({ stop, prev: previousDecisionFor(stop) }))
-        .filter(({ stop, prev }) => prev && statusOf(stop) === "pending");
-
-      for (const { stop, prev } of targets) {
-        if (!prev) continue;
-        const saved = await record(
-          stop,
-          { status: prev.status, reason_code: prev.reason_code },
-          "Could not copy all of last month's decisions.",
-        );
-        if (!saved) break;
-      }
-      await refreshDecisions();
-    } finally {
-      setCopyingAll(false);
-    }
-  }, [flaggedStops, previousDecisionFor, record, refreshDecisions, statusOf]);
 
   // Reset the month: every decision for it is deleted on the server, so each
   // Flagged Stop returns to pending and the month scores without exclusions
@@ -285,8 +259,6 @@ export function useOtpReview({ serviceMonth, flaggedStops, reasonCodes }: OtpRev
     previousDecisionFor,
     resolve,
     copyFromPrevious,
-    copyAllFromPrevious,
-    copyingAll,
     decidedCount: stopExclusions.length,
     resetMonth,
     resetting,

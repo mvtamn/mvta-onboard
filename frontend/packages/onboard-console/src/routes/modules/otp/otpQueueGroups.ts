@@ -147,6 +147,22 @@ export function matchesFilter(group: QueueGroup, filter: QueueFilter): boolean {
   return true;
 }
 
+/**
+ * A group with something pending whose every pending day last month already
+ * decided. Most of a month's queue is the same stops for the same reasons, so
+ * these are confirmations, not judgements, and the queue folds them away
+ * behind the stops that need a fresh look. One new day makes the whole stop a
+ * judgement: the reviewer sees the week together.
+ */
+export function decidedLastMonth(group: QueueGroup): boolean {
+  return group.pending > 0 && group.days.every((d) => d.status !== "pending" || d.previous);
+}
+
+/** The pending days of these groups that last month decided: what "copy last month" writes. */
+export function carriedDays(groups: readonly QueueGroup[]): QueueDay[] {
+  return groups.flatMap((g) => g.days.filter((d) => d.status === "pending" && d.previous));
+}
+
 /** What last month decided for these days, in one line, or null when it decided none of them. */
 export function previousSummary(
   days: readonly QueueDay[],
