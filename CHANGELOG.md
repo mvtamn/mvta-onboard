@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.13] - 2026-10-20
+## [1.6.16] - 2026-10-20
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,12 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.14] - 2026-10-20
+
+- **Access & Identity works on production.** Every `access-management/*` call on `func-mvta-restapi-prod` answered 500 "Access Management is unavailable." because the app had no `ONBOARD_ACCESS_CONFIG_JSON`: `phase1-prod.parameters.json` left `accessManagementConfigJson` empty, so `main-phase1.bicep` turned `enableAccessManagement` off and none of the four `ONBOARD_ACCESS_*` / `ONBOARD_ENVIRONMENT` settings were written. App Insights showed `ONBOARD_ACCESS_CONFIG_JSON is required for Access Management.` on principals, audit and directory search.
+- **The value is production's own.** Environment `prod`, the *MVTA OnBoard (Production)* registration (`b9d88e43-…`) and its service principal (`73dbe0dd-…`), guest redirect `https://onboard.mvta.com/console/`, and the app-role ids from that registration. No dev ids are reused. No role carries a `group_id`, because production has no role groups; Access health's reconciliation will list `role_group_not_configured` for each human role, which is accurate.
+- **Takes effect on the next production infra run** (needs approval under Review deployments). The infra run restarts the REST app.
 
 ## [1.6.11] - 2026-10-20
 
