@@ -285,8 +285,6 @@ export function OtpModule() {
           auditRefreshTick={review.auditRefreshTick + weatherActionTick}
           previousDecisionFor={review.previousDecisionFor}
           onCopy={review.copyFromPrevious}
-          onCopyAll={review.copyAllFromPrevious}
-          copyingAll={review.copyingAll}
           decidedCount={review.decidedCount}
           onResetMonth={review.resetMonth}
           resetting={review.resetting}

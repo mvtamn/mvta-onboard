@@ -80,7 +80,7 @@ describe("recording a decision", () => {
     await waitFor(() => expect(getStopExclusions).toHaveBeenCalledTimes(2));
     const before = result.current.decisionsVersion;
 
-    await act(async () => { await result.current.resolve(stop(), "approve"); });
+    await act(async () => { await result.current.resolve([stop()], "approve"); });
 
     expect(putStopExclusion).toHaveBeenCalledWith(expect.objectContaining({
       service_month: "202609", route_id: 490, stop_id: 13209, day_of_week: "Monday",
@@ -99,15 +99,50 @@ describe("recording a decision", () => {
     const before = result.current.decisionsVersion;
     putStopExclusion.mockRejectedValue(new ApiError(500, "Internal server error"));
 
-    await act(async () => { await result.current.resolve(stop(), "reject"); });
+    await act(async () => { await result.current.resolve([stop()], "reject"); });
 
     expect(result.current.actionError).toBe("Internal server error");
     expect(result.current.decisionsVersion).toBe(before);
   });
 
+  it("writes every day of a stop in order and re-reads the month once", async () => {
+    // A reviewer decides a stop, not a stop-day; the record stays one row per
+    // day. October 2026 put one stop in front of the reviewer fifteen times.
+    const { result } = setup();
+    await waitFor(() => expect(getStopExclusions).toHaveBeenCalledTimes(2));
+    const before = result.current.decisionsVersion;
+
+    let allSaved = false;
+    await act(async () => {
+      allSaved = await result.current.resolve([stop(), stop({ day_of_week: "Tuesday" })], "approve");
+    });
+
+    expect(allSaved).toBe(true);
+    expect(putStopExclusion.mock.calls.map((c) => c[0].day_of_week)).toEqual(["Monday", "Tuesday"]);
+    expect(getStopExclusions).toHaveBeenCalledTimes(3);
+    expect(result.current.decisionsVersion).toBe(before + 1);
+  });
+
+  it("stops at the first day that fails, keeps what was written, and says so", async () => {
+    const { result } = setup();
+    await waitFor(() => expect(getStopExclusions).toHaveBeenCalledTimes(2));
+    putStopExclusion.mockResolvedValueOnce({}).mockRejectedValueOnce(new ApiError(500, "Internal server error"));
+
+    let allSaved = true;
+    await act(async () => {
+      allSaved = await result.current.resolve([stop(), stop({ day_of_week: "Tuesday" }), stop({ day_of_week: "Wednesday" })], "approve");
+    });
+
+    expect(allSaved).toBe(false);
+    expect(putStopExclusion).toHaveBeenCalledTimes(2);
+    expect(result.current.actionError).toBe("Internal server error");
+    // Monday was written, so the month is re-read for it.
+    expect(getStopExclusions).toHaveBeenCalledTimes(3);
+  });
+
   it("writes nothing at all when no month is resolved", async () => {
     const { result } = setup({ serviceMonth: null });
-    await act(async () => { await result.current.resolve(stop(), "approve"); });
+    await act(async () => { await result.current.resolve([stop()], "approve"); });
     expect(putStopExclusion).not.toHaveBeenCalled();
   });
 });
@@ -120,7 +155,7 @@ describe("switching month", () => {
     const { result, rerender } = setup();
     await waitFor(() => expect(getStopExclusions).toHaveBeenCalledTimes(2));
     putStopExclusion.mockRejectedValue(new ApiError(409, "Already decided"));
-    await act(async () => { await result.current.resolve(stop(), "approve"); });
+    await act(async () => { await result.current.resolve([stop()], "approve"); });
     expect(result.current.actionError).toBe("Already decided");
 
     rerender({ serviceMonth: "202608", flaggedStops: [stop()] });
@@ -186,17 +221,20 @@ describe("copying last month's decisions", () => {
     expect(result.current.previousDecisionFor(other)).toBeUndefined();
   });
 
-  it("copies to every pending stop that has one, and no others", async () => {
+  it("copies only the stops last month decided", async () => {
     lastMonthHas([
       decision({ service_month: "202608" }),
       decision({ id: "x2", service_month: "202608", route_id: 444, stop_id: 31928, status: "rejected" }),
     ]);
-    const { result } = setup({ flaggedStops: [stop(), other] });
+    const third = stop({ stop_id: 77777 });
+    const { result } = setup({ flaggedStops: [stop(), other, third] });
     await waitFor(() => expect(result.current.previousDecisionFor(other)).toBeDefined());
 
-    await act(async () => { await result.current.copyAllFromPrevious(); });
+    const progress: number[] = [];
+    await act(async () => { await result.current.copyFromPrevious([stop(), other, third], (n) => progress.push(n)); });
 
     expect(putStopExclusion).toHaveBeenCalledTimes(2);
+    expect(progress).toEqual([1, 2]);
     // One dated row per stop, the same as clicking each individually, so the
     // audit trail keeps its shape.
     expect(putStopExclusion.mock.calls.map((c) => (c[0] as { status: string }).status)).toEqual(["approved", "rejected"]);
@@ -211,11 +249,10 @@ describe("copying last month's decisions", () => {
     await waitFor(() => expect(result.current.previousDecisionFor(other)).toBeDefined());
     putStopExclusion.mockRejectedValue(new ApiError(500, "Internal server error"));
 
-    await act(async () => { await result.current.copyAllFromPrevious(); });
+    await act(async () => { await result.current.copyFromPrevious([stop(), other]); });
 
     expect(putStopExclusion).toHaveBeenCalledTimes(1);
     expect(result.current.actionError).toBe("Internal server error");
-    expect(result.current.copyingAll).toBe(false);
   });
 });
 

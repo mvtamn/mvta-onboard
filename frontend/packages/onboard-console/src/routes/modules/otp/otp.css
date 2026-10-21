@@ -9,30 +9,79 @@
 
 .otp-two { display: flex; gap: 20px; align-items: flex-start; }
 .otp-queue { flex: 1; min-width: 0; }
-.otp-queue-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-.otp-queue-toolbar select, .otp-queue-toolbar input { font-family: inherit; font-size: 12.5px; padding: 7px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text); }
 
-.check-row { display: flex; gap: 14px; padding: 15px 10px; border-bottom: 1px solid var(--border); align-items: flex-start; }
-.check-row:last-child { border-bottom: none; }
-.check-row.highlight { background: var(--highlight-bg); border: 1px solid var(--highlight-border); border-radius: 4px; padding: 15px 14px; margin: 2px 0; }
-.status-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; color: #fff; font-weight: 700; font-size: 12px; }
-.status-icon.ok { background: var(--success-text); }
-.status-icon.warn { background: #f78e1e; }
-.status-icon.rejected { background: var(--text-dim); }
-.check-body { flex: 1; min-width: 0; }
-.check-title { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; flex-wrap: wrap; }
-.route-chip { display: inline-block; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; margin-right: 8px; }
-.check-desc { color: var(--text-muted); font-size: 12px; margin-top: 3px; }
-.adherence-strip { display: flex; height: 7px; width: 180px; border-radius: 2px; overflow: hidden; margin-top: 9px; border: 1px solid var(--border); }
-.seg { height: 100%; }
+/* The list scrolls under its toolbar: with ninety-odd stops to work through,
+   the filters and the count of what is left are the reviewer's bearings. The
+   toolbar cannot be sticky instead - the console scrolls as one document
+   inside a .frame that hides overflow, which is what sticky would pin to. */
+.otp-queue-toolbar { margin: -14px -16px 12px; padding: 14px 16px 12px; border-bottom: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 10px; }
+.otp-queue-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.otp-queue-filters select, .otp-queue-filters input { font-family: inherit; font-size: 12.5px; padding: 7px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text); }
+.otp-queue-filters input { flex: 1 1 160px; min-width: 140px; }
+.otp-queue-progress { display: flex; flex-direction: column; gap: 6px; }
+.otp-queue-counts { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--text); }
+.otp-queue-counts-right { font-size: 12px; }
+.otp-progress-track { height: 5px; border-radius: 3px; background: var(--surface-alt-bg); overflow: hidden; }
+.otp-progress-fill { height: 100%; background: var(--brand-green); border-radius: 3px; transition: width .2s ease; }
+
+.otp-queue-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 20px; }
+
+/* One card per stop on a route. The header, the week and the actions stack
+   rather than sit side by side, so the stop name is never squeezed into a
+   sliver by a reason dropdown the way the old flat row was. */
+.otp-group-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 150px); overflow-y: auto; padding: 2px; margin: -2px; scroll-padding-top: 8px; }
+.otp-group { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-bg); scroll-margin-top: 8px; }
+.otp-group.highlight { background: var(--highlight-bg); border-color: var(--highlight-border); }
+.otp-group:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.otp-group-head { display: flex; flex-direction: column; gap: 3px; }
+.otp-group-title { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; flex-wrap: wrap; gap: 2px 0; }
+.otp-group-name { min-width: 0; overflow-wrap: anywhere; }
+.route-chip { display: inline-block; background: var(--brand-green); color: #fff; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; margin-right: 8px; white-space: nowrap; }
+.otp-group-meta { color: var(--text-muted); font-size: 12px; }
+.adherence-strip { display: flex; height: 7px; width: 180px; max-width: 100%; border-radius: 2px; overflow: hidden; margin-top: 6px; border: 1px solid var(--border); }
+.adherence-strip.compact { width: 100%; height: 5px; margin-top: 0; border: none; }
+.adherence-strip .seg { height: 100%; border-radius: 0; border: none; display: block; background: var(--surface-alt-bg); }
 .seg.early { background: #faad60; }
 .seg.ontime { background: var(--success-text); }
 .seg.late { background: var(--late-orange); }
 .seg.missed { background: var(--text-dim); }
-.check-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-.check-actions select { font-family: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text); }
+
+/* The week: one chip per flagged day, Monday first. Pressed means the next
+   decision covers it. A decided day shows its mark and can be pressed again
+   to re-decide it - the API upserts in place. */
+.otp-days { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.otp-day { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 4px; width: 76px; padding: 6px 7px 5px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-bg); color: var(--text); font-size: 11.5px; line-height: 1.2; }
+.otp-day:hover:not(:disabled) { border-color: var(--brand-green); }
+.otp-day:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; }
+.otp-day:disabled { cursor: default; opacity: .6; }
+.otp-day.selected { border-color: var(--brand-green); box-shadow: inset 0 0 0 1px var(--brand-green); background: var(--chip-bg); }
+.otp-day-name { font-weight: 700; }
+.otp-day-status { font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.otp-day-status.approved { color: var(--success-text); font-weight: 700; }
+.otp-day-status.rejected { color: var(--text-dim); font-weight: 700; }
+.otp-day.approved, .otp-day.rejected { background: var(--surface-alt-bg); }
+.otp-day.approved .otp-day-name { color: var(--success-text); }
+.otp-day.rejected .otp-day-name, .otp-day.rejected .adherence-strip { opacity: .7; }
+
+.otp-group-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.otp-group-actions select { font-family: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text); max-width: 100%; }
+.otp-group-actions .btn-sm { margin-right: 0; }
+.otp-group-last { font-size: 12px; margin-left: auto; }
+
+/* Stops last month already decided, folded below the ones that need a fresh
+   look. The fold is one line until opened, so "All routes" is a short list. */
+.otp-carried { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.otp-carried-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.otp-carried-toggle { display: flex; align-items: baseline; gap: 8px; background: none; border: 0; padding: 6px 2px; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.otp-carried-toggle:focus-visible { outline: 2px solid var(--brand-green); outline-offset: 2px; border-radius: 4px; }
+.otp-carried-caret { width: 10px; color: var(--text-muted); }
+.otp-carried-note { margin: 0; font-size: 12.5px; }
 
 .otp-timeline { width: 280px; flex-shrink: 0; }
+@media (max-width: 1000px) {
+  .otp-two { flex-direction: column; }
+  .otp-timeline { width: auto; align-self: stretch; }
+}
 .otp-timeline h2 { font-size: 15px; font-weight: 700; color: var(--text); margin: 0 0 14px; }
 .timeline-item { position: relative; padding: 0 0 16px 18px; border-left: 2px solid var(--border); margin-left: 3px; }
 .timeline-item:last-child { border-left-color: transparent; padding-bottom: 2px; }

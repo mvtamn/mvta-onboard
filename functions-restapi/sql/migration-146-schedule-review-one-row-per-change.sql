@@ -5,7 +5,7 @@
 -- one after another). Since 145 a new row is written only when the review
 -- changes, and the history endpoint folded the old runs together with a
 -- window-function query. This removes the runs instead, so the history is a
--- plain read of the table (v1.6.16, lib/scheduleReview/store.ts).
+-- plain read of the table (v1.6.17, lib/scheduleReview/store.ts).
 --
 -- For each run of identical consecutive rows it keeps the NEWEST row - the
 -- one the first post-145 sync wrote its per-route detail against - and sets
