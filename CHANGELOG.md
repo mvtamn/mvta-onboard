@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.12] - 2026-10-20
+## [1.6.15] - 2026-10-20
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+## [1.6.14] - 2026-10-20
+
+- **Access & Identity works on production.** Every `access-management/*` call on `func-mvta-restapi-prod` answered 500 "Access Management is unavailable." because the app had no `ONBOARD_ACCESS_CONFIG_JSON`: `phase1-prod.parameters.json` left `accessManagementConfigJson` empty, so `main-phase1.bicep` turned `enableAccessManagement` off and none of the four `ONBOARD_ACCESS_*` / `ONBOARD_ENVIRONMENT` settings were written. App Insights showed `ONBOARD_ACCESS_CONFIG_JSON is required for Access Management.` on principals, audit and directory search.
+- **The value is production's own.** Environment `prod`, the *MVTA OnBoard (Production)* registration (`b9d88e43-…`) and its service principal (`73dbe0dd-…`), guest redirect `https://onboard.mvta.com/console/`, and the app-role ids from that registration. No dev ids are reused. No role carries a `group_id`, because production has no role groups; Access health's reconciliation will list `role_group_not_configured` for each human role, which is accurate.
+- **Takes effect on the next production infra run** (needs approval under Review deployments). The infra run restarts the REST app.
+
 ## [1.6.11] - 2026-10-20
 
 - **Prediction accuracy is scored every night** (increment 2 of `plans/prediction-accuracy-evaluation.md`, ADR 0041). The 30-second capture has been writing since 2026-10-19 07:07 Central. A new timer, `predictionScore`, runs at 09:15 UTC: 04:15 CDT or 03:15 CST, after the 03:00 Central service-day cutoff. It reads the service day's capture file and the next day's, works out when each bus reached each stop, scores every prediction with the ETA Accuracy Benchmark, and replaces that day's tallies in SQL. It also catches up any of the six days before that has a capture and no score.
