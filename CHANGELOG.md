@@ -5,11 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.12] - 2026-10-20
+## [1.6.15] - 2026-10-20
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+
+## [1.6.14] - 2026-10-20
+
+- **Access & Identity works on production.** Every `access-management/*` call on `func-mvta-restapi-prod` answered 500 "Access Management is unavailable." because the app had no `ONBOARD_ACCESS_CONFIG_JSON`: `phase1-prod.parameters.json` left `accessManagementConfigJson` empty, so `main-phase1.bicep` turned `enableAccessManagement` off and none of the four `ONBOARD_ACCESS_*` / `ONBOARD_ENVIRONMENT` settings were written. App Insights showed `ONBOARD_ACCESS_CONFIG_JSON is required for Access Management.` on principals, audit and directory search.
+- **The value is production's own.** Environment `prod`, the *MVTA OnBoard (Production)* registration (`b9d88e43-…`) and its service principal (`73dbe0dd-…`), guest redirect `https://onboard.mvta.com/console/`, and the app-role ids from that registration. No dev ids are reused. No role carries a `group_id`, because production has no role groups; Access health's reconciliation will list `role_group_not_configured` for each human role, which is accurate.
+- **Takes effect on the next production infra run** (needs approval under Review deployments). The infra run restarts the REST app.
 
 ## [1.6.11] - 2026-10-20
 
