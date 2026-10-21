@@ -159,6 +159,7 @@ var restApiTimerNames = [
   'otpDailyFeedPoll'
   'otpMonthlyFeedPoll'
   'predictionCapture'
+  'predictionScore'
   'spareMissedTripsEvaluate'
   'spareMissedTripsIngest'
   'suggestedAlertsExpire'
