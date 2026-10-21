@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.14] - 2026-10-20
+
+- **Access & Identity works on production.** Every `access-management/*` call on `func-mvta-restapi-prod` answered 500 "Access Management is unavailable." because the app had no `ONBOARD_ACCESS_CONFIG_JSON`: `phase1-prod.parameters.json` left `accessManagementConfigJson` empty, so `main-phase1.bicep` turned `enableAccessManagement` off and none of the four `ONBOARD_ACCESS_*` / `ONBOARD_ENVIRONMENT` settings were written. App Insights showed `ONBOARD_ACCESS_CONFIG_JSON is required for Access Management.` on principals, audit and directory search.
+- **The value is production's own.** Environment `prod`, the *MVTA OnBoard (Production)* registration (`b9d88e43-…`) and its service principal (`73dbe0dd-…`), guest redirect `https://onboard.mvta.com/console/`, and the app-role ids from that registration. No dev ids are reused. No role carries a `group_id`, because production has no role groups; Access health's reconciliation will list `role_group_not_configured` for each human role, which is accurate.
+- **Takes effect on the next production infra run** (needs approval under Review deployments). The infra run restarts the REST app.
+
 ## [1.6.11] - 2026-10-20
 
 - **Prediction accuracy is scored every night** (increment 2 of `plans/prediction-accuracy-evaluation.md`, ADR 0041). The 30-second capture has been writing since 2026-10-19 07:07 Central. A new timer, `predictionScore`, runs at 09:15 UTC: 04:15 CDT or 03:15 CST, after the 03:00 Central service-day cutoff. It reads the service day's capture file and the next day's, works out when each bus reached each stop, scores every prediction with the ETA Accuracy Benchmark, and replaces that day's tallies in SQL. It also catches up any of the six days before that has a capture and no score.
