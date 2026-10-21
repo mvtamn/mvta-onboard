@@ -93,6 +93,11 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     column: "confirmed_at",
     breaks: "An unchanged schedule review is stored again every day instead of being confirmed",
   },
+  {
+    migration: "147",
+    table: "PredictionAccuracyDays",
+    breaks: "Prediction accuracy is not scored; the capture keeps writing and is kept 90 days",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */

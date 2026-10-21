@@ -36,6 +36,8 @@ export const FEED_STALE_AFTER_MINUTES = {
   // Thirty-second capture: a gap of five minutes is ten missed runs, and the
   // night's score will be missing those minutes.
   prediction_capture: 5,
+  // Nightly score: a day and two hours, so one late run is not called stale.
+  prediction_score: 26 * 60,
 } as const satisfies Partial<Record<KpiFeedName, number>>;
 
 // How often each polled feed is fetched, where the console needs to know it.
