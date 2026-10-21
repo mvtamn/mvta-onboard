@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.10] - 2026-10-20
+## [1.6.13] - 2026-10-20
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,19 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.11] - 2026-10-20
+
+- **Prediction accuracy is scored every night** (increment 2 of `plans/prediction-accuracy-evaluation.md`, ADR 0041). The 30-second capture has been writing since 2026-10-19 07:07 Central. A new timer, `predictionScore`, runs at 09:15 UTC: 04:15 CDT or 03:15 CST, after the 03:00 Central service-day cutoff. It reads the service day's capture file and the next day's, works out when each bus reached each stop, scores every prediction with the ETA Accuracy Benchmark, and replaces that day's tallies in SQL. It also catches up any of the six days before that has a capture and no score.
+- **When the bus arrived (`lib/predictionAccuracy/actuals.ts`).** A stop counts as reached when the vehicle is stopped at it, or heading to a later stop. The arrival lies between the last position that had not reached it and the first that had: an interval about 30 seconds wide, bounded by the vehicle's own timestamps. A bus first seen standing at a stop, as at the start of a trip, is timed by when it left. No actual is kept, and the reason is counted, when the bus was already past the stop when first seen, never reached it, or the positions either side are over two minutes apart. Avail's stop sequences have gaps (3240, 3600, 3840), so nothing assumes "the stop before" is the sequence minus one.
+- **Scoring (`lib/predictionAccuracy/score.ts`).** Every stop time a TripUpdates sample gave for a stop the bus had not yet reached counts as a prediction, including an overdue ETA riders were still shown. A prediction is judged at both ends of the arrival interval and called indeterminate when the two verdicts differ, as the ADR commits to. Duplicates, samples from runs whose TripUpdates were over 150 s old, stops already reached, and arrivals more than 15 minutes out are each counted and left out. A kept time for a reached stop is compared with the derived arrival as a check.
+- **Migration 147** adds `PredictionAccuracyDays` (one row per scored day, with every reason a prediction was left out and the cross-check), `PredictionAccuracyRouteHours` (route, direction, Central hour, bucket) and `PredictionAccuracyStops` (route, stop, bucket). They hold tallies, not percentages, so any period or grouping is scored by adding rows and running the benchmark; the agency figure is never an average of routes. Until the migration is applied the scorer warns once a night and stores nothing; the capture is kept 90 days, so the days are caught up later. Schema drift on Integrations & Data Health names the migration.
+- **Integrations & Data Health** gains a *Prediction accuracy scoring* row from the `prediction_score` ledger row: current for 26 hours after a night's score, with the newest scored capture run as its source time. `predictionScore` is added to `restApiTimerNames` in `main-phase1.bicep`, so environments with timers off keep it off.
+- **First reading, and two things to watch.** Scored locally against a 10-minute late-evening capture of the live feeds (20 runs, 131 scored predictions), so the figures say nothing yet about accuracy:
+  - About a third of predictions were indeterminate (59 against 131 scored), not the small share the plan expected. A 30-second interval straddles a window edge often, and the 0-3 minute window is only 2 minutes wide.
+  - Avail's kept time for a stop falls about 30 s before the middle of the derived interval (33 stops; 16 within 15 s of it). Where the bus was seen stopped at the stop it is about 10 s before the interval starts; where it was only seen past the stop, about 28 s before. The vehicle's status changes after Avail marks the arrival. On the predictions both methods can judge, they agree on 92 of 101.
+  These are the numbers to read on the first full day before comparing with Swiftly's September figures for 490 and 470.
+- **Verified.** 10 new backend checks (parsing every line kind back, intervals with gapped sequences, departure at a standing start, the reasons for no actual, each exclusion, the service-day cutoff, scoring without a direction). The REST API suite passes, and the infra template compiles. Not yet run in Azure: it needs migration 147.
 
 ## [1.6.8] - 2026-10-20
 
