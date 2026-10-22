@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.17] - 2026-10-21
+## [1.6.24] - 2026-10-22
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,18 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.23] - 2026-10-22
+
+- **Open cases from earlier days are re-checked against their start.** Each `gtfsMissedTripsPoll` pass re-read start evidence only for today and yesterday, so a case outlived the evidence that could close it: 1.6.22's departure reading (`operatedStartAt`) never reached the ~51 cases since 2026-09-16 whose bus left inside the grace, nor any older one. A new read, `openCaseStarts`, loads the start evidence for every open, unreviewed, non-legacy GTFS case whatever its date and hands it to the case module with the day's own starts (deduplicated). The module's existing rule decides: a start at or before the deadline closes the case by evidence, a later one only records itself. A read failure is logged and the pass continues. Once the backlog is closed the read returns the few open cases and the module writes nothing when nothing changed.
+- **Migration 148 retires the silent no-shows raised before the false-positive guards** (`gtfs-silent-v3`, 2026-09-16) that are still unreviewed and open - the week of 2026-09-07 alone raised 1,226. They become `legacy_unverified`, like the superseded detector's 3,518 rows: out of the queue, the counts and every assessment, read-only for audit, with the reason in `notes`. Apply it **after** this release is deployed and one poll has run, so the cases the evidence can settle are closed first. The migration prints what it will retire by detector version, the count, and what the queue holds afterwards.
+- Tests: 3 new in `gtfs.test.ts` (an earlier day's open case is re-checked; a trip read both ways is observed once; an unreadable read leaves the pass running).
+
+## [1.6.22] - 2026-10-21
+
+- **Silent no-shows flagged buses that left late but inside the grace.** The detector took a trip's start only from `first_underway_at`, which the VehiclePosition poller sets once the bus reports past its first stop, on a five-minute grid. Measured on dev over 2026-09-16..10-20, that proof lands 4-13 minutes after the Dispatch Log's first-stop departure on average and 10+ minutes on most trips of routes 497, 499 and 446. A bus that left 15-29 minutes late therefore reached its 30-minute deadline with no start, and when the proof came after the deadline the case module read it as "ran past its deadline" and kept the case. 111 of the 118 silent no-shows since 09-16 have a Dispatch Log start; about 29 had closed by evidence a poll later, and about 51 departed inside the grace but stayed open.
+- **A trip's start is now the earlier of two readings** (`operatedStartAt` in `adapters/gtfs.ts`): the position proof, or the Dispatch Log's first-stop departure from `TripStartLog`. The departure counts only when it is a `trip_update` reading, differs from both the scheduled start and the last prediction to the second (TripStartLog stores a repeated schedule and a stood-in prediction under the same source), and some vehicle reported against the trip. The same start feeds the silent no-show deadline check, the block-continuity guard and the `trip_start` evidence that closes open cases. Without migration 094's table the detector reads the position proof alone, as before.
+- **Not changed:** the detector version stays `gtfs-silent-v4`, since the views from migrations 125/135/137 key the operating-window hold on it. Cases already open from before this release are not re-evaluated; only today's and yesterday's trips are re-read each pass. The ~38 remaining cases since 09-16 are blocks no bus reported on and Dispatch Log starts that are only the schedule repeated - real candidates, or comms loss that a vehicle-status feed would separate. Tests: 12 new in `gtfs.test.ts`.
 
 ## [1.6.16] - 2026-10-20
 
