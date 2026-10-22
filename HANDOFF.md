@@ -430,7 +430,7 @@ lesson 7 above.
   available", manual Mark published still works). To turn it on: create the
   secret with the channel's incoming-webhook URL and restart the REST app.
   Do not chase this as an open defect.
-- TO DO TO TURN ON TEAMS POSTS FOR ANNOUNCEMENTS (1.6.18): the dispatch app
+- TO DO TO TURN ON TEAMS POSTS FOR ANNOUNCEMENTS (1.6.25): the dispatch app
   posts "Notify Teams" announcements per audience, but until these exist every
   post is recorded as `skipped`. Portal/CLI steps, not code, in this order:
   1. Apply migration 144 (`TeamsDeliveryLog`) to the dev database.
@@ -829,6 +829,7 @@ SQL login as the other apps, so no database user is needed),
    az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Key Vault Secrets User" --scope "$kv"
    az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Blob Data Owner" --scope "$st"
    az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Queue Data Contributor" --scope "$st"
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Table Data Contributor" --scope "$st"
    ```
    These are the roles `functionapp.bicep` would assign with
    `manageRoleAssignments` true. Allow a few minutes for propagation.
@@ -974,3 +975,74 @@ The Entra steps — the OnBoard Users group, "Assignment required", removing the
 `OCC.*` app roles and revoking the two Graph write consents — belong to
 increments 5 and 6 and are listed in the plan. Do none of them yet: the app
 roles in the token are still what authorizes every request.
+
+## Function App storage health check — status (2026-10-14)
+
+All three Function Apps log a Warning from
+`TelemetryHealthCheckPublisher` about every 30 seconds (~2,900 per app per
+day): `Process reporting unhealthy`. The unhealthy entry is always
+`azure.functions.webjobs.storage` — "Unable to access AzureWebJobsStorage",
+`AuthorizationPermissionMismatch`. The host and script-host checks are
+Healthy, and nothing outside the health check has failed against storage, so
+nothing is broken today. Do not filter the category out: this same check was
+the signal for the 2026-09-05 dispatch outage, when its Service Bus listeners
+failed with this exact 403.
+
+The cause is missing data-plane roles on each app's own WebJobs storage
+account (identity-based, no account key):
+
+| App | Roles held on its storage account (2026-10-14) | Unhealthy since |
+|---|---|---|
+| `func-mvta-sparehook-dev` | none — cutover step 2 above was never run for storage | 2026-09-15 |
+| `func-mvta-restapi-dev` | Storage Blob Data Contributor | 2026-10-09 |
+| `func-mvta-dispatch-dev` | Storage Blob Data Owner, Storage Queue Data Contributor | 2026-10-09 |
+
+Restapi and dispatch went unhealthy at the platform's host upgrade from
+4.1054.250.1 to 4.1055.150.0 on 2026-10-09; dispatch was Healthy with Blob +
+Queue until then. No identity holds a Table role, so the new host's check
+most likely probes Table storage. Storage diagnostic logs are off, so that is
+inferred, not proven — step 1 tests it. `functionapp.bicep` now declares
+Storage Table Data Contributor alongside Blob Owner and Queue Contributor,
+but dev deploys with `manageRoleAssignments` false, so the grants are an
+administrator's step.
+
+### Steps that are the user's
+
+Role grants do not restart the apps, so these are safe during service hours.
+`az role assignment create` returns the existing assignment if one is
+already there.
+
+1. **Grant dispatch the Table role, then confirm the diagnosis.**
+   ```bash
+   principal=$(az resource show -g rg-mvta-onboard-dev -n func-mvta-dispatch-dev --resource-type Microsoft.Web/sites --query identity.principalId -o tsv)
+   st=$(az storage account show -g rg-mvta-onboard-dev -n stmvtadispatchdevmvtajx4 --query id -o tsv)
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Table Data Contributor" --scope "$st"
+   ```
+   Wait 10 minutes for propagation, then check that dispatch's warnings
+   stopped (expect 0 rows in the last 5 minutes):
+   ```bash
+   az monitor log-analytics query -w e2d5fc29-6b63-49b9-9654-4e02ea1771d2 --analytics-query "AppTraces | where TimeGenerated > ago(5m) | where AppRoleName == 'func-mvta-dispatch-dev' | where Properties.Category endswith 'TelemetryHealthCheckPublisher' | count" -o table
+   ```
+   If they have not stopped, read the entry's `errorCode` again before going
+   on: the missing permission is something other than Table.
+2. **Grant restapi the Queue and Table roles.**
+   ```bash
+   principal=$(az resource show -g rg-mvta-onboard-dev -n func-mvta-restapi-dev --resource-type Microsoft.Web/sites --query identity.principalId -o tsv)
+   st=$(az storage account show -g rg-mvta-onboard-dev -n stmvtarestapidevmvtajx44 --query id -o tsv)
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Queue Data Contributor" --scope "$st"
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Table Data Contributor" --scope "$st"
+   ```
+   Its existing Blob Data Contributor (not Owner) is left as is; it has run
+   on that since provisioning.
+3. **Grant sparehook all three storage roles.**
+   ```bash
+   principal=$(az resource show -g rg-mvta-onboard-dev -n func-mvta-sparehook-dev --resource-type Microsoft.Web/sites --query identity.principalId -o tsv)
+   st=$(az storage account show -g rg-mvta-onboard-dev -n stmvtasparehkdevmvtajx44 --query id -o tsv)
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Blob Data Owner" --scope "$st"
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Queue Data Contributor" --scope "$st"
+   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal --role "Storage Table Data Contributor" --scope "$st"
+   ```
+4. **Confirm all three are quiet** after another 10 minutes (expect no rows):
+   ```bash
+   az monitor log-analytics query -w e2d5fc29-6b63-49b9-9654-4e02ea1771d2 --analytics-query "AppTraces | where TimeGenerated > ago(5m) | where Properties.Category endswith 'TelemetryHealthCheckPublisher' | summarize count() by AppRoleName" -o table
+   ```
