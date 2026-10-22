@@ -7,6 +7,8 @@ param appInsightsConnectionString string
 param storageAccountName string
 param subnetId string
 param keyVaultName string
+@description('SQL_CONNECTION_STRING: a Key Vault reference to the password string, or a passwordless managed-identity string. Chosen by sqlAuthentication in main-phase1.bicep.')
+param sqlConnectionString string
 param planSku string = 'B1'
 param planTier string = 'Basic'
 param includeSpareApiKey bool = false
@@ -199,9 +201,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // pilot set compiled into the importer; set it to adopt a third zone or
         // an upstream location-id rename without a code change.
         { name: 'ON_DEMAND_OPERATIONAL_ZONE_IDS', value: onDemandOperationalZoneIds }
-        // Key Vault reference, not a raw value - fixes the same class of
-        // "wiped on redeploy" bug for the connection string specifically.
-        { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
+        // Declared here so a redeploy cannot wipe it: either the Key Vault
+        // reference to the password string or the managed-identity string,
+        // per sqlAuthentication in main-phase1.bicep.
+        { name: 'SQL_CONNECTION_STRING', value: sqlConnectionString }
         // Same Key Vault reference pattern - powers Compose's optional
         // rider-friendly summary drafting (messagesDraftSummary.ts). The
         // secret itself (anthropic-api-key) must be created in Key Vault

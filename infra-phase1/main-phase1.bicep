@@ -119,11 +119,25 @@ param availMissedTripsUrl string = 'https://avail360-api.myavail.cloud/MissedTri
 @description('Avail Pullout endpoint used for fixed-route garage departure monitoring.')
 param availPulloutUrl string = 'https://avail360-api.myavail.cloud/Pullout/v1/MVTA'
 
+@description('How the Function Apps sign in to SQL. "password": the admin login and password from Key Vault\'s sql-connection-string. "managedIdentity": each app\'s own identity (Authentication=Active Directory Default), which needs that app\'s database user - infra-stage0/scripts/grant-function-app-sql-users.sql - and leaves no secret in the setting.')
+@allowed(['password', 'managedIdentity'])
+param sqlAuthentication string = 'password'
+
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: 'kv-mvta-${environment}-${uniqueSuffix}'
 }
+
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' existing = {
+  name: 'sql-mvta-${environment}-${uniqueSuffix}'
+}
+
+// One SQL_CONNECTION_STRING for all three apps. Switching back to "password"
+// is the rollback: the Key Vault secret stays until Entra-only is on.
+var sqlConnectionString = sqlAuthentication == 'managedIdentity'
+  ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=sqldb-mvta-onboard-${environment};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;'
+  : '@Microsoft.KeyVault(SecretUri=https://${keyVault.name}.vault.azure.net/secrets/sql-connection-string/)'
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: 'appi-mvta-onboard-${environment}'
@@ -177,6 +191,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     storageAccountName: take('stmvtarestapi${environment}${cleanSuffix}', 24)
     subnetId: vnet.properties.subnets[0].id
     keyVaultName: keyVault.name
+    sqlConnectionString: sqlConnectionString
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
@@ -241,6 +256,7 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     storageAccountName: take('stmvtadispatch${environment}${cleanSuffix}', 24)
     subnetId: vnet.properties.subnets[0].id
     keyVaultName: keyVault.name
+    sqlConnectionString: sqlConnectionString
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
@@ -294,6 +310,7 @@ module spareWebhookFunction 'modules/functionapp.bicep' = {
     storageAccountName: take('stmvtasparehk${environment}${cleanSuffix}', 24)
     subnetId: vnet.properties.subnets[0].id
     keyVaultName: keyVault.name
+    sqlConnectionString: sqlConnectionString
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
