@@ -148,6 +148,13 @@ export interface GtfsDetectionDeps {
   /** Every trip with start evidence on these service dates. */
   tripStarts: (serviceDates: string[]) => Promise<TripStartEvidence[]>;
   /**
+   * Start evidence for every open, unreviewed GTFS case, whatever its date.
+   * A case outlives the two days a pass re-reads, so without this a start the
+   * rule only recognises later - as operatedStartAt's departure reading did
+   * on 2026-10-22 - never reaches the case it would close.
+   */
+  openCaseStarts: () => Promise<TripStartEvidence[]>;
+  /**
    * Scheduled first-departure seconds for these trip ids, by trip id.
    *
    * KNOWN DIVERGENCE, preserved deliberately: this reads by trip id alone,
@@ -234,6 +241,26 @@ const LIVE: GtfsDetectionDeps = {
       LEFT JOIN GtfsScheduledTrips st ON st.trip_id = e.trip_id
       ${dispatchLog.join}
       WHERE e.service_date IN (${serviceDates.map((_, i) => `@date${i}`).join(", ")})
+        AND (e.first_underway_at IS NOT NULL OR ${dispatchLog.join ? "dl.actual_start_at IS NOT NULL" : "1 = 0"})`);
+    return result.recordset;
+  },
+
+  openCaseStarts: async () => {
+    const pool = await getPool();
+    const dispatchLog = await dispatchLogColumns(pool, "e.service_date", "e");
+    // Legacy rows are read-only and a reviewed case is never reopened or
+    // closed by evaluation, so only the cases the module could still close.
+    const result = await pool.request().query<TripStartEvidence>(`
+      SELECT e.trip_id, e.service_date, e.first_underway_at, e.first_vehicle_position_at,
+             st.route_id, st.first_departure_seconds,
+             ${dispatchLog.select}
+      FROM MonitoredMissedTrips m
+      JOIN GtfsTripOperationalEvidence e ON e.trip_id = m.trip_id AND e.service_date = m.service_date
+      LEFT JOIN GtfsScheduledTrips st ON st.trip_id = e.trip_id
+      ${dispatchLog.join}
+      WHERE ISNULL(m.source_system, N'gtfs') = N'gtfs'
+        AND m.validation_status = N'unreviewed' AND m.status <> N'resolved'
+        AND m.data_quality_status <> N'legacy_unverified'
         AND (e.first_underway_at IS NOT NULL OR ${dispatchLog.join ? "dl.actual_start_at IS NOT NULL" : "1 = 0"})`);
     return result.recordset;
   },
@@ -469,7 +496,19 @@ export async function gtfsObservations(
     }
   }
 
-  observations.push(...tripStartObservations(await deps.tripStarts(detectedDays.map((day) => day.serviceDate)), tally));
+  const starts = await deps.tripStarts(detectedDays.map((day) => day.serviceDate));
+  const startKey = (row: TripStartEvidence) => `${row.service_date}|${row.trip_id}`;
+  const read = new Set(starts.map(startKey));
+  try {
+    for (const row of await deps.openCaseStarts()) {
+      if (read.has(startKey(row))) continue;
+      read.add(startKey(row));
+      starts.push(row);
+    }
+  } catch (err) {
+    log.error("Failed to read start evidence for open cases from earlier days:", err);
+  }
+  observations.push(...tripStartObservations(starts, tally));
 
   return { observations, tally };
 }
