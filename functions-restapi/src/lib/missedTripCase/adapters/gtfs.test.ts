@@ -315,11 +315,51 @@ function deps(overrides: Partial<GtfsDetectionDeps> = {}): GtfsDetectionDeps {
   return {
     scheduledDay: async ({ serviceDate }) => day([], serviceDate),
     tripStarts: async () => [],
+    openCaseStarts: async () => [],
     departureSecondsFor: async () => new Map(),
     feedHealth: async () => [],
     ...overrides,
   };
 }
+
+// --- open cases from earlier days --------------------------------------------
+
+function startRow(overrides: Partial<TripStartEvidence> = {}): TripStartEvidence {
+  return {
+    trip_id: "OLD", service_date: "20260910", first_underway_at: new Date("2026-09-10T19:20:00.000Z"),
+    route_id: "444", first_departure_seconds: DEPARTURE_SECONDS, ...overrides,
+  };
+}
+
+test("an open case from an earlier day is re-checked against its start evidence", async () => {
+  const { observations, tally } = await gtfsObservations([], silence, PAUSED, deps({
+    openCaseStarts: async () => [startRow()],
+  }), PAST_DEADLINE);
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0].run.runId, "OLD");
+  assert.equal(observations[0].run.serviceDate, "20260910");
+  assert.deepEqual(observations[0].fact, { kind: "trip_start", at: new Date("2026-09-10T19:20:00.000Z") });
+  assert.equal(tally.tripStarts, 1);
+});
+
+test("a trip read both as today's start and as an open case is observed once", async () => {
+  const today = startRow({ trip_id: "T1", service_date: SERVICE_DATE, first_underway_at: LEFT_AT });
+  const { observations } = await gtfsObservations([], silence, PAUSED, deps({
+    tripStarts: async () => [today],
+    openCaseStarts: async () => [today, startRow()],
+  }), PAST_DEADLINE);
+  assert.deepEqual(observations.map((o) => o.run.runId).sort(), ["OLD", "T1"]);
+});
+
+test("open cases that cannot be read leave the pass running, and say so", async () => {
+  const logged = capture();
+  const { observations } = await gtfsObservations([], logged.log, PAUSED, deps({
+    tripStarts: async () => [startRow({ trip_id: "T1", service_date: SERVICE_DATE })],
+    openCaseStarts: async () => { throw new Error("cases unreadable"); },
+  }), PAST_DEADLINE);
+  assert.equal(observations.length, 1);
+  assert.match(logged.errors[0], /open cases.*cases unreadable/);
+});
 
 const ON = missedTripDetectionSettings({ GTFS_SILENT_NO_SHOW_ENABLED: "true" });
 const PAUSED = missedTripDetectionSettings({});
