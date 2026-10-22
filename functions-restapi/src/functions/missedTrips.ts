@@ -36,6 +36,9 @@ app.http("missedTripsList", {
         return { status: 200, jsonBody: { missed_trips: [], diagnostics: { configured: false } } };
       }
       const { cases, totals } = read;
+      if (read.evidenceError !== undefined) {
+        context.error("GET /missed-trips: case evidence could not be read; listing without it:", read.evidenceError);
+      }
 
       // Resolved through the shared KPI trust contracts rather than a local
       // freshness rule: only the feeds missed-trip detection actually depends

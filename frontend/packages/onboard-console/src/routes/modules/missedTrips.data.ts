@@ -1,4 +1,4 @@
-import type { AssessmentPeriodStatus, MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
+import type { AssessmentPeriodStatus, GtfsCaseEvidence, MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
 
 export type MissedTripAlertStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive" | "timely_service" | "partial_service_failure" | "indeterminate";
@@ -74,12 +74,56 @@ export interface MissedTripAlert {
   // outcome; what is blocked is the assessment, until someone settles it.
   evidenceConflict: boolean;
   evidenceConflictReason: string | null;
+  // The start evidence a reviewer decides a GTFS case on. Null on Spare, and
+  // absent from an API older than 1.6.27.
+  gtfsEvidence?: GtfsCaseEvidence | null;
 }
 
 // Preview-only fallback shown when the console can't reach the authenticated
 // missed-trip service (e.g. local mock sign-in, or a 401/5xx) - same role
 // FIXED_ROUTE_RISKS plays for FixedRouteServiceRisk.tsx.
 export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
+  {
+    id: "preview-444-1",
+    tripId: "t6C2-b14C-sl1C-v64",
+    serviceDate: "20260727",
+    route: "444",
+    direction: "NB",
+    detectionType: "silent_no_show",
+    scheduledDepartureAt: new Date(Date.now() - 70 * 60_000).toISOString(),
+    graceDeadlineAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+    status: "escalated",
+    detectedLateArrivalAt: new Date(Date.now() - 31 * 60_000).toISOString(),
+    firstSeenWatchingAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+    suggestedAlertId: null,
+    validationStatus: "unreviewed",
+    reasonCode: null,
+    validatedBy: null,
+    validatedAt: null,
+    notes: null,
+    detectorVersion: "preview",
+    dataQualityStatus: "experimental",
+    undecidedReason: null,
+    sourceSystem: "gtfs",
+    sourceRecordId: null,
+    conditionLateStart: null,
+    conditionSuperseded: null,
+    conditionLateArrival: null,
+    startDelaySeconds: null,
+    arrivalDelaySeconds: null,
+    occurrenceReviewStatus: null, occurrenceAttribution: null, occurrenceServiceMonth: null, occurrencePeriodStatus: null,
+    lifecycle: "ready_for_review", evidenceFinding: "late_trip_start", reviewOutcome: null, heldReason: null, inQueue: true, concluded: false,
+    evidenceConflict: false, evidenceConflictReason: null,
+    gtfsEvidence: {
+      departure: { reading: "departed", at: new Date(Date.now() - 36 * 60_000).toISOString() },
+      started_at: new Date(Date.now() - 36 * 60_000).toISOString(),
+      started_late_minutes: 34,
+      started_inside_grace: false,
+      vehicle: { reported_at: new Date(Date.now() - 80 * 60_000).toISOString(), underway_at: new Date(Date.now() - 31 * 60_000).toISOString(), vehicle_id: "4265" },
+      block: { block_id: "b14C", trips: 9, trips_reported: 8 },
+      origin_stop: { stop_id: "51990", name: "Savage Park & Ride", other_cases: 26, other_cases_ran: 26, likely_dead_zone: true },
+    },
+  },
   {
     id: "preview-497-1",
     tripId: "497-0630-SB",

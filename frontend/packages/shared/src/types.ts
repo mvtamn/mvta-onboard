@@ -633,6 +633,40 @@ export interface MissedTrip {
   // changes the case's own outcome.
   evidence_conflict: boolean;
   evidence_conflict_reason: string | null;
+  // What a reviewer has to go on for a GTFS case (functions-restapi
+  // lib/missedTripCase/caseEvidence.ts). Null on a Spare case and where the
+  // evidence could not be read; absent from an API older than 1.6.27.
+  gtfs_evidence?: GtfsCaseEvidence | null;
+}
+
+// Why a Dispatch Log time is or is not the trip's departure. Only "departed"
+// counts as a start; the rest name what the recorded time actually was.
+export type DispatchReadingKind =
+  | "departed"
+  | "not_recorded"
+  | "position_fallback"
+  | "schedule_repeated"
+  | "prediction_only"
+  | "no_vehicle";
+
+export interface GtfsCaseEvidence {
+  departure: { reading: DispatchReadingKind; at: string | null };
+  /** The earlier of the Dispatch Log departure and the bus reported under way. */
+  started_at: string | null;
+  /** Whole minutes after the scheduled departure; negative when early. */
+  started_late_minutes: number | null;
+  started_inside_grace: boolean | null;
+  vehicle: { reported_at: string | null; underway_at: string | null; vehicle_id: string | null };
+  /** The block's trips that service day, and how many had a bus reporting. */
+  block: { block_id: string; trips: number; trips_reported: number } | null;
+  /** The other silent no-shows at this trip's first stop, and how many ran. */
+  origin_stop: {
+    stop_id: string;
+    name: string | null;
+    other_cases: number;
+    other_cases_ran: number;
+    likely_dead_zone: boolean;
+  } | null;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";
