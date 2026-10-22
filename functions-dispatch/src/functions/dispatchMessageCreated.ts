@@ -1,6 +1,8 @@
 // Service Bus trigger: "message-created-events".
 // For each new alert, find confirmed subscribers whose preferences match, send
 // SMS/email via ACS, and record each attempt in SmsDeliveryLog/EmailDeliveryLog.
+// "Teams: <audience>" channels post one card per audience to that audience's
+// Teams channel (lib/teamsAnnouncements.ts), recorded in TeamsDeliveryLog.
 //
 // Matching (POC scope): the subscriber record is 'confirmed', the alert's
 // category is in their categories, and they are in the alert's audience by
@@ -18,6 +20,7 @@ import { sendSms, sendEmail } from "../lib/acs";
 import { channelRequested, teamsTargets } from "../lib/deliveryChannels";
 import { parseAudience, routeMatches, zoneMatches } from "../lib/audienceMatch";
 import { buildAlertEmail, manageLinkFor } from "../lib/alertEmail";
+import { postAnnouncementToTeams } from "../lib/teamsAnnouncements";
 import type { ConnectionPool } from "mssql";
 
 interface MessageCreatedEvent {
@@ -62,6 +65,64 @@ async function logDelivery(
   `);
 }
 
+// One post per audience, recorded in TeamsDeliveryLog (migration 144).
+//
+// Never throws. A throw redelivers the whole Service Bus message, which would
+// resend every rider's SMS and email to retry one channel post. A failed post
+// is recorded as failed and stays that way.
+//
+// An audience already logged as sent for this message is not posted again:
+// the subscriber fan-out below can throw after Teams has gone out, and the
+// redelivery that follows must not repeat the post in the channel.
+async function postToTeams(event: MessageCreatedEvent, audiences: string[], context: InvocationContext): Promise<void> {
+  let pool: ConnectionPool | null = null;
+  let alreadySent = new Set<string>();
+  try {
+    pool = await getPool();
+    const table = await pool.request().query<{ present: number | null }>("SELECT OBJECT_ID('dbo.TeamsDeliveryLog', 'U') AS present");
+    if (table.recordset[0]?.present == null) {
+      context.warn(`TeamsDeliveryLog is missing (run migration 144); Teams posts for message ${event.message_id} go unrecorded.`);
+      pool = null;
+    } else {
+      const sent = await pool.request()
+        .input("message_id", sql.UniqueIdentifier, event.message_id)
+        .query<{ audience: string }>("SELECT audience FROM TeamsDeliveryLog WHERE message_id = @message_id AND delivery_status = 'sent'");
+      alreadySent = new Set(sent.recordset.map((row) => row.audience.toLowerCase()));
+    }
+  } catch (err) {
+    context.error(`Could not read Teams delivery history for message ${event.message_id}:`, err);
+    pool = null;
+  }
+
+  for (const audience of audiences) {
+    if (alreadySent.has(audience.toLowerCase())) {
+      context.log(`Message ${event.message_id} was already posted to Teams for ${audience}; not posting again.`);
+      continue;
+    }
+    const outcome = await postAnnouncementToTeams(audience, event);
+    const error = outcome.status === "sent" ? null : outcome.error;
+    if (error) context.warn(`Teams post for message ${event.message_id} to ${audience} ${outcome.status}: ${error}`);
+    else context.log(`Message ${event.message_id} posted to Teams for ${audience}.`);
+    if (!pool) continue;
+    try {
+      await pool.request()
+        .input("message_id", sql.UniqueIdentifier, event.message_id)
+        .input("audience", sql.NVarChar(100), audience)
+        .input("delivery_status", sql.NVarChar(20), outcome.status)
+        .input("error", sql.NVarChar(500), error?.slice(0, 500) ?? null)
+        .query(`
+          MERGE TeamsDeliveryLog WITH (HOLDLOCK) AS target
+          USING (SELECT @message_id AS message_id, @audience AS audience) AS source
+            ON target.message_id = source.message_id AND target.audience = source.audience
+          WHEN MATCHED THEN UPDATE SET delivery_status = @delivery_status, error = @error, attempted_at = SYSUTCDATETIME()
+          WHEN NOT MATCHED THEN INSERT (message_id, audience, delivery_status, error) VALUES (@message_id, @audience, @delivery_status, @error);
+        `);
+    } catch (err) {
+      context.error(`Could not record the Teams post for message ${event.message_id} to ${audience}:`, err);
+    }
+  }
+}
+
 app.serviceBusQueue("dispatchMessageCreated", {
   connection: "ServiceBusConnection",
   queueName: "message-created-events",
@@ -71,10 +132,10 @@ app.serviceBusQueue("dispatchMessageCreated", {
     const sendEmailChannel = channelRequested(event.channels, "Email");
     const requestedTeamsTargets = teamsTargets(event.channels);
 
+    // Teams first: a Teams-only announcement returns below, before any
+    // subscriber is read.
     if (requestedTeamsTargets.length > 0) {
-      context.log(
-        `Message ${event.message_id} requested future Teams delivery to: ${requestedTeamsTargets.join(", ")}. No Teams connector is configured yet.`,
-      );
+      await postToTeams(event, requestedTeamsTargets, context);
     }
 
     // Internal/web-only messages should not fan out to rider SMS/email.

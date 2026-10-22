@@ -81,8 +81,10 @@ retired-mockups/               Superseded HTML design references
   - `System.Ingestion` on the API
 - Dashboard and active-message management.
 - Message composition.
-- Internal Teams route-impact targeting for Operations and Customer Service
-  (routing is stored; the external Teams connector is not yet active).
+- Internal Teams route-impact posts for Operations and Customer Service: the
+  dispatch app posts one card per selected audience to that audience's Teams
+  Workflows webhook and records it in `TeamsDeliveryLog` (migration 144). An
+  audience whose webhook secret does not exist yet is recorded as skipped.
 - Message summary/expiration editing.
 - Message retraction.
 - Audit-log search.
