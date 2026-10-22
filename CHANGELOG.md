@@ -5,11 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.28] - 2026-10-22
+## [1.6.32] - 2026-10-22
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+
+## [1.6.30] - 2026-10-22
+
+- **Dispatch Log starts ~15 minutes early were the bus arriving, not leaving.** Watched live 2026-10-22 (route 444, trip `t345-bB-sl1C-v64`, scheduled 13:37 UTC): as bus 4136 pulled into Mall of America Gate F at 13:25:32, one TripUpdate delivery gave the first stop's `Departure.Time` as that arrival instant (`Delay` -688), and the next delivery went back to a 13:37 prediction. `planCapture` took the past-time reading as the realised departure and then ignored every later prediction because the row had an actual. The row was corrected only if the real departure became realised within `LINGER_WINDOW_SECONDS` (15 min) of the bogus one, because `tripStartActualsPoll` stops re-reading a `trip_update` actual after that. That is why the stuck rows sit at -880 to -900 s: buses that arrived 15+ minutes before departure. On dev, Sept 21 to Oct 21: 2,326 trips, 15% of the period, almost all on routes 444/445/436/446/497/499/465/475 at their origin stations, all counted `on_time`.
+- **Fix:** when a first stop that gave a `trip_update` actual reads as a prediction again (ahead of the feed clock), `planCapture` withdraws the actual: actual, source and delay null, status `unknown`, the new prediction kept. The real departure is captured when it is realised, as before. Vehicle-position actuals are untouched.
+- **Route 495's 23:02 trip took the previous night's start.** `indexTripUpdates` also filed every update under its bare trip id, a fallback meant for producers that omit `StartDate`. MVTA reuses trip ids daily, so yesterday's late trip, still in the feed after midnight, was returned for today's row with the same id: 19 rows logged ~23 hours early. The bare-id key is now written only when `StartDate` is missing.
+- **Not changed:** rows already written are not repaired, because the feed no longer holds their real departures. The missed-trip GTFS adapter reads `TripStartLog` departures only to confirm a bus started, which these buses did, so its cases are unaffected. Tests: 2 new (`tripStartActuals.test.ts`, `tripStartActualsPoll.test.ts`).
 
 ## [1.6.27] - 2026-10-22
 
