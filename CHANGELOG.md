@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.25] - 2026-10-22
+## [1.6.31] - 2026-10-22
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,17 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+## [1.6.27] - 2026-10-22
+
+- **Start evidence on every fixed-route missed-trip case.** The case detail said "First underway evidence: Not observed" and little else, though on dev most cases had more to go on. `GET /missed-trips` now carries `gtfs_evidence` on each GTFS row, built by `lib/missedTripCase/caseEvidence.ts` from one extra read over the page (`readCaseEvidence`):
+  - **Started** - the trip's start by `operatedStartAt`, the detector's own rule since 1.6.22, in whole minutes after the scheduled departure, and whether that was inside the 30-minute grace.
+  - **Dispatch Log departure** - `TripStartLog`'s time and what it is: a departure, or only the schedule repeated, only a prediction, a time no bus reported against, the position fallback, or nothing (`dispatchReading` in `adapters/gtfs.ts`, which `operatedStartAt` now uses).
+  - **Bus on this trip** - first position and first under way from `GtfsTripOperationalEvidence`, with the vehicle.
+  - **Block** - how many of the block's trips that service day had a bus reporting, from `TripStartLog`'s snapshot (the schedule table is replaced daily). None at all reads as "the block may not have run, or its bus was not logged in".
+  - **First stop** - how the other silent no-shows at the trip's first stop turned out, counted with `operatedSql`, the SQL twin of the start rule. Five or more others with at least 80% of them run marks a **likely GPS dead zone**. Dead zones are read from this history rather than kept as a list: nobody has to maintain it, and Avail's own stop names do not match GTFS's.
+- The console renders these as a **Start evidence** section on GTFS cases, replacing the bare "First underway evidence" line; Spare cases and an older API keep the old line. If the evidence read fails, the queue still lists and the handler logs why.
+- Tests: 12 in `caseEvidence.test.ts`, 6 in `missedTripReview.test.ts`, 2 in `MissedTripAlerts.test.tsx`; a new contract test, `caseEvidence.db.contract.test.ts`, proves `operatedSql` and `operatedStartAt` agree on every kind of reading and checks the block and stop counts against SQL Server.
+
 ## [1.6.23] - 2026-10-22
 
 - **Open cases from earlier days are re-checked against their start.** Each `gtfsMissedTripsPoll` pass re-read start evidence only for today and yesterday, so a case outlived the evidence that could close it: 1.6.22's departure reading (`operatedStartAt`) never reached the ~51 cases since 2026-09-16 whose bus left inside the grace, nor any older one. A new read, `openCaseStarts`, loads the start evidence for every open, unreviewed, non-legacy GTFS case whatever its date and hands it to the case module with the day's own starts (deduplicated). The module's existing rule decides: a start at or before the deadline closes the case by evidence, a later one only records itself. A read failure is logged and the pass continues. Once the backlog is closed the read returns the few open cases and the module writes nothing when nothing changed.

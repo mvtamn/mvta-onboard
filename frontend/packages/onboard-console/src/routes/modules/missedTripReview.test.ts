@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { MissedTripsMonthlySummaryRow } from "@mvta/shared";
+import type { GtfsCaseEvidence, MissedTripsMonthlySummaryRow } from "@mvta/shared";
 import {
   AGING_HOURS, OVERDUE_HOURS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
   dataQualityLabel, detectionTypeLabel, formatServiceMonth, inView, lifecycleLabel, outcomeLabel,
-  conflictNotice, pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, tripCode,
+  conflictNotice, pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, startEvidenceFacts, tripCode,
 } from "./missedTripReview.js";
 
 const base = { tripId: "T1", serviceDate: "20260917", lifecycle: "ready_for_review" as const, validationStatus: "unreviewed" as const, heldReason: null };
@@ -306,5 +306,76 @@ describe("the assessment line under a conflict", () => {
       const held = assessmentOutcome({ ...confirmed, validationStatus: status, evidenceConflict: true } as never);
       expect(held?.label).toBe("Held — sources disagree");
     }
+  });
+});
+
+describe("missed-trip start evidence", () => {
+  const time = (iso: string | null) => (iso ? iso.slice(11, 16) : "—");
+  const evidence: GtfsCaseEvidence = {
+    departure: { reading: "departed", at: "2026-10-16T22:49:42.000Z" },
+    started_at: "2026-10-16T22:49:42.000Z",
+    started_late_minutes: 19,
+    started_inside_grace: true,
+    vehicle: { reported_at: "2026-10-16T22:20:00.000Z", underway_at: "2026-10-16T23:09:30.000Z", vehicle_id: "4265" },
+    block: { block_id: "b14C", trips: 9, trips_reported: 8 },
+    origin_stop: { stop_id: "51990", name: "Savage Park & Ride", other_cases: 26, other_cases_ran: 26, likely_dead_zone: true },
+  };
+  const facts = (e: GtfsCaseEvidence) => Object.fromEntries(startEvidenceFacts(e, time).map((f) => [f.label, f]));
+
+  it("a bus that left inside the grace says when, how late, and that it was inside", () => {
+    const f = facts(evidence);
+    expect(f["Started"].value).toBe("22:49 · 19 min late · inside the 30 minutes");
+    expect(f["Started"].tone).toBe("good");
+    expect(f["Dispatch Log departure"].value).toBe("22:49");
+    expect(f["Bus on this trip"].value).toBe("Bus 4265 reported from 22:20, under way 23:09");
+    expect(f["Block"].value).toBe("Block b14C: a bus reported on 8 of 9 trips");
+    expect(f["First stop"].value).toBe("Savage Park & Ride · 26 of 26 other no-shows here turned out to have run");
+    expect(f["First stop"].note).toBe("Likely GPS dead zone — buses here often go quiet without missing the trip.");
+  });
+
+  it("a Dispatch Log time that is not a departure says what it was", () => {
+    const at = "2026-10-16T22:30:00.000Z";
+    const reading = (kind: GtfsCaseEvidence["departure"]["reading"]) =>
+      facts({ ...evidence, departure: { reading: kind, at: kind === "not_recorded" ? null : at } })["Dispatch Log departure"].value;
+    expect(reading("schedule_repeated")).toBe("Not a departure: only the schedule (22:30) was repeated");
+    expect(reading("prediction_only")).toBe("Not a departure: only a prediction (22:30) was kept");
+    expect(reading("no_vehicle")).toBe("Not a departure: 22:30 was logged, but no bus reported on the trip");
+    expect(reading("position_fallback")).toBe("Not recorded from the trip update");
+    expect(reading("not_recorded")).toBe("Not recorded");
+  });
+
+  it("no start, no bus and an empty block read as such, and warn", () => {
+    const f = facts({
+      ...evidence,
+      departure: { reading: "not_recorded", at: null },
+      started_at: null, started_late_minutes: null, started_inside_grace: null,
+      vehicle: { reported_at: null, underway_at: null, vehicle_id: null },
+      block: { block_id: "b1B", trips: 6, trips_reported: 0 },
+    });
+    expect(f["Started"]).toMatchObject({ value: "No start observed", tone: "warn" });
+    expect(f["Bus on this trip"].value).toBe("No bus reported on this trip");
+    expect(f["Block"]).toMatchObject({ value: "No bus reported on any of block b1B's 6 trips", tone: "warn" });
+    expect(f["Block"].note).toBe("The block may not have run, or its bus was not logged in.");
+  });
+
+  it("a start past the grace, and an early one, read the right way round", () => {
+    expect(facts({ ...evidence, started_late_minutes: 39, started_inside_grace: false })["Started"])
+      .toMatchObject({ value: "22:49 · 39 min late · past the 30 minutes", tone: "warn" });
+    expect(facts({ ...evidence, started_late_minutes: -14 })["Started"].value).toBe("22:49 · 14 min early · inside the 30 minutes");
+    expect(facts({ ...evidence, started_late_minutes: 0 })["Started"].value).toBe("22:49 · on time · inside the 30 minutes");
+  });
+
+  it("a bus that reported but never got going says so", () => {
+    expect(facts({ ...evidence, vehicle: { reported_at: "2026-10-16T22:20:00.000Z", underway_at: null, vehicle_id: null } })["Bus on this trip"].value)
+      .toBe("A bus reported from 22:20, never shown under way");
+  });
+
+  it("a stop's record is only a warning when it says so, and absent rows are left out", () => {
+    const quiet = facts({ ...evidence, origin_stop: { stop_id: "1", name: null, other_cases: 0, other_cases_ran: 0, likely_dead_zone: false } });
+    expect(quiet["First stop"]).toMatchObject({ value: "Stop 1 · no other no-shows here" });
+    expect(quiet["First stop"].note).toBeUndefined();
+    const none = facts({ ...evidence, block: null, origin_stop: null });
+    expect(none["Block"]).toBeUndefined();
+    expect(none["First stop"]).toBeUndefined();
   });
 });
