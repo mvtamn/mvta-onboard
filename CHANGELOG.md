@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.35] - 2026-10-22
+## [1.6.37] - 2026-10-22
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,13 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.35] - 2026-10-22
+
+- **Vehicle evidence is filed under the trip's own service day.** MVTA's VehiclePosition feed often sends a trip with no `start_date`, and `gtfsVehiclePositionsPoll` dated that evidence from the observation (`agencyServiceDate(observedAt)`). Route 495's 22:30-23:02 trips still report after midnight, so their 00:0x reports opened a `GtfsTripOperationalEvidence` row under the next service date with a sticky `first_underway_at` about 23 hours before that day's own run. New `lib/gtfsEvidenceServiceDate.ts` picks, among the day before, the day of and the day after the observation on which the trip's service runs (`activeServiceIdsToday`), the one whose scheduled run of that `trip_id` (`GtfsScheduledTrips.first_departure_seconds`) starts nearest the observation. A trip the schedule does not know keeps the observation's date. The TripUpdate poller has the same fallback but its feed carries `StartDate`: no TripUpdate column on dev is 6+ hours early, so it is unchanged.
+- **The Dispatch Log's vehicle-position fallback ignores `first_underway_at` more than 3 hours before the scheduled start** (`PLAUSIBLE_EARLY_UNDERWAY_SECONDS`). Stop-two evidence cannot honestly precede the start by more than an early departure.
+- **The missed-trip GTFS adapter is not guarded.** `operatedStartAt` would need its SQL twin `operatedSql` and the contract test changed with it, and the silent detector is in Shadow detection. With the poller fixed and the history repaired, nothing on dev would trip such a guard.
+- **Migration 150 repairs the history.** On dev 2026-10-22: 47 evidence rows have `first_underway_at` 6+ hours before the scheduled start (TripStartLog's, else the static schedule's), all route 495, 2026-09-06..10-22, 22.4-23 hours early. 20 that hold only the previous night's reports are deleted; 27 whose own run also reported have `first_vehicle_position_at` and `first_underway_at` cleared. 28 `TripStartLog` `vehicle_position` actuals 6+ hours early are withdrawn to `unknown`. Every row is copied first to `GtfsTripOperationalEvidenceMisdated` or `TripStartLogWithdrawnReadings`. No `MonitoredMissedTrips` row was affected. 11,794 older evidence rows have no scheduled start to compare with and are not checked. Apply after 1.6.35 is deployed.
 
 ## [1.6.34] - 2026-10-22
 
