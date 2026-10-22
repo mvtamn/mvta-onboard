@@ -7,7 +7,7 @@ import {
   REVIEW_DECISIONS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason, conflictNotice,
   dataQualityLabel, detectionTypeLabel, findingLabel, formatServiceMonth, heldReasonLabel, inView,
   lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
-  routeLabel, sourceLabel, tripCode,
+  routeLabel, sourceLabel, startEvidenceFacts, tripCode,
 } from "./missedTripReview.js";
 import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
@@ -101,6 +101,7 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     concluded: Boolean(trip.concluded),
     evidenceConflict: Boolean(trip.evidence_conflict),
     evidenceConflictReason: trip.evidence_conflict_reason ?? null,
+    gtfsEvidence: trip.gtfs_evidence ?? null,
   };
 }
 
@@ -919,11 +920,31 @@ function MissedTripDetail({
         <div><dt>Evidence quality</dt><dd>{dataQualityLabel(alert.dataQualityStatus)}</dd></div>
         <div><dt>Detector version</dt><dd>{alert.detectorVersion ?? "Legacy — not recorded"}</dd></div>
         <div><dt>First flagged</dt><dd>{timeLabel(alert.firstSeenWatchingAt)}</dd></div>
-        <div>
-          <dt>{alert.sourceSystem === "spare" ? "Pickup arrival evidence" : "First underway evidence"}</dt>
-          <dd>{alert.detectedLateArrivalAt ? timeLabel(alert.detectedLateArrivalAt) : "Not observed"}</dd>
-        </div>
+        {/* A GTFS case with its start evidence says all of this, better, below. */}
+        {alert.sourceSystem === "spare" || !alert.gtfsEvidence ? (
+          <div>
+            <dt>{alert.sourceSystem === "spare" ? "Pickup arrival evidence" : "First underway evidence"}</dt>
+            <dd>{alert.detectedLateArrivalAt ? timeLabel(alert.detectedLateArrivalAt) : "Not observed"}</dd>
+          </div>
+        ) : null}
       </dl>
+
+      {alert.sourceSystem !== "spare" && alert.gtfsEvidence ? (
+        <div className="risk-detail-section">
+          <h4>Start evidence</h4>
+          <dl className="missed-trip-evidence">
+            {startEvidenceFacts(alert.gtfsEvidence, timeLabel).map((fact) => (
+              <div key={fact.label} className={fact.tone ? `is-${fact.tone}` : undefined}>
+                <dt>{fact.label}</dt>
+                <dd>
+                  {fact.value}
+                  {fact.note ? <small>{fact.note}</small> : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
 
       {alert.sourceSystem === "spare" ? (
         <div className="risk-detail-section">
