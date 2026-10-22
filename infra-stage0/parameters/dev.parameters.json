@@ -5,6 +5,7 @@
     "environment": { "value": "dev" },
     "location": { "value": "westus2" },
     "uniqueSuffix": { "value": "mvta-jx4471" },
-    "sqlAdminLogin": { "value": "mvtaonboardadmin" }
+    "sqlAdminLogin": { "value": "mvtaonboardadmin" },
+    "sqlAllowPublicNetworkAccess": { "value": true }
   }
 }
