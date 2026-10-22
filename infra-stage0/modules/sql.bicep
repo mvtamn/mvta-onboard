@@ -12,6 +12,10 @@ param sqlAdminPassword string
 @description('Create/update the SQL connection-string secret during initial provisioning only. Keep false for normal infrastructure redeployments so they cannot rotate the app credential.')
 param manageSqlConnectionStringSecret bool = false
 
+@description('Entra principal that administers the server: its display name (a user principal name or group name) and object id. Both empty leaves the existing admin alone. An Entra admin is what lets the Function Apps\' managed identities be created as database users.')
+param sqlEntraAdminLogin string = ''
+param sqlEntraAdminObjectId string = ''
+
 var sqlServerName = 'sql-mvta-${environment}-${uniqueSuffix}'
 var sqlDatabaseName = 'sqldb-mvta-onboard-${environment}'
 
@@ -23,6 +27,19 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
     administratorLoginPassword: sqlAdminPassword
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Disabled'
+  }
+}
+
+// Declared here so prod gets one and an infra deploy cannot drop it. Only the
+// Entra admin can run CREATE USER ... FROM EXTERNAL PROVIDER.
+resource entraAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (!empty(sqlEntraAdminLogin) && !empty(sqlEntraAdminObjectId)) {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: sqlEntraAdminLogin
+    sid: sqlEntraAdminObjectId
+    tenantId: tenant().tenantId
   }
 }
 

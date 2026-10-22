@@ -17,6 +17,10 @@ param sqlAdminPassword string
 @description('Set true only when initially provisioning an environment. Normal redeployments must leave the existing Key Vault SQL secret untouched.')
 param manageSqlConnectionStringSecret bool = false
 
+@description('SQL server Entra admin. Passed from the SQL_ENTRA_ADMIN_LOGIN / SQL_ENTRA_ADMIN_OBJECT_ID GitHub environment variables, not a parameter file, because the repository is public.')
+param sqlEntraAdminLogin string = ''
+param sqlEntraAdminObjectId string = ''
+
 module network 'modules/network.bicep' = {
   name: 'network-deployment'
   params: {
@@ -55,6 +59,8 @@ module sql 'modules/sql.bicep' = {
     sqlAdminLogin: sqlAdminLogin
     sqlAdminPassword: sqlAdminPassword
     manageSqlConnectionStringSecret: manageSqlConnectionStringSecret
+    sqlEntraAdminLogin: sqlEntraAdminLogin
+    sqlEntraAdminObjectId: sqlEntraAdminObjectId
   }
 }
 

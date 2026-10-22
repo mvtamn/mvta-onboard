@@ -54,6 +54,7 @@ jobs:
             az deployment group what-if \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-stage0/main.bicep \
+              --parameters sqlEntraAdminLogin="${{ vars.SQL_ENTRA_ADMIN_LOGIN }}" sqlEntraAdminObjectId="${{ vars.SQL_ENTRA_ADMIN_OBJECT_ID }}" \
               --parameters "infra-stage0/parameters/$ENVIRONMENT.parameters.json" \
               --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
 
@@ -64,6 +65,7 @@ jobs:
             az deployment group create \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-stage0/main.bicep \
+              --parameters sqlEntraAdminLogin="${{ vars.SQL_ENTRA_ADMIN_LOGIN }}" sqlEntraAdminObjectId="${{ vars.SQL_ENTRA_ADMIN_OBJECT_ID }}" \
               --parameters "infra-stage0/parameters/$ENVIRONMENT.parameters.json" \
               --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
 
