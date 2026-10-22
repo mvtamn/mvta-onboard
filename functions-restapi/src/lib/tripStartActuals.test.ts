@@ -146,6 +146,19 @@ test("a trip absent from the feed waits out the linger window before falling bac
   assert.equal(planCapture(row({ first_underway_at: underway }), null, late)?.actual_start_source, "vehicle_position");
 });
 
+test("vehicle evidence hours before the scheduled start is another run's, and is not taken as the start", () => {
+  // Route 495's 23:02 trip reporting at 00:04 was once filed under the next
+  // day, about 23 hours ahead of that day's own 23:02 run.
+  const previousNight = new Date(SCHEDULED.getTime() - 23 * 3600_000);
+  const late = new Date(SCHEDULED.getTime() + (LINGER_WINDOW_SECONDS + 60) * 1000);
+  assert.equal(planCapture(row({ first_underway_at: previousNight }), null, late), null);
+  const inFeed = update([{ seq: 4260, stopId: "31838", dep: feedSeconds + 60 }]);
+  assert.equal(planCapture(row({ first_underway_at: previousNight }), inFeed, FEED_AT), null);
+  // A bus that genuinely left a few minutes early still counts.
+  const leftEarly = new Date(SCHEDULED.getTime() - 4 * 60_000);
+  assert.deepEqual(planCapture(row({ first_underway_at: leftEarly }), null, late)?.actual_start_at, leftEarly);
+});
+
 test("missed and canceled are statuses without an actual, and never overwrite one", () => {
   assert.equal(planCapture(row({ missed: true }), null, FEED_AT)?.start_status, "missed");
   assert.equal(planCapture(row({ missed: true, start_status: "missed" }), null, FEED_AT), null);

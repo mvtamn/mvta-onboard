@@ -32,6 +32,13 @@ export const REALISED_GRACE_SECONDS = 30;
 export const ON_TIME_TOLERANCE_SECONDS = 59;
 /** How long the producer keeps a passed stop in the list (measured 2026-09-05). */
 export const LINGER_WINDOW_SECONDS = 15 * 60;
+/**
+ * Vehicle evidence fires at stop two, so it cannot honestly precede the
+ * scheduled start by more than an early departure. Anything earlier belongs to
+ * another run of the trip_id: route 495's 23:02 trip reporting at 00:04 was
+ * once filed under the next day, ~23 hours ahead of that day's own run.
+ */
+export const PLAUSIBLE_EARLY_UNDERWAY_SECONDS = 3 * 60 * 60;
 
 export interface TripStartRow {
   service_date: string;
@@ -104,6 +111,12 @@ function withActual(row: TripStartRow, at: Date, source: TripStartActualSource, 
   };
 }
 
+function plausibleUnderwayAt(row: TripStartRow): Date | null {
+  const at = row.first_underway_at;
+  if (!at) return null;
+  return at.getTime() >= row.scheduled_start_at.getTime() - PLAUSIBLE_EARLY_UNDERWAY_SECONDS * 1000 ? at : null;
+}
+
 function sameInstant(a: Date | null, b: Date | null): boolean {
   return (a?.getTime() ?? null) === (b?.getTime() ?? null);
 }
@@ -143,14 +156,16 @@ export function planCapture(row: TripStartRow, update: GtfsRtTripUpdate | null, 
     // was missed. The last prediction is the closest thing to the event.
     if (!hasActual) {
       if (row.predicted_start_at) return withActual(row, row.predicted_start_at, "trip_update", row.predicted_start_at);
-      if (row.first_underway_at) return withActual(row, row.first_underway_at, "vehicle_position", null);
+      const underway = plausibleUnderwayAt(row);
+      if (underway) return withActual(row, underway, "vehicle_position", null);
     }
     return null;
   }
 
   if (hasActual) return null;
   const pastWindow = feedTimestamp.getTime() >= row.scheduled_start_at.getTime() + LINGER_WINDOW_SECONDS * 1000;
-  if (pastWindow && row.first_underway_at) return withActual(row, row.first_underway_at, "vehicle_position", row.predicted_start_at);
+  const underway = plausibleUnderwayAt(row);
+  if (pastWindow && underway) return withActual(row, underway, "vehicle_position", row.predicted_start_at);
   if (row.missed && row.start_status !== "missed") {
     return { actual_start_at: null, actual_start_source: null, start_delay_seconds: null, start_status: "missed", predicted_start_at: row.predicted_start_at };
   }
