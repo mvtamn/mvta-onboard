@@ -5,11 +5,22 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.24] - 2026-10-22
+## [1.6.28] - 2026-10-22
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+
+## [1.6.27] - 2026-10-22
+
+- **Start evidence on every fixed-route missed-trip case.** The case detail said "First underway evidence: Not observed" and little else, though on dev most cases had more to go on. `GET /missed-trips` now carries `gtfs_evidence` on each GTFS row, built by `lib/missedTripCase/caseEvidence.ts` from one extra read over the page (`readCaseEvidence`):
+  - **Started** - the trip's start by `operatedStartAt`, the detector's own rule since 1.6.22, in whole minutes after the scheduled departure, and whether that was inside the 30-minute grace.
+  - **Dispatch Log departure** - `TripStartLog`'s time and what it is: a departure, or only the schedule repeated, only a prediction, a time no bus reported against, the position fallback, or nothing (`dispatchReading` in `adapters/gtfs.ts`, which `operatedStartAt` now uses).
+  - **Bus on this trip** - first position and first under way from `GtfsTripOperationalEvidence`, with the vehicle.
+  - **Block** - how many of the block's trips that service day had a bus reporting, from `TripStartLog`'s snapshot (the schedule table is replaced daily). None at all reads as "the block may not have run, or its bus was not logged in".
+  - **First stop** - how the other silent no-shows at the trip's first stop turned out, counted with `operatedSql`, the SQL twin of the start rule. Five or more others with at least 80% of them run marks a **likely GPS dead zone**. Dead zones are read from this history rather than kept as a list: nobody has to maintain it, and Avail's own stop names do not match GTFS's.
+- The console renders these as a **Start evidence** section on GTFS cases, replacing the bare "First underway evidence" line; Spare cases and an older API keep the old line. If the evidence read fails, the queue still lists and the handler logs why.
+- Tests: 12 in `caseEvidence.test.ts`, 6 in `missedTripReview.test.ts`, 2 in `MissedTripAlerts.test.tsx`; a new contract test, `caseEvidence.db.contract.test.ts`, proves `operatedSql` and `operatedStartAt` agree on every kind of reading and checks the block and stop counts against SQL Server.
 
 ## [1.6.23] - 2026-10-22
 

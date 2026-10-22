@@ -258,3 +258,35 @@ describe("Missed Trips review outcomes", () => {
     expect(screen.getByText(/Not ready to confirm: waiting for the trip's scheduled run to end/)).toBeTruthy();
   });
 });
+
+describe("Missed Trips start evidence", () => {
+  const evidence = {
+    departure: { reading: "departed" as const, at: "2026-08-25T14:19:00Z" },
+    started_at: "2026-08-25T14:19:00Z", started_late_minutes: 19, started_inside_grace: true,
+    vehicle: { reported_at: "2026-08-25T13:50:00Z", underway_at: "2026-08-25T14:33:00Z", vehicle_id: "4265" },
+    block: { block_id: "b14C", trips: 9, trips_reported: 8 },
+    origin_stop: { stop_id: "51990", name: "Savage Park & Ride", other_cases: 26, other_cases_ran: 26, likely_dead_zone: true },
+  };
+
+  it("a GTFS case shows its start evidence in place of the bare underway line", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [{ ...candidate("gtfs", "444"), gtfs_evidence: evidence }],
+      diagnostics,
+    });
+    render(<MissedTripAlerts />);
+
+    const section = (await screen.findByRole("heading", { name: "Start evidence" })).parentElement!;
+    expect(within(section).getByText(/19 min late · inside the 30 minutes/)).toBeInTheDocument();
+    expect(within(section).getByText("Block b14C: a bus reported on 8 of 9 trips")).toBeInTheDocument();
+    expect(within(section).getByText(/Likely GPS dead zone/)).toBeInTheDocument();
+    expect(screen.queryByText("First underway evidence")).not.toBeInTheDocument();
+  });
+
+  it("a case from an API without evidence keeps the underway line", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({ missed_trips: [candidate("gtfs", "444")], diagnostics });
+    render(<MissedTripAlerts />);
+
+    expect(await screen.findByText("First underway evidence")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Start evidence" })).not.toBeInTheDocument();
+  });
+});

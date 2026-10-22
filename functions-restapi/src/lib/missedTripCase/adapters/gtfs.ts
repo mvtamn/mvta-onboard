@@ -84,17 +84,50 @@ function sameInstant(a: Date | null | undefined, b: Date | null | undefined): bo
   return Boolean(a && b && a.getTime() === b.getTime());
 }
 
-// The Dispatch Log's departure, when it is one. TripStartLog records the
-// schedule the producer repeats for an unworked trip, and the last prediction
-// when the poller missed the realised time, under the same source; both are
-// equal to the second to what they stand in for, so equality rejects them.
-// A vehicle having reported against the trip rules out a block nobody drove.
-function dispatchDeparture(r: StartReadings): Date | null {
+/**
+ * What the Dispatch Log's reading is. Only "departed" is a start; the rest say
+ * why a recorded time is not one, so a reviewer is told rather than left to
+ * guess.
+ */
+export type DispatchReadingKind =
+  | "departed"
+  | "not_recorded"
+  | "position_fallback"
+  | "schedule_repeated"
+  | "prediction_only"
+  | "no_vehicle";
+
+// TripStartLog records the schedule the producer repeats for an unworked trip,
+// and the last prediction when the poller missed the realised time, under the
+// same source; both are equal to the second to what they stand in for, so
+// equality rejects them. A vehicle having reported against the trip rules out
+// a block nobody drove.
+export function dispatchReading(r: StartReadings): { kind: DispatchReadingKind; at: Date | null } {
   const at = r.dispatch_start_at ?? null;
-  if (!at || r.dispatch_start_source !== "trip_update") return null;
-  if (sameInstant(at, r.dispatch_scheduled_at) || sameInstant(at, r.dispatch_predicted_at)) return null;
-  if (!r.first_vehicle_position_at) return null;
-  return at;
+  if (!at) return { kind: "not_recorded", at: null };
+  if (r.dispatch_start_source !== "trip_update") return { kind: "position_fallback", at };
+  if (sameInstant(at, r.dispatch_scheduled_at)) return { kind: "schedule_repeated", at };
+  if (sameInstant(at, r.dispatch_predicted_at)) return { kind: "prediction_only", at };
+  if (!r.first_vehicle_position_at) return { kind: "no_vehicle", at };
+  return { kind: "departed", at };
+}
+
+function dispatchDeparture(r: StartReadings): Date | null {
+  const reading = dispatchReading(r);
+  return reading.kind === "departed" ? reading.at : null;
+}
+
+/**
+ * operatedStartAt's rule as a SQL predicate - "this trip shows a start" - for
+ * the reads that count over many trips at once. `e` is GtfsTripOperationalEvidence
+ * and `dl` is TripStartLog. Keep the two in step.
+ */
+export function operatedSql(e: string, dl: string): string {
+  return `(${e}.first_underway_at IS NOT NULL OR (
+    ${dl}.actual_start_source = N'trip_update' AND ${dl}.actual_start_at IS NOT NULL
+    AND ${dl}.actual_start_at <> ${dl}.scheduled_start_at
+    AND (${dl}.predicted_start_at IS NULL OR ${dl}.actual_start_at <> ${dl}.predicted_start_at)
+    AND ${e}.first_vehicle_position_at IS NOT NULL))`;
 }
 
 /** When the run began, by the earlier of its two readings; null when neither shows it. */
