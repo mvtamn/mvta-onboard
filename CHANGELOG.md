@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.29] - 2026-10-22
+## [1.6.32] - 2026-10-22
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,13 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.30] - 2026-10-22
+
+- **Dispatch Log starts ~15 minutes early were the bus arriving, not leaving.** Watched live 2026-10-22 (route 444, trip `t345-bB-sl1C-v64`, scheduled 13:37 UTC): as bus 4136 pulled into Mall of America Gate F at 13:25:32, one TripUpdate delivery gave the first stop's `Departure.Time` as that arrival instant (`Delay` -688), and the next delivery went back to a 13:37 prediction. `planCapture` took the past-time reading as the realised departure and then ignored every later prediction because the row had an actual. The row was corrected only if the real departure became realised within `LINGER_WINDOW_SECONDS` (15 min) of the bogus one, because `tripStartActualsPoll` stops re-reading a `trip_update` actual after that. That is why the stuck rows sit at -880 to -900 s: buses that arrived 15+ minutes before departure. On dev, Sept 21 to Oct 21: 2,326 trips, 15% of the period, almost all on routes 444/445/436/446/497/499/465/475 at their origin stations, all counted `on_time`.
+- **Fix:** when a first stop that gave a `trip_update` actual reads as a prediction again (ahead of the feed clock), `planCapture` withdraws the actual: actual, source and delay null, status `unknown`, the new prediction kept. The real departure is captured when it is realised, as before. Vehicle-position actuals are untouched.
+- **Route 495's 23:02 trip took the previous night's start.** `indexTripUpdates` also filed every update under its bare trip id, a fallback meant for producers that omit `StartDate`. MVTA reuses trip ids daily, so yesterday's late trip, still in the feed after midnight, was returned for today's row with the same id: 19 rows logged ~23 hours early. The bare-id key is now written only when `StartDate` is missing.
+- **Not changed:** rows already written are not repaired, because the feed no longer holds their real departures. The missed-trip GTFS adapter reads `TripStartLog` departures only to confirm a bus started, which these buses did, so its cases are unaffected. Tests: 2 new (`tripStartActuals.test.ts`, `tripStartActualsPoll.test.ts`).
 
 ## [1.6.27] - 2026-10-22
 
