@@ -5,6 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.37] - 2026-10-22
+
+Architecture review candidate 1: one module owns the stored schedule review.
+
+- **`lib/scheduleReview/store.ts` owns every read and write of a stored review.** `history.ts` is folded in. The interface is `saveReview`, `latestReview`, `routeDetail`, `latestSegments` and `compareReviews({from?, to?})`. The module reads the check list itself, so handlers no longer pass `PREDICTION_RISK_CHECKS` in. Choosing which two reviews to compare (by default the newest against the one before, put in time order) moved out of the REST handler.
+- **Retired checks are handled the same way on every read.** A stored result for a check that no longer exists is dropped when the row is decoded, and `flag_count` is recounted without it. Previously the route detail and the latest summary kept the stored `flag_count`, and a review snapshot kept the retired result. Route detail now also returns `fixable_flag_count` and `structural_flag_count`.
+- **The module assumes migrations 143 and 145 are applied**, as they are on dev and on the prod copy. The "migration missing" states, the 503s that named the migration files, and the console's matching messages are removed. The health page's schema check (`lib/schemaDrift.ts`) is now the one place that says a migration is missing.
+- **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
+- **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
+- The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
 ## [1.6.35] - 2026-10-22
 
 - **Vehicle evidence is filed under the trip's own service day.** MVTA's VehiclePosition feed often sends a trip with no `start_date`, and `gtfsVehiclePositionsPoll` dated that evidence from the observation (`agencyServiceDate(observedAt)`). Route 495's 22:30-23:02 trips still report after midnight, so their 00:0x reports opened a `GtfsTripOperationalEvidence` row under the next service date with a sticky `first_underway_at` about 23 hours before that day's own run. New `lib/gtfsEvidenceServiceDate.ts` picks, among the day before, the day of and the day after the observation on which the trip's service runs (`activeServiceIdsToday`), the one whose scheduled run of that `trip_id` (`GtfsScheduledTrips.first_departure_seconds`) starts nearest the observation. A trip the schedule does not know keeps the observation's date. The TripUpdate poller has the same fallback but its feed carries `StartDate`: no TripUpdate column on dev is 6+ hours early, so it is unchanged.

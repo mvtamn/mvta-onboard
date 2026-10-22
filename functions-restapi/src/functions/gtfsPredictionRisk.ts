@@ -16,11 +16,9 @@ import { app, type HttpRequest, type InvocationContext } from "@azure/functions"
 import { requireAccess, requireAnyOnBoardAccess } from "../lib/access/require";
 import { getPool } from "../lib/db";
 import { PREDICTION_RISK_CHECKS } from "../lib/scheduleReview";
-import { loadLatestPredictionRiskReview, loadLatestRouteSegments, loadRouteScheduleDetail } from "../lib/scheduleReview/store";
+import { compareReviews, latestReview, latestSegments, routeDetail } from "../lib/scheduleReview/store";
 import { readings, summarizeObserved, summarizeRouteReadings } from "../lib/scheduleReview/observed";
 import { loadObservedRows, loadObservedRowsByRoute, parseObservedDays, parseObservedDow } from "../lib/scheduleReview/observedStore";
-import { diffReviews } from "../lib/scheduleReview/diff";
-import { loadReviewHistory, loadReviewSnapshot } from "../lib/scheduleReview/history";
 
 app.http("gtfsPredictionRisk", {
   route: "gtfs-prediction-risk",
@@ -31,11 +29,7 @@ app.http("gtfsPredictionRisk", {
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     try {
       const pool = await getPool();
-      const latest = await loadLatestPredictionRiskReview(pool, PREDICTION_RISK_CHECKS);
-      if (latest.state === "migration_missing") {
-        return { status: 503, jsonBody: { error: "Run sql/migration-143-gtfs-prediction-risk-reviews.sql to keep the schedule's prediction-risk review." } };
-      }
-      return { status: 200, jsonBody: { review: latest.state === "ready" ? latest.review : null } };
+      return { status: 200, jsonBody: { review: await latestReview(pool) } };
     } catch (error) {
       context.error("GET /gtfs-prediction-risk failed:", error);
       return { status: 500, jsonBody: { error: "Internal server error" } };
@@ -54,13 +48,10 @@ app.http("gtfsPredictionRiskRoute", {
     if (!routeId || routeId.length > 50) return { status: 400, jsonBody: { error: "Invalid route id" } };
     try {
       const pool = await getPool();
-      const detail = await loadRouteScheduleDetail(pool, routeId, PREDICTION_RISK_CHECKS);
-      if (detail.state === "migration_missing") {
-        return { status: 503, jsonBody: { error: "Run sql/migration-145-schedule-review-route-detail.sql to keep the evidence behind the schedule review." } };
-      }
+      const detail = await routeDetail(pool, routeId);
       if (detail.state === "none") return { status: 404, jsonBody: { error: "No schedule review has been kept yet." } };
       if (detail.state === "route_missing") {
-        return { status: 404, jsonBody: { error: "The latest schedule review has no detail for this route. It is not in the feed, or the review predates migration 145 and the next static sync will keep it." } };
+        return { status: 404, jsonBody: { error: "The latest schedule review has no detail for this route. It is not in the feed." } };
       }
       return {
         status: 200,
@@ -90,9 +81,9 @@ app.http("gtfsPredictionRiskRouteObserved", {
       if (rows.length === 0) {
         return { status: 404, jsonBody: { error: `Avail's OTP daily feed has no rows for this route in the last ${days} ${dow === "weekday" ? "weekdays" : dow === "saturday" ? "Saturdays" : "Sundays"}.` } };
       }
-      // The schedule's segments give the order and the readings; without
-      // migration 145 the grid still shows, in Avail's order, with no readings.
-      const detail = await loadRouteScheduleDetail(pool, routeId, PREDICTION_RISK_CHECKS);
+      // The schedule's segments give the order and the readings; with no
+      // review of the route the grid still shows, in Avail's order, with no readings.
+      const detail = await routeDetail(pool, routeId);
       const segments = detail.state === "ready" ? detail.route.segments : [];
       return {
         status: 200,
@@ -122,21 +113,10 @@ app.http("gtfsPredictionRiskHistory", {
     if (fromParam === "invalid" || toParam === "invalid") return { status: 400, jsonBody: { error: "from and to are review ids" } };
     try {
       const pool = await getPool();
-      const history = await loadReviewHistory(pool);
-      if (history === null) {
-        return { status: 503, jsonBody: { error: "Run sql/migration-143-gtfs-prediction-risk-reviews.sql to keep the schedule's prediction-risk review." } };
-      }
-      // By default the newest review, against the entry just before it in the history.
-      const toId = toParam ?? history[0]?.review_id ?? null;
-      const toIndex = history.findIndex((entry) => entry.review_id === toId);
-      const fromId = fromParam ?? (toIndex === -1 ? null : history[toIndex + 1]?.review_id ?? null);
-      if (toId === null || fromId === null) return { status: 200, jsonBody: { history, diff: null } };
-      if (fromId === toId) return { status: 400, jsonBody: { error: "Pick two different reviews to compare." } };
-      const [from, to] = await Promise.all([loadReviewSnapshot(pool, fromId), loadReviewSnapshot(pool, toId)]);
-      if (!from || !to) return { status: 404, jsonBody: { error: "One of those reviews is no longer kept." } };
-      // Compare in time order whichever way round they were asked for.
-      const [earlier, later] = from.reviewed_at <= to.reviewed_at ? [from, to] : [to, from];
-      return { status: 200, jsonBody: { history, diff: diffReviews(earlier, later, PREDICTION_RISK_CHECKS.map((c) => c.id)) } };
+      const comparison = await compareReviews(pool, { from: fromParam, to: toParam });
+      if (comparison.state === "same_review") return { status: 400, jsonBody: { error: "Pick two different reviews to compare." } };
+      if (comparison.state === "not_kept") return { status: 404, jsonBody: { error: "One of those reviews is no longer kept." } };
+      return { status: 200, jsonBody: { history: comparison.history, diff: comparison.diff } };
     } catch (error) {
       context.error("GET /gtfs-prediction-risk/history failed:", error);
       return { status: 500, jsonBody: { error: "Internal server error" } };
@@ -157,7 +137,7 @@ app.http("gtfsPredictionRiskObservedSummary", {
       const pool = await getPool();
       const [{ byRoute, window }, segmentsByRoute] = await Promise.all([
         loadObservedRowsByRoute(pool, days, dow),
-        loadLatestRouteSegments(pool),
+        latestSegments(pool),
       ]);
       const routes = [...segmentsByRoute.entries()].map(([routeId, segments]) => {
         const rows = byRoute.get(routeId) ?? [];
