@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.32] - 2026-10-22
+## [1.6.35] - 2026-10-22
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,12 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.6.34] - 2026-10-22
+
+- **Migration 149 withdraws the first-stop arrival readings 1.6.30 stopped writing.** `TripStartLog` rows for 2026-09-21..10-22 with a `trip_update` actual 5+ minutes early, written before the 1.6.30 deploy (14:00 UTC 2026-10-22), become what the poll writes today: no actual, source and delay null, status `unknown`, prediction kept. Their real departures are no longer in the feed. Each withdrawn reading is copied first to a new audit table, `TripStartLogWithdrawnReadings`. On dev: 2,270 rows.
+- **Confirmed early departures are kept.** Where `GtfsTripOperationalEvidence.first_underway_at` (the bus reported past stop two) is before the scheduled start, the bus really did leave early: 72 rows, 68 of them 5-14 minutes early. To withdraw those too, delete the `NOT EXISTS` clause in the preview and the `UPDATE`.
+- **Correction to 1.6.30:** route 495's ~23-hour-early rows are `vehicle_position` actuals, not `trip_update`. `gtfsVehiclePositionsPoll` dates evidence from the observation time when the feed gives no start date, so last night's 23:02 trip still running at 00:04 writes `first_underway_at` under today's service date. The bare-id match that 1.6.30 removed let that evidence in at 00:04; after the linger window it can still be used if no first-stop departure is ever seen. That fix belongs in the vehicle-position poller. Migration 149 leaves those 28 rows alone.
 
 ## [1.6.30] - 2026-10-22
 
