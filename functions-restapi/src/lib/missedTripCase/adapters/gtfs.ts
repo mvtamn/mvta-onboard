@@ -17,10 +17,18 @@
 //    are pure functions in lib/missedTripConfidence.ts; each undecidable trip is
 //    reported with its reason. A trip is reported every pass until it starts,
 //    which is how the module's second-poll confirmation sees it again.
-// 3. Trip start: first_underway_at from GtfsTripOperationalEvidence, written by
-//    the VehiclePosition poller only after the vehicle progresses beyond the
-//    trip's first stop. TripUpdate presence is deliberately not start evidence:
-//    prediction feeds list trips hours before they begin.
+// 3. Trip start: the earlier of two readings (operatedStartAt). One is
+//    first_underway_at from GtfsTripOperationalEvidence, written by the
+//    VehiclePosition poller only after the vehicle progresses beyond the trip's
+//    first stop. The other is the Dispatch Log's first-stop departure
+//    (TripStartLog), read from the TripUpdate once the feed clock has passed it.
+//    TripUpdate presence is still not start evidence - prediction feeds list
+//    trips hours before they begin - and a departure counts only when it is a
+//    realised reading on a trip some vehicle reported against: not the
+//    schedule repeated, and not the last prediction standing in for a reading
+//    the poller missed. Measured on dev 2026-10-21, the position proof lands
+//    4-13 minutes after the departure on average, so on its own it turned buses
+//    that left 15-29 minutes late into missed trips.
 //
 // Silent no-shows are checked for "today" and "yesterday": GTFS times exceed
 // 24:00:00 for a trip that runs past midnight, and a 30-minute deadline can
@@ -57,9 +65,50 @@ export const GTFS_SILENT_DETECTOR = WINDOWED_DETECTOR_VERSION;
 
 const GRACE_SECONDS = 30 * 60;
 
+// The Dispatch Log's reading of a trip's first-stop departure, as TripStartLog
+// stores it. Absent where the log has no row or was not yet migrated.
+export interface DispatchLogStart {
+  dispatch_start_at?: Date | null;
+  dispatch_start_source?: string | null;
+  dispatch_predicted_at?: Date | null;
+  dispatch_scheduled_at?: Date | null;
+}
+
+// The two readings operatedStartAt weighs.
+export interface StartReadings extends DispatchLogStart {
+  first_underway_at: Date | null;
+  first_vehicle_position_at?: Date | null;
+}
+
+function sameInstant(a: Date | null | undefined, b: Date | null | undefined): boolean {
+  return Boolean(a && b && a.getTime() === b.getTime());
+}
+
+// The Dispatch Log's departure, when it is one. TripStartLog records the
+// schedule the producer repeats for an unworked trip, and the last prediction
+// when the poller missed the realised time, under the same source; both are
+// equal to the second to what they stand in for, so equality rejects them.
+// A vehicle having reported against the trip rules out a block nobody drove.
+function dispatchDeparture(r: StartReadings): Date | null {
+  const at = r.dispatch_start_at ?? null;
+  if (!at || r.dispatch_start_source !== "trip_update") return null;
+  if (sameInstant(at, r.dispatch_scheduled_at) || sameInstant(at, r.dispatch_predicted_at)) return null;
+  if (!r.first_vehicle_position_at) return null;
+  return at;
+}
+
+/** When the run began, by the earlier of its two readings; null when neither shows it. */
+export function operatedStartAt(r: StartReadings): Date | null {
+  const departure = dispatchDeparture(r);
+  const underway = r.first_underway_at;
+  if (!departure) return underway;
+  if (!underway) return departure;
+  return departure.getTime() <= underway.getTime() ? departure : underway;
+}
+
 // One scheduled run as the detector reads it, with the operational evidence
 // and route classification that apply to it on this service date.
-export interface ScheduledRun {
+export interface ScheduledRun extends DispatchLogStart {
   trip_id: string;
   route_id: string;
   block_id: string | null;
@@ -81,11 +130,13 @@ export interface ScheduledDay {
 // One agency service date and its weekday, as agencyServiceDate returns them.
 export type AgencyDay = ReturnType<typeof agencyServiceDate>;
 
-// Positive start evidence for one trip on one service date.
-export interface TripStartEvidence {
+// Start evidence for one trip on one service date: either reading may be the
+// one that shows it.
+export interface TripStartEvidence extends DispatchLogStart {
   trip_id: string;
   service_date: string;
-  first_underway_at: Date;
+  first_underway_at: Date | null;
+  first_vehicle_position_at?: Date | null;
   route_id: string | null;
   first_departure_seconds: number | null;
 }
@@ -111,9 +162,31 @@ export interface GtfsDetectionDeps {
   feedHealth: () => Promise<KpiFeedHealth[]>;
 }
 
+// The Dispatch Log columns, or nulls where TripStartLog (migration 094) is
+// missing, so detection keeps running on the position proof alone.
+async function dispatchLogColumns(pool: sql.ConnectionPool, evidenceAlias: string, tripAlias: string): Promise<{ select: string; join: string }> {
+  const ready = await pool.request().query<{ ok: number }>(
+    "SELECT CASE WHEN OBJECT_ID('dbo.TripStartLog', 'U') IS NULL THEN 0 ELSE 1 END AS ok",
+  );
+  if (ready.recordset[0]?.ok !== 1) {
+    return {
+      select: `CAST(NULL AS DATETIME2) AS dispatch_start_at, CAST(NULL AS NVARCHAR(20)) AS dispatch_start_source,
+               CAST(NULL AS DATETIME2) AS dispatch_predicted_at, CAST(NULL AS DATETIME2) AS dispatch_scheduled_at`,
+      join: "",
+    };
+  }
+  return {
+    select: `dl.actual_start_at AS dispatch_start_at, dl.actual_start_source AS dispatch_start_source,
+             dl.predicted_start_at AS dispatch_predicted_at, dl.scheduled_start_at AS dispatch_scheduled_at`,
+    join: `LEFT JOIN TripStartLog dl
+             ON dl.trip_id = ${tripAlias}.trip_id AND CAST(dl.service_date AS NVARCHAR(20)) = ${evidenceAlias}`,
+  };
+}
+
 const LIVE: GtfsDetectionDeps = {
   scheduledDay: async ({ serviceDate, dow }) => {
     const pool = await getPool();
+    const dispatchLog = await dispatchLogColumns(pool, "@service_date", "st");
     const serviceIds = await activeServiceIdsToday(pool, serviceDate, dow);
     if (serviceIds.length === 0) return { serviceDate, runs: [] };
     const req = pool.request();
@@ -128,6 +201,7 @@ const LIVE: GtfsDetectionDeps = {
     const scheduled = await req.query<ScheduledRun>(`
       SELECT st.trip_id, st.route_id, st.block_id, st.first_departure_seconds, st.last_arrival_seconds,
              evidence.first_underway_at, evidence.first_vehicle_position_at, evidence.first_trip_update_at,
+             ${dispatchLog.select},
              CAST(CASE WHEN EXISTS (
                SELECT 1 FROM RouteClassification rc
                WHERE CAST(rc.route_id AS NVARCHAR(50)) = st.route_id
@@ -139,6 +213,7 @@ const LIVE: GtfsDetectionDeps = {
       FROM GtfsScheduledTrips st
       LEFT JOIN GtfsTripOperationalEvidence evidence
         ON evidence.trip_id = st.trip_id AND evidence.service_date = @service_date
+      ${dispatchLog.join}
       WHERE st.service_id IN (${serviceIds.map((_, i) => `@sid${i}`).join(", ")})
     `);
     return { serviceDate, runs: scheduled.recordset };
@@ -146,13 +221,20 @@ const LIVE: GtfsDetectionDeps = {
 
   tripStarts: async (serviceDates) => {
     const pool = await getPool();
+    const dispatchLog = await dispatchLogColumns(pool, "e.service_date", "e");
     const request = pool.request();
     serviceDates.forEach((date, i) => request.input(`date${i}`, sql.NVarChar(20), date));
+    // A departure needs a vehicle to have reported against the trip, so every
+    // trip that can show a start has an evidence row to begin from.
     const result = await request.query<TripStartEvidence>(`
-      SELECT e.trip_id, e.service_date, e.first_underway_at, st.route_id, st.first_departure_seconds
+      SELECT e.trip_id, e.service_date, e.first_underway_at, e.first_vehicle_position_at,
+             st.route_id, st.first_departure_seconds,
+             ${dispatchLog.select}
       FROM GtfsTripOperationalEvidence e
       LEFT JOIN GtfsScheduledTrips st ON st.trip_id = e.trip_id
-      WHERE e.service_date IN (${serviceDates.map((_, i) => `@date${i}`).join(", ")}) AND e.first_underway_at IS NOT NULL`);
+      ${dispatchLog.join}
+      WHERE e.service_date IN (${serviceDates.map((_, i) => `@date${i}`).join(", ")})
+        AND (e.first_underway_at IS NOT NULL OR ${dispatchLog.join ? "dl.actual_start_at IS NOT NULL" : "1 = 0"})`);
     return result.recordset;
   },
 
@@ -269,7 +351,7 @@ export function dayEvidence(day: ScheduledDay, now: Date): { agreement: Schedule
       const blockTrips = blocks.get(trip.block_id) ?? [];
       blockTrips.push({
         departureSeconds: trip.first_departure_seconds,
-        operated: trip.first_underway_at !== null,
+        operated: operatedStartAt(trip) !== null,
         reportedPosition: trip.first_vehicle_position_at !== null,
       });
       blocks.set(trip.block_id, blockTrips);
@@ -298,7 +380,8 @@ export function silentNoShowObservations(
     if (!start) continue;
     const times = withDeadline(start);
     if (times.deadlineAt.getTime() > now.getTime()) continue;
-    if (trip.first_underway_at && trip.first_underway_at.getTime() <= times.deadlineAt.getTime()) continue;
+    const startedAt = operatedStartAt(trip);
+    if (startedAt && startedAt.getTime() <= times.deadlineAt.getTime()) continue;
 
     const blockTrips = trip.block_id ? blocks.get(trip.block_id) : undefined;
     const decision = noShowDecision({
@@ -332,21 +415,23 @@ export function silentNoShowObservations(
 // The module ignores runs without a case, so start evidence needs only a
 // well-formed run reference.
 export function tripStartObservations(rows: readonly TripStartEvidence[], tally: GtfsObservationTally): RunObservation[] {
-  return rows.map((row) => {
+  return rows.flatMap((row) => {
+    const at = operatedStartAt(row);
+    if (!at) return [];
     const start = row.first_departure_seconds === null ? null : serviceDateAndGtfsSecondsToUtc(row.service_date, row.first_departure_seconds);
     tally.tripStarts++;
-    return {
+    return [{
       run: {
         source: "gtfs" as const,
         runId: row.trip_id,
         serviceDate: row.service_date,
         routeId: row.route_id ?? "",
         // Start evidence never opens a case, so these only need to be well-formed.
-        ...(start ? withDeadline(start) : { scheduledStartAt: row.first_underway_at, deadlineAt: row.first_underway_at }),
+        ...(start ? withDeadline(start) : { scheduledStartAt: at, deadlineAt: at }),
       },
       detectorVersion: GTFS_SILENT_DETECTOR,
-      fact: { kind: "trip_start" as const, at: row.first_underway_at },
-    };
+      fact: { kind: "trip_start" as const, at },
+    }];
   });
 }
 

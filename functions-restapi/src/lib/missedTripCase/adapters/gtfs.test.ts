@@ -12,6 +12,7 @@ import {
   dayEvidence,
   emptyTally,
   gtfsObservations,
+  operatedStartAt,
   silentNoShowObservations,
   tripStartObservations,
   type DetectionConfidence,
@@ -84,6 +85,72 @@ test("start evidence after the deadline still leaves the trip observed", () => {
   const late = new Date(DEADLINE_AT.getTime() + 1000);
   const { observations } = observe([run({ first_underway_at: late })]);
   assert.equal(observations.length, 1);
+});
+
+// --- the Dispatch Log's departure --------------------------------------------
+//
+// Measured on dev 2026-10-21: the vehicle-position proof lands 4-13 minutes
+// after the first-stop departure on average, and more than 10 on most trips of
+// routes 497/499/446. A bus that left 25 minutes late therefore reached the
+// deadline with no start, and stayed a case after its proof arrived.
+
+const LEFT_AT = new Date("2026-09-17T19:26:00.000Z"); // 26 min late, inside the grace
+const PROVEN_LATE = new Date("2026-09-17T19:38:00.000Z"); // its position proof
+
+function departed(overrides: Partial<ScheduledRun> = {}): ScheduledRun {
+  return run({
+    first_vehicle_position_at: new Date("2026-09-17T18:50:00.000Z"),
+    dispatch_start_at: LEFT_AT,
+    dispatch_start_source: "trip_update",
+    dispatch_predicted_at: new Date("2026-09-17T19:20:00.000Z"),
+    dispatch_scheduled_at: SCHEDULED_AT,
+    ...overrides,
+  });
+}
+
+test("a first-stop departure inside the grace is Timely service, though the position proof is late", () => {
+  assert.deepEqual(observe([departed({ first_underway_at: PROVEN_LATE })]).observations, []);
+});
+
+test("a first-stop departure counts before any position proof arrives", () => {
+  assert.deepEqual(observe([departed()]).observations, []);
+});
+
+test("a departure that is only the schedule repeated is not a start", () => {
+  const echo = departed({ dispatch_start_at: SCHEDULED_AT, dispatch_predicted_at: SCHEDULED_AT });
+  assert.equal(observe([echo]).observations.length, 1);
+});
+
+test("a departure that is the schedule to the second is not a start, even after a different prediction", () => {
+  assert.equal(observe([departed({ dispatch_start_at: SCHEDULED_AT })]).observations.length, 1);
+});
+
+test("a departure that is only the last prediction standing in is not a start", () => {
+  assert.equal(observe([departed({ dispatch_predicted_at: LEFT_AT })]).observations.length, 1);
+});
+
+test("a departure no vehicle ever reported against is not a start", () => {
+  assert.equal(observe([departed({ first_vehicle_position_at: null })]).observations.length, 1);
+});
+
+test("only a trip-update reading is a departure; the Dispatch Log's own position fallback is not", () => {
+  assert.equal(observe([departed({ dispatch_start_source: "vehicle_position" })]).observations.length, 1);
+});
+
+test("a first-stop departure after the deadline leaves the trip observed", () => {
+  const late = new Date(DEADLINE_AT.getTime() + 60_000);
+  assert.equal(observe([departed({ dispatch_start_at: late })]).observations.length, 1);
+});
+
+test("the earlier of the two starts is the trip's start", () => {
+  assert.deepEqual(operatedStartAt(departed({ first_underway_at: PROVEN_LATE })), LEFT_AT);
+  const provenFirst = new Date("2026-09-17T19:10:00.000Z");
+  assert.deepEqual(operatedStartAt(departed({ first_underway_at: provenFirst })), provenFirst);
+});
+
+test("a departed trip counts as operated for its block", () => {
+  const { blocks } = dayEvidence(day([departed({ block_id: "B1" })]), PAST_DEADLINE);
+  assert.equal(blocks.get("B1")?.[0].operated, true);
 });
 
 // --- exclusions --------------------------------------------------------------
@@ -210,6 +277,27 @@ test("start evidence for a trip with no known route carries an empty route", () 
   assert.deepEqual(observation.run.scheduledStartAt, PAST_DEADLINE);
   assert.deepEqual(observation.fact, { kind: "trip_start", at: PAST_DEADLINE });
   assert.equal(tally.tripStarts, 1);
+});
+
+test("a trip start is the first-stop departure when it precedes the position proof", () => {
+  const tally = emptyTally();
+  const rows: TripStartEvidence[] = [{
+    trip_id: "T1", service_date: SERVICE_DATE, first_underway_at: PROVEN_LATE, route_id: "460",
+    first_departure_seconds: DEPARTURE_SECONDS, first_vehicle_position_at: SCHEDULED_AT,
+    dispatch_start_at: LEFT_AT, dispatch_start_source: "trip_update", dispatch_predicted_at: null, dispatch_scheduled_at: SCHEDULED_AT,
+  }];
+  const [observation] = tripStartObservations(rows, tally);
+  assert.deepEqual(observation.fact, { kind: "trip_start", at: LEFT_AT });
+});
+
+test("a row with neither start is not a trip start", () => {
+  const tally = emptyTally();
+  const rows: TripStartEvidence[] = [{
+    trip_id: "T1", service_date: SERVICE_DATE, first_underway_at: null, route_id: "460", first_departure_seconds: DEPARTURE_SECONDS,
+    first_vehicle_position_at: null, dispatch_start_at: LEFT_AT, dispatch_start_source: "trip_update",
+  }];
+  assert.deepEqual(tripStartObservations(rows, tally), []);
+  assert.equal(tally.tripStarts, 0);
 });
 
 // --- the pass: rollover, the paused detector, failing closed -----------------
