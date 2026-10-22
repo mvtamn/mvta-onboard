@@ -38,7 +38,7 @@ export function parseConnectionString(connectionString: string): sql.config {
   // connection-string property as the delimiter. Quoted and ADO.NET-style
   // braced values are supported as well.
   const passwordMatch = connectionString.match(
-    /(?:^|;)\s*(?:password|pwd)\s*=\s*(.*?)(?=;\s*(?:server|data source|database|initial catalog|user id|uid|encrypt|trustservercertificate|connection timeout)\s*=|;?\s*$)/i,
+    /(?:^|;)\s*(?:password|pwd)\s*=\s*(.*?)(?=;\s*(?:server|data source|database|initial catalog|user id|uid|encrypt|trustservercertificate|connection timeout|authentication)\s*=|;?\s*$)/i,
   );
   const password = passwordMatch
     ? unwrapConnectionStringValue(passwordMatch[1].trim())
@@ -46,18 +46,32 @@ export function parseConnectionString(connectionString: string): sql.config {
 
   const serverRaw = (parts["server"] || "").replace(/^tcp:/i, "");
   const [server, portStr] = serverRaw.split(",");
-
-  return {
+  const base = {
     server,
     port: portStr ? parseInt(portStr, 10) : 1433,
     database: parts["database"],
-    user: parts["user id"] || parts["uid"],
-    password,
     options: {
       encrypt: (parts["encrypt"] || "true").toLowerCase() === "true",
       trustServerCertificate: (parts["trustservercertificate"] || "false").toLowerCase() === "true",
     },
   };
+
+  // "Authentication=Active Directory Default" signs in as the app's own
+  // identity: its managed identity in Azure, `az login` on a laptop. No
+  // password is involved, so the server can run Entra-only. Without the key
+  // the admin login and password are used, as before.
+  const authentication = (parts["authentication"] || "").toLowerCase();
+  if (authentication === "active directory default") {
+    return { ...base, authentication: { type: "azure-active-directory-default", options: {} } };
+  }
+  if (authentication && authentication !== "sql password") {
+    throw new Error(
+      `SQL_CONNECTION_STRING has Authentication=${parts["authentication"]}; ` +
+        'only "Active Directory Default" and "Sql Password" are supported.',
+    );
+  }
+
+  return { ...base, user: parts["user id"] || parts["uid"], password };
 }
 
 // The dev SQL Database runs on a serverless tier that auto-pauses when idle
@@ -72,9 +86,18 @@ export function parseConnectionString(connectionString: string): sql.config {
 const CONNECT_RETRY_ATTEMPTS = 4;
 const CONNECT_RETRY_BASE_DELAY_MS = 2000;
 
-function isTransientConnectError(error: unknown): boolean {
-  const code = (error as { code?: string } | undefined)?.code;
-  return code === "ESOCKET" || code === "ETIMEOUT" || code === "ECONNRESET";
+// A failure to fetch an Entra token (the managed identity endpoint blipping
+// on a cold start) reaches us as a ConnectionError with no code of its own,
+// wrapping tedious's AggregateError whose first error is EFEDAUTH. A login
+// the server rejects is ELOGIN and is not retried.
+export function isTransientConnectError(error: unknown): boolean {
+  const err = error as
+    | { code?: string; originalError?: { code?: string; errors?: Array<{ code?: string }> } }
+    | undefined;
+  const codes = [err?.code, err?.originalError?.code, ...(err?.originalError?.errors ?? []).map((e) => e?.code)];
+  return codes.some(
+    (code) => code === "ESOCKET" || code === "ETIMEOUT" || code === "ECONNRESET" || code === "EFEDAUTH",
+  );
 }
 
 async function connectWithRetry(config: sql.config): Promise<sql.ConnectionPool> {

@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.20] - 2026-10-21
+
+- **Both SQL servers have their Entra admin declared in Bicep.** Dev's admin was set by hand and prod had none, and without an Entra admin nobody can run `CREATE USER ... FROM EXTERNAL PROVIDER` for the Function Apps' managed identities. `sql.bicep` now declares `administrators/ActiveDirectory` from `sqlEntraAdminLogin` / `sqlEntraAdminObjectId`, which `infra.yml` passes from the `SQL_ENTRA_ADMIN_LOGIN` / `SQL_ENTRA_ADMIN_OBJECT_ID` GitHub environment variables (not a parameter file: the repository is public). Both empty leaves the server's admin alone. What-if: no change on dev, prod gains the admin.
+- **`SQL_CONNECTION_STRING` can sign in without a password.** `Authentication=Active Directory Default` in the connection string makes both `db.ts` files connect as the app's own identity (managed identity in Azure, `az login` on a laptop). Without the key, or with `Authentication=Sql Password`, the login and password are used as before; any other value is refused. The REST API's connect retry also retries a failed token fetch (`EFEDAUTH`, which mssql wraps in an AggregateError with no code of its own) but not a rejected login. The password parser now ends a password at `Authentication=`.
+- **Nothing switches over in this release.** Key Vault's `sql-connection-string` still holds the password. The database users for the managed identities, the switch to the new connection string, and Entra-only auth follow.
+
 ## [1.6.16] - 2026-10-20
 
 - **The OTP Review Queue listed one row per stop-day.** A Flagged Stop is a stop, on one route, on one day of the week, and that is how the server sends them and how a decision is recorded. The queue drew them that way too: October 2026 had 348 rows for 96 route/stop pairs, with the same stop - Oak St SE at University Av, flagged on three routes and five weekdays - in front of the reviewer fifteen times, scattered through the list by lean, each row with its own reason dropdown. A reviewer who knows the stop is a recovery point had to find and decide every row.
