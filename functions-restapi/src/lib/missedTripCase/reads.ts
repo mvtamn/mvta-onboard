@@ -19,6 +19,7 @@
 import { sql } from "../db";
 import { occurrenceSourceRefSql } from "../occurrenceIntake/sources";
 import { missedTripCaseSql } from "./classify";
+import { readCaseEvidence, type GtfsCaseEvidence } from "./caseEvidence";
 import { detectorPromotionWindows } from "./promotion";
 import type { MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome } from "./types";
 
@@ -96,6 +97,9 @@ export interface CaseListRow {
   // trip isn't in that reference table yet, or the static feed couldn't
   // determine a direction for it.
   direction_label: string | null;
+  // What a reviewer has to go on for a GTFS case (caseEvidence.ts). Null on a
+  // Spare case, and where the evidence tables are missing or could not be read.
+  gtfs_evidence: GtfsCaseEvidence | null;
 }
 
 export interface CaseTotals {
@@ -152,7 +156,7 @@ export async function caseTablesReady(pool: sql.ConnectionPool): Promise<CaseTab
 
 export type CaseReadResult =
   | { ready: false }
-  | { ready: true; cases: CaseListRow[]; totals: CaseTotals };
+  | { ready: true; cases: CaseListRow[]; totals: CaseTotals; evidenceError?: unknown };
 
 // Legacy missed-trip records stay out of the queue: they came from the
 // superseded detector and their outcome is unknown, not false. Held cases
@@ -188,7 +192,7 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
   const listReq = pool.request();
   listReq.input("offset", sql.Int, query.offset);
   listReq.input("limit", sql.Int, query.limit);
-  const result = await listReq.query<CaseListRow>(`
+  const result = await listReq.query<Omit<CaseListRow, "gtfs_evidence">>(`
     SELECT mmt.trip_id, mmt.service_date, mmt.route_id, mmt.scheduled_departure_at,
            mmt.grace_deadline_at, mmt.status, mmt.detection_type, mmt.detected_late_arrival_at,
            mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
@@ -235,7 +239,22 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
     FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
   `);
 
-  return { ready: true, cases: result.recordset, totals: totals.recordset[0] };
+  // The evidence is a second read over just this page. Failing it leaves the
+  // queue usable - the cases still list, without their evidence - and the
+  // handler says why.
+  let evidence = new Map<string, GtfsCaseEvidence>();
+  let evidenceError: unknown;
+  try {
+    evidence = await readCaseEvidence(pool, result.recordset.filter((row) => row.source_system !== "spare"));
+  } catch (err) {
+    evidenceError = err;
+  }
+  const cases = result.recordset.map((row) => ({
+    ...row,
+    gtfs_evidence: evidence.get(`${row.trip_id}|${row.service_date}`) ?? null,
+  }));
+
+  return { ready: true, cases, totals: totals.recordset[0], ...(evidenceError === undefined ? {} : { evidenceError }) };
 }
 
 /** How many cases the chosen view holds, for the paging footer. */
