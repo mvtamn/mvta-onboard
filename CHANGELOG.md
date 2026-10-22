@@ -5,11 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.33] - 2026-10-22
+## [1.6.35] - 2026-10-22
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+
+## [1.6.34] - 2026-10-22
+
+- **Migration 149 withdraws the first-stop arrival readings 1.6.30 stopped writing.** `TripStartLog` rows for 2026-09-21..10-22 with a `trip_update` actual 5+ minutes early, written before the 1.6.30 deploy (14:00 UTC 2026-10-22), become what the poll writes today: no actual, source and delay null, status `unknown`, prediction kept. Their real departures are no longer in the feed. Each withdrawn reading is copied first to a new audit table, `TripStartLogWithdrawnReadings`. On dev: 2,270 rows.
+- **Confirmed early departures are kept.** Where `GtfsTripOperationalEvidence.first_underway_at` (the bus reported past stop two) is before the scheduled start, the bus really did leave early: 72 rows, 68 of them 5-14 minutes early. To withdraw those too, delete the `NOT EXISTS` clause in the preview and the `UPDATE`.
+- **Correction to 1.6.30:** route 495's ~23-hour-early rows are `vehicle_position` actuals, not `trip_update`. `gtfsVehiclePositionsPoll` dates evidence from the observation time when the feed gives no start date, so last night's 23:02 trip still running at 00:04 writes `first_underway_at` under today's service date. The bare-id match that 1.6.30 removed let that evidence in at 00:04; after the linger window it can still be used if no first-stop departure is ever seen. That fix belongs in the vehicle-position poller. Migration 149 leaves those 28 rows alone.
 
 ## [1.6.30] - 2026-10-22
 
