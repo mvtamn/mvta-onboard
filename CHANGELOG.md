@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.21] - 2026-10-21
+
+- **Dev's Function Apps sign in to SQL as themselves.** `main-phase1.bicep` gains `sqlAuthentication` (`password` | `managedIdentity`, default `password`) and builds one `SQL_CONNECTION_STRING` for the REST, dispatch and Spare webhook apps: the Key Vault reference to `sql-connection-string` as before, or `Server=tcp:<server>,1433;Database=sqldb-mvta-onboard-<env>;Authentication=Active Directory Default;...`, which holds no secret. `functionapp.bicep` takes it as `sqlConnectionString` instead of hardcoding the Key Vault reference. `phase1-dev.parameters.json` sets `managedIdentity`; prod keeps the password.
+- **Rollback** is setting dev back to `password` and re-running the infra workflow; the Key Vault secret stays until Entra-only auth is on.
+- **Needs, before it deploys:** 1.6.20's `db.ts` (which understands `Authentication=Active Directory Default`) on dev, and `infra-stage0/scripts/grant-function-app-sql-users.sql` run against dev's database. Without the database users, every SQL call on dev fails at login.
+
 ## [1.6.16] - 2026-10-20
 
 - **The OTP Review Queue listed one row per stop-day.** A Flagged Stop is a stop, on one route, on one day of the week, and that is how the server sends them and how a decision is recorded. The queue drew them that way too: October 2026 had 348 rows for 96 route/stop pairs, with the same stop - Oak St SE at University Av, flagged on three routes and five weekdays - in front of the reviewer fifteen times, scattered through the list by lean, each row with its own reason dropdown. A reviewer who knows the stop is a recovery point had to find and decide every row.
