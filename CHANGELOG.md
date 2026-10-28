@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.38] - 2026-10-27
+
+- **A case's first-stop record counted no-shows the evidence could not judge.** 1.6.27's stop record (`readCaseEvidence`, `caseEvidence.ts`) counted every silent no-show at a stop, including the 1,244 retired by migration 148 and those held as `unknown_data_gap`. Both show "no start" because the feed was down, not because of the stop, so they dragged real dead zones under the 80% bar. Seen live on dev 2026-10-22: Savage Park & Ride read "38 of 82 other no-shows here turned out to have run", though all 27 of its cases since the 2026-09-16 guards ran. The record now leaves out `legacy_unverified` and `unknown_data_gap` cases.
+- A case that is itself one of those is no longer taken off a record that never counted it (`counted_in_origin`), which would have undercounted the stop by one.
+- Tests: 1 new in `caseEvidence.test.ts`; `caseEvidence.db.contract.test.ts` seeds a retired and a data-gap case at the stop and checks both the counts and a retired case's own view.
+
 ## [1.6.35] - 2026-10-22
 
 - **Vehicle evidence is filed under the trip's own service day.** MVTA's VehiclePosition feed often sends a trip with no `start_date`, and `gtfsVehiclePositionsPoll` dated that evidence from the observation (`agencyServiceDate(observedAt)`). Route 495's 22:30-23:02 trips still report after midnight, so their 00:0x reports opened a `GtfsTripOperationalEvidence` row under the next service date with a sticky `first_underway_at` about 23 hours before that day's own run. New `lib/gtfsEvidenceServiceDate.ts` picks, among the day before, the day of and the day after the observation on which the trip's service runs (`activeServiceIdsToday`), the one whose scheduled run of that `trip_id` (`GtfsScheduledTrips.first_departure_seconds`) starts nearest the observation. A trip the schedule does not know keeps the observation's date. The TripUpdate poller has the same fallback but its feed carries `StartDate`: no TripUpdate column on dev is 6+ hours early, so it is unchanged.
