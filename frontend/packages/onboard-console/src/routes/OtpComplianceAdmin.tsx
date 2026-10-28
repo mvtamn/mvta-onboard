@@ -5,6 +5,7 @@ import {
   type OtpHistoricalBackfillResponse,
 } from "@mvta/shared";
 import { api } from "../config.js";
+import { OtpMeasurementParameters } from "./modules/otp/OtpMeasurementParameters.js";
 
 // Only a fallback for the slider's initial position, before GET /otp-settings
 // answers. The threshold that decides anything is the server's (ADR 0034).
@@ -88,9 +89,14 @@ export function OtpComplianceAdmin() {
       <div className="panel-header">OTP Compliance Administration</div>
       <div className="panel-body">
         <p className="panel-desc">
-          Reason codes, the early/late bias detection threshold, and historical feed backfill for the
-          Compliance tab's OTP Compliance module. Changes here apply to every reviewer.
+          The measurement standard OTP is polled under, reason codes, the early/late bias detection
+          threshold, and historical feed backfill for the Compliance tab's OTP Compliance module.
+          Changes here apply to every reviewer.
         </p>
+
+        {/* First, because it is the only thing on this page that changes what a
+            month SCORED rather than who gets looked at (ADR 0042). */}
+        <OtpMeasurementParameters />
 
         <ReasonCodeTable
           title="Stop exclusion reason codes"

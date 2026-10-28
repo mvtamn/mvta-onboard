@@ -41,9 +41,13 @@ export type AvailEndpoint = "avl" | "pullout" | "otp_daily" | "otp_monthly" | "m
 export interface AvailRequests {
   avl: { start: Date; end: Date };
   pullout: Record<string, never>;
-  otp_daily: { start: Date; end: Date };
+  // `parameters` is the measurement standard itself, as URL segments - see
+  // ENDPOINTS below and lib/otpMeasurementParameters.ts. Required rather than
+  // defaulted here: a default would let a caller poll under a standard nobody
+  // declared and stamp its rows with it (ADR 0042).
+  otp_daily: { start: Date; end: Date; parameters: string };
   // Avail aggregates to the whole month containing this date.
-  otp_monthly: { month: Date };
+  otp_monthly: { month: Date; parameters: string };
   missed_trips: { start: Date; end: Date };
   detours: Record<string, never>;
 }
@@ -73,29 +77,18 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const AGENCY_TIME_ZONE = "America/Chicago";
 const PROPERTY = "MVTA";
 
-// OTP report parameters, shared by the daily and monthly operations.
+// The OTP report parameters - early threshold, late threshold, early outlier,
+// late outlier, show missed stops, include outliers, show detours - used to be
+// a constant here, and that was the whole problem. They are MVTA's configured
+// measurement standard rather than our own choice, Avail can change them on
+// their backend without telling us, and changing them restates every figure the
+// feed has ever stored. A constant in this file could say none of that, and had
+// in fact been wrong since the feed was first built (see 1.6.39).
 //
-// These are MVTA's configured measurement standard, confirmed by Avail on
-// 2026-10-27, not our own choice. They were previously 1/5/15/30: the
-// thresholds were believed enum-constrained (they are configurable) and the
-// outlier values were copied from the example in Avail's API specification to
-// rule out our configuration as a source of error, then never aligned. Under
-// the old early threshold OnBoard counted a departure 1-2 minutes early as
-// early, where MVTA's standard counts it on time - measuring the agency
-// stricter than its own rule. Changing any of these restates every figure the
-// feed has ever stored, so they are not a tuning knob.
-const OTP_PARAMETERS = [
-  2, // early threshold minutes - MVTA configured
-  5, // late threshold minutes - MVTA configured
-  10, // early outlier minutes - MVTA configured
-  60, // late outlier minutes - MVTA configured
-  0, // show missed stops
-  // Include outliers stays 1 pending Avail's answer on whether the BI report
-  // drops outlying departures from its denominator - the likeliest cause of
-  // our 4,271 departures on route 465 against the report's 4,045 (+5.6%).
-  1, // include outliers
-  1, // show detours
-].join("/");
+// They now live in a declared, dated register that stamps each stored row with
+// the set it was polled under - lib/otpMeasurementParameters.ts, ADR 0042. The
+// caller reads the set in force once per run and passes it in the request, so
+// what the URL says and what the row records cannot disagree.
 
 // Missed Trips owner decisions: Full Trip Only=0 (either end missed counts, the
 // broader reading) and Include Deadheads=0 (exclude non-revenue moves).
@@ -166,8 +159,8 @@ const ENDPOINTS: { [E in AvailEndpoint]: EndpointDefinition<E> } = {
   otp_daily: {
     label: "OTP Daily",
     urlSetting: "AVAIL_OTP_DAILY_URL",
-    path: (baseUrl, { start, end }) =>
-      `${trimmed(baseUrl)}/${formatDateMmDdYyyy(start)}/${formatDateMmDdYyyy(end)}/${OTP_PARAMETERS}`,
+    path: (baseUrl, { start, end, parameters }) =>
+      `${trimmed(baseUrl)}/${formatDateMmDdYyyy(start)}/${formatDateMmDdYyyy(end)}/${parameters}`,
     // `otp` is what Avail returns; the operation name is what its docs imply.
     resultKeys: ["otp", "OtpByRouteStopDayHour"],
     strict: true,
@@ -175,7 +168,7 @@ const ENDPOINTS: { [E in AvailEndpoint]: EndpointDefinition<E> } = {
   otp_monthly: {
     label: "OTP Monthly",
     urlSetting: "AVAIL_OTP_MONTHLY_URL",
-    path: (baseUrl, { month }) => `${trimmed(baseUrl)}/${formatDateMmDdYyyy(month)}/${OTP_PARAMETERS}`,
+    path: (baseUrl, { month, parameters }) => `${trimmed(baseUrl)}/${formatDateMmDdYyyy(month)}/${parameters}`,
     resultKeys: ["otp"],
     strict: true,
   },
