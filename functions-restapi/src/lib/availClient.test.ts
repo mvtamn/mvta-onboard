@@ -95,11 +95,11 @@ test("OTP Daily, OTP Monthly and Missed Trips build their confirmed paths", () =
   const end = new Date("2026-09-15T00:00:00Z");
   assert.equal(
     availUrl("otp_daily", "https://example.test/OtpByRouteStopDayHour/v1/MVTA/", { start, end }),
-    "https://example.test/OtpByRouteStopDayHour/v1/MVTA/09-01-2026/09-15-2026/1/5/15/30/0/1/1",
+    "https://example.test/OtpByRouteStopDayHour/v1/MVTA/09-01-2026/09-15-2026/2/5/10/60/0/1/1",
   );
   assert.equal(
     availUrl("otp_monthly", "https://example.test/OtpByRouteStopDayAgg/v1/MVTA", { month: end }),
-    "https://example.test/OtpByRouteStopDayAgg/v1/MVTA/09-15-2026/1/5/15/30/0/1/1",
+    "https://example.test/OtpByRouteStopDayAgg/v1/MVTA/09-15-2026/2/5/10/60/0/1/1",
   );
   assert.equal(
     availUrl("missed_trips", "https://example.test/MissedTripsByRouteStopDay/v1/MVTA", { start, end }),

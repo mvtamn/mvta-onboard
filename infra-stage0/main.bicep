@@ -17,6 +17,12 @@ param sqlAdminPassword string
 @description('Set true only when initially provisioning an environment. Normal redeployments must leave the existing Key Vault SQL secret untouched.')
 param manageSqlConnectionStringSecret bool = false
 
+@description('Open the SQL server to the IPs in sqlFirewallAllowedIps. Dev only; production stays private-endpoint only.')
+param sqlAllowPublicNetworkAccess bool = false
+
+@description('Public IPs allowed through the SQL firewall. Passed from the SQL_FIREWALL_ALLOWED_IPS GitHub environment variable.')
+param sqlFirewallAllowedIps array = []
+
 module network 'modules/network.bicep' = {
   name: 'network-deployment'
   params: {
@@ -55,6 +61,8 @@ module sql 'modules/sql.bicep' = {
     sqlAdminLogin: sqlAdminLogin
     sqlAdminPassword: sqlAdminPassword
     manageSqlConnectionStringSecret: manageSqlConnectionStringSecret
+    allowPublicNetworkAccess: sqlAllowPublicNetworkAccess
+    sqlFirewallAllowedIps: sqlFirewallAllowedIps
   }
 }
 
