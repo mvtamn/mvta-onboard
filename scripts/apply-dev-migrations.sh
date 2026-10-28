@@ -313,8 +313,8 @@ pause "Ready?"
 
 # ── Stage 2 ───────────────────────────────────────────────────────────────
 stage "Network path"
-say "The dev SQL server is private by design. Two things have to be true for"
-say "a laptop to reach it: public access enabled, and a firewall rule for"
+say "Infra deploys keep dev SQL open to the IPs in the SQL_FIREWALL_ALLOWED_IPS"
+say "GitHub variable. A laptop needs public access enabled and a firewall rule for"
 say "this machine's public IP."
 printf '\n'
 
