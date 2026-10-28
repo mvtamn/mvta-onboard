@@ -783,6 +783,14 @@ _Avoid_: weather exclusion, dropped stop
 A stop, on one route, on one day of the week, whose early or late share of departures exceeds the Early/Late Bias Threshold for a service month, putting it in front of a reviewer. Being flagged decides nothing: it counts toward Official Departure OTP exactly as before unless a reviewer turns it into an approved Stop Exclusion. It is not a Candidate — no Agreement, occurrence, or Candidate Resolution is involved.
 _Avoid_: exclusion candidate, OTP candidate, biased stop
 
+**OTP Measurement Standard**:
+The seven parameters OnBoard sends Avail when it asks for on-time performance — early threshold, late threshold, early outlier, late outlier, show missed stops, include outliers, show detours. They are MVTA's own Avail configuration rather than a setting of OnBoard's, and Avail can change them without telling us, so they are **declared** with an effective-from date, a stated source and a named declarer rather than compiled in (ADR 0042). Unlike the Early/Late Bias Threshold this is contractual: the early threshold decides what counts as on time, so changing it rewrites every historical figure, tier and amount that followed from one. A declaration is appended, never edited — an earlier one is what existing figures were polled under. Declaring restates nothing; the months that stop matching are listed for someone to re-pull deliberately.
+_Avoid_: OTP settings, measurement tuning, threshold (that is the Early/Late Bias Threshold)
+
+**Measurement Provenance**:
+The parameter set a stored OTP figure was polled under, recorded on the row itself as the segment string that was sent. It answers which stored figures are comparable with each other — the question that cannot be answered once a standard changes and nothing restates automatically. A row with no stamp is **not recorded**, never "measured under the current standard": the stamp is a property of a poll, and claiming otherwise would invent provenance. The sibling of recording it when Avail restates a closed month (ADR 0039), applied to OnBoard's own parameter changes.
+_Avoid_: version, revision, audit field
+
 **Early/Late Bias Threshold**:
 The share of departures, above which a stop's early or late running makes it a Flagged Stop. It is an operational review setting an administrator can change, not a contractual figure: moving it changes who gets looked at, never what a month scored.
 _Avoid_: OTP threshold, tolerance
