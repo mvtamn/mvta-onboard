@@ -1,7 +1,7 @@
 // What the missed-trip review panel says and allows, from the classification
 // the API returns (lifecycle, finding, outcome). The rules themselves live in
 // the Missed-trip case module; this only turns them into words and requests.
-import type { GtfsRouteOption, MissedTripReviewDecision, MissedTripSourceSystem, MissedTripsMonthlySummaryRow, MissedTripValidationStatus, OccurrenceAttribution, ValidateMissedTripInput } from "@mvta/shared";
+import type { GtfsCaseEvidence, GtfsRouteOption, MissedTripReviewDecision, MissedTripSourceSystem, MissedTripsMonthlySummaryRow, MissedTripValidationStatus, OccurrenceAttribution, ValidateMissedTripInput } from "@mvta/shared";
 import type { MissedTripAlert } from "./missedTrips.data.js";
 
 export const REVIEW_DECISIONS: { value: MissedTripReviewDecision; label: string; hint: string }[] = [
@@ -372,4 +372,85 @@ export function conflictBlocksAssessment(
   alert: Pick<MissedTripAlert, "evidenceConflict">,
 ): boolean {
   return alert.evidenceConflict;
+}
+
+// The start evidence for a GTFS case, one line per fact, in the order a
+// reviewer reasons: did it start, by what reading, was a bus there, was the
+// block worked at all, and is the first stop one where buses go quiet. A line
+// whose source has nothing to say is left out rather than shown as a dash.
+export interface EvidenceFact {
+  label: string;
+  value: string;
+  tone?: "good" | "warn";
+  note?: string;
+}
+
+function lateness(minutes: number): string {
+  if (minutes === 0) return "on time";
+  return minutes > 0 ? `${minutes} min late` : `${-minutes} min early`;
+}
+
+function dispatchDepartureLabel(departure: GtfsCaseEvidence["departure"], time: (iso: string | null) => string): string {
+  switch (departure.reading) {
+    case "departed": return time(departure.at);
+    case "schedule_repeated": return `Not a departure: only the schedule (${time(departure.at)}) was repeated`;
+    case "prediction_only": return `Not a departure: only a prediction (${time(departure.at)}) was kept`;
+    case "no_vehicle": return `Not a departure: ${time(departure.at)} was logged, but no bus reported on the trip`;
+    case "position_fallback": return "Not recorded from the trip update";
+    default: return "Not recorded";
+  }
+}
+
+export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: string | null) => string): EvidenceFact[] {
+  const facts: EvidenceFact[] = [];
+
+  if (evidence.started_at && evidence.started_late_minutes !== null) {
+    const inside = evidence.started_inside_grace === true;
+    facts.push({
+      label: "Started",
+      value: `${time(evidence.started_at)} · ${lateness(evidence.started_late_minutes)} · ${inside ? "inside" : "past"} the 30 minutes`,
+      tone: inside ? "good" : "warn",
+    });
+  } else {
+    facts.push({ label: "Started", value: "No start observed", tone: "warn" });
+  }
+
+  facts.push({ label: "Dispatch Log departure", value: dispatchDepartureLabel(evidence.departure, time) });
+
+  const { vehicle } = evidence;
+  if (vehicle.reported_at) {
+    const bus = vehicle.vehicle_id ? `Bus ${vehicle.vehicle_id}` : "A bus";
+    const moving = vehicle.underway_at ? `under way ${time(vehicle.underway_at)}` : "never shown under way";
+    facts.push({ label: "Bus on this trip", value: `${bus} reported from ${time(vehicle.reported_at)}, ${moving}` });
+  } else {
+    facts.push({ label: "Bus on this trip", value: "No bus reported on this trip" });
+  }
+
+  const { block } = evidence;
+  if (block && block.trips > 0) {
+    facts.push(block.trips_reported === 0
+      ? {
+        label: "Block",
+        value: `No bus reported on any of block ${block.block_id}'s ${block.trips} trips`,
+        tone: "warn",
+        note: "The block may not have run, or its bus was not logged in.",
+      }
+      : { label: "Block", value: `Block ${block.block_id}: a bus reported on ${block.trips_reported} of ${block.trips} trips` });
+  }
+
+  const stop = evidence.origin_stop;
+  if (stop) {
+    const name = stop.name ?? `Stop ${stop.stop_id}`;
+    facts.push({
+      label: "First stop",
+      value: stop.other_cases === 0
+        ? `${name} · no other no-shows here`
+        : `${name} · ${stop.other_cases_ran} of ${stop.other_cases} other no-shows here turned out to have run`,
+      ...(stop.likely_dead_zone
+        ? { tone: "warn" as const, note: "Likely GPS dead zone — buses here often go quiet without missing the trip." }
+        : {}),
+    });
+  }
+
+  return facts;
 }

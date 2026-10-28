@@ -2,11 +2,13 @@
 //
 //   GET  /missed-trip-detector-promotions  - compliance-review.view
 //   POST /missed-trip-detector-promotions  - service-configuration.edit
+//   GET  /missed-trip-detector-scorecard   - compliance-review.view
+//        ?from=YYYYMMDD&to=YYYYMMDD&group=week|day
 //
 // The decision itself - the precision bar, the evidence, whether anything
-// actually changes - belongs to the missed-trip case module (promotion.ts).
-// This is transport: it reads the history, asks the module, and reports what
-// the module said.
+// actually changes - belongs to the missed-trip case module (promotion.ts), and
+// so does the scorecard it is measured on (scorecard.ts). This is transport: it
+// reads, asks the module, and reports what the module said.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
@@ -15,15 +17,12 @@ import {
   ignoredDetectorNames,
   promotionWindows,
   readDetectorPromotions,
+  readDetectorScorecard,
   recordDetectorPromotion,
+  scorecardQuery,
+  serviceDateToday,
   type PromotionRequest,
 } from "../lib/missedTripCase";
-
-// A service date is an agency day, so "does this count today" is asked in
-// Central time - a UTC date would answer for tomorrow from 7pm on.
-const serviceDateToday = (now = new Date()) =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(now).replaceAll("-", "");
 
 app.http("missedTripDetectorPromotionsGet", {
   route: "missed-trip-detector-promotions",
@@ -76,6 +75,28 @@ app.http("missedTripDetectorPromotionsRecord", {
       return { status: 201, jsonBody: outcome.entry };
     } catch (err) {
       context.error("POST /missed-trip-detector-promotions failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+app.http("missedTripDetectorScorecardGet", {
+  route: "missed-trip-detector-scorecard",
+  methods: ["GET"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const access = await requireAccess(request, "compliance-review.view");
+    if (!access.authorized) return { status: access.status, jsonBody: { error: access.message } };
+    try {
+      const today = serviceDateToday();
+      const query = scorecardQuery({
+        from: request.query.get("from"),
+        to: request.query.get("to"),
+        group: request.query.get("group"),
+      }, today);
+      return { status: 200, jsonBody: await readDetectorScorecard(await getPool(), query, today) };
+    } catch (err) {
+      context.error("GET /missed-trip-detector-scorecard failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

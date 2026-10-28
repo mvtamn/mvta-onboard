@@ -91,8 +91,9 @@ describe("the OTP Review Queue", () => {
 
     await screen.findByText("Wash/Coffman SW");
 
-    // The server orders by worst lean; the console does not re-sort.
-    const titles = [...container.querySelectorAll(".check-row .check-title")].map((n) => n.textContent);
+    // The server orders by worst lean; the console does not re-sort. Each
+    // stop is one card, however many weekdays it was flagged on.
+    const titles = [...container.querySelectorAll(".otp-group .otp-group-title")].map((n) => n.textContent);
     expect(titles).toEqual(["RT 490Wash/Coffman SW", "RT 444Burnsville Tran"]);
   });
 
@@ -102,10 +103,11 @@ describe("the OTP Review Queue", () => {
 
     await screen.findByText("Wash/Coffman SW");
 
-    // Day of week replaces the placeholder direction the queue used to print
-    // as "—" for every live row, and departures replace "trips sampled".
-    const desc = container.querySelector(".check-row .check-desc")?.textContent;
-    expect(desc).toBe("Stop 13209 \u00b7 Monday \u00b7 34 departures sampled \u00b7 Late-biased");
+    // No invented direction: the card says what the feed knows, and the day
+    // chip carries the weekday and the lean that put it in the queue.
+    const desc = container.querySelector(".otp-group .otp-group-meta")?.textContent;
+    expect(desc).toBe("Stop 13209 \u00b7 Late-biased \u00b7 1 day \u00b7 34 departures");
+    expect(screen.getByRole("button", { name: "Monday, pending, 34 departures, 44% late" })).toBeInTheDocument();
   });
 
   it("says the feed is empty rather than showing stops nobody can action", async () => {

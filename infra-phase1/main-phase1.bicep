@@ -95,6 +95,12 @@ param onDemandOperationalZoneIds string = ''
 @description('Keep the Spare webhook receiver running on the REST API app. True until Spare is repointed at func-mvta-sparehook-<env>; then false disables it there. See HANDOFF.md, "Spare webhook receiver on its own app".')
 param spareWebhookOnRestApi bool = true
 
+@description('Run the REST API app\'s timers. False disables every one of them, so a new environment can be deployed and signed in to before it starts polling feeds or writing to its database. Flip to true at cutover. See plans/production-environment-plan.md, steps 20 and 23.')
+param restApiTimersEnabled bool = true
+
+@description('Timers that run even while restApiTimersEnabled is false, so one feature can go live in a new environment before cutover. Names from restApiTimerNames.')
+param restApiTimersEnabledEarly array = []
+
 @description('GTFS-Realtime VehiclePosition feed used for fixed-route vehicle monitoring.')
 param gtfsRtVehicleUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true'
 
@@ -129,6 +135,40 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
 resource vnet 'Microsoft.Network/virtualNetworks@2023-09-01' existing = {
   name: 'vnet-mvta-onboard-${environment}'
 }
+
+// Every timer the REST API package registers. functions-restapi/src/lib/
+// restApiTimers.test.ts fails when this list and the code disagree, so a new
+// timer cannot slip past restApiTimersEnabled = false.
+var restApiTimerNames = [
+  'assessmentPeriodOpen'
+  'availAvlPoll'
+  'availDetoursSync'
+  'availMissedTripsPoll'
+  'complianceCandidatesPoll'
+  'decisionMatrixDocumentHealth'
+  'decisionMatrixSopFolderWalk'
+  'detourImagesPurge'
+  'eventTelemetryMaintenance'
+  'fixedRouteDeparturesPoll'
+  'gtfsAlertsPoll'
+  'gtfsDelaysPoll'
+  'gtfsMissedTripsPoll'
+  'gtfsStopsSync'
+  'gtfsVehiclePositionsPoll'
+  'onDemandDeparturesPoll'
+  'onDemandInterventionsEvaluate'
+  'onDemandSpareReconcile'
+  'onDemandZonesSync'
+  'otpDailyFeedPoll'
+  'otpMonthlyFeedPoll'
+  'predictionCapture'
+  'predictionScore'
+  'spareMissedTripsEvaluate'
+  'spareMissedTripsIngest'
+  'suggestedAlertsExpire'
+  'tripStartActualsPoll'
+  'tripStartLogMaterialize'
+]
 
 module restApiFunction 'modules/functionapp.bicep' = {
   name: 'rest-api-function-deployment'
@@ -190,7 +230,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     availPulloutUrl: availPulloutUrl
     // Retired here only once Spare delivers to the receiver's own app below;
     // switching it off first would drop deliveries.
-    disabledFunctions: spareWebhookOnRestApi ? [] : ['onDemandSpareWebhook']
+    disabledFunctions: concat(spareWebhookOnRestApi ? [] : ['onDemandSpareWebhook'], restApiTimersEnabled ? [] : filter(restApiTimerNames, name => !contains(restApiTimersEnabledEarly, name)))
   }
 }
 

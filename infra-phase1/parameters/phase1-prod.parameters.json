@@ -60,7 +60,7 @@
       "value": "https://acs-mvta-onboard-prod.unitedstates.communication.azure.com"
     },
     "acsEmailFrom": {
-      "value": ""
+      "value": "alerts@mvta.com"
     },
     "acsSmsFrom": {
       "value": ""
@@ -69,12 +69,24 @@
       "value": "https://alerts.mvta.com"
     },
     "accessManagementConfigJson": {
-      "value": ""
+      "value": "{\"environment\":\"prod\",\"application_id\":\"b9d88e43-3e8f-4e89-ad11-d894867e6e93\",\"service_principal_id\":\"73dbe0dd-e751-4763-a2c9-08bec7825696\",\"guest_redirect_url\":\"https://onboard.mvta.com/console/\",\"roles\":{\"OCC.Viewer\":{\"app_role_id\":\"9c8ccf0f-aa49-4636-b8df-acd375edb6b6\"},\"OCC.Publisher\":{\"app_role_id\":\"f6500f04-9923-434e-9087-8e38f15fb913\"},\"OCC.Admin\":{\"app_role_id\":\"d4a40ec5-f234-4ab9-99dc-29d39d3d5aa0\"},\"OCC.Compliance\":{\"app_role_id\":\"86a7ce56-b35d-41bd-bb88-b17f360c4bb1\"},\"OCC.ComplianceManager\":{\"app_role_id\":\"6a34dd16-a57f-4118-b870-61d9ce0f04d3\"},\"OCC.Detour\":{\"app_role_id\":\"88b1855f-6de1-4902-a9c3-4c3671a58475\"},\"OCC.AccessAdmin\":{\"app_role_id\":\"b967ae16-d8f4-4d5f-ae98-1542b1a4b3db\"},\"System.Ingestion\":{\"app_role_id\":\"9361d199-c079-4839-b67c-7fd090e85e71\"}}}"
     },
     "allowedCorsOrigins": {
       "value": [
         "https://onboard.mvta.com",
         "https://alerts.mvta.com"
+      ]
+    },
+    "restApiTimersEnabled": {
+      "value": false
+    },
+    "restApiTimersEnabledEarly": {
+      "value": [
+        "gtfsStopsSync",
+        "gtfsVehiclePositionsPoll",
+        "gtfsMissedTripsPoll",
+        "tripStartLogMaterialize",
+        "tripStartActualsPoll"
       ]
     }
   }

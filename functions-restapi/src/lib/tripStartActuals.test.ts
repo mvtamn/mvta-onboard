@@ -95,6 +95,27 @@ test("a prediction is remembered but never promoted to an actual on its own", ()
   assert.equal(planCapture(row({ predicted_start_at: new Date(dep * 1000) }), update([{ seq: 0, stopId: "31837", dep }]), FEED_AT), null);
 });
 
+// Watched live 2026-10-22 (route 444, scheduled 13:37 UTC): as the bus pulled
+// into the origin station at 13:25:32, one delivery gave the first stop's
+// departure as that arrival instant (Delay -688), and the next went back to a
+// 13:37 prediction. Taking the first reading for good logged 2,326 trips
+// Sept 21 - Oct 21 as leaving ~15 minutes early.
+test("an actual the feed takes back - its first stop is a prediction again - is withdrawn", () => {
+  const blip = new Date((feedSeconds - 120) * 1000);
+  const have = row({ actual_start_at: blip, actual_start_source: "trip_update", start_status: "on_time", predicted_start_at: SCHEDULED });
+  const dep = feedSeconds + 600;
+  assert.deepEqual(planCapture(have, update([{ seq: 0, stopId: "31837", dep }]), FEED_AT), {
+    actual_start_at: null,
+    actual_start_source: null,
+    start_delay_seconds: null,
+    start_status: "unknown",
+    predicted_start_at: new Date(dep * 1000),
+  });
+  // Vehicle evidence is not the feed's to take back.
+  const fromVehicle = row({ actual_start_at: blip, actual_start_source: "vehicle_position", start_status: "on_time" });
+  assert.equal(planCapture(fromVehicle, update([{ seq: 0, stopId: "31837", dep }]), FEED_AT), null);
+});
+
 test("a realised time revised while it lingers replaces the earlier actual; an unchanged one writes nothing", () => {
   const first = new Date((feedSeconds - 600) * 1000);
   const have = row({ actual_start_at: first, actual_start_source: "trip_update", start_status: "late" });
@@ -123,6 +144,19 @@ test("a trip absent from the feed waits out the linger window before falling bac
   assert.equal(planCapture(row({ first_underway_at: underway }), null, early), null);
   const late = new Date(SCHEDULED.getTime() + (LINGER_WINDOW_SECONDS + 60) * 1000);
   assert.equal(planCapture(row({ first_underway_at: underway }), null, late)?.actual_start_source, "vehicle_position");
+});
+
+test("vehicle evidence hours before the scheduled start is another run's, and is not taken as the start", () => {
+  // Route 495's 23:02 trip reporting at 00:04 was once filed under the next
+  // day, about 23 hours ahead of that day's own 23:02 run.
+  const previousNight = new Date(SCHEDULED.getTime() - 23 * 3600_000);
+  const late = new Date(SCHEDULED.getTime() + (LINGER_WINDOW_SECONDS + 60) * 1000);
+  assert.equal(planCapture(row({ first_underway_at: previousNight }), null, late), null);
+  const inFeed = update([{ seq: 4260, stopId: "31838", dep: feedSeconds + 60 }]);
+  assert.equal(planCapture(row({ first_underway_at: previousNight }), inFeed, FEED_AT), null);
+  // A bus that genuinely left a few minutes early still counts.
+  const leftEarly = new Date(SCHEDULED.getTime() - 4 * 60_000);
+  assert.deepEqual(planCapture(row({ first_underway_at: leftEarly }), null, late)?.actual_start_at, leftEarly);
 });
 
 test("missed and canceled are statuses without an actual, and never overwrite one", () => {
