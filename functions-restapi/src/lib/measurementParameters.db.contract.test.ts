@@ -142,13 +142,14 @@ test("the OTP measurement parameter register against real SQL", { skip: !connect
 
     await t.test("both OTP tables can be stamped, and start out unrecorded", async () => {
       for (const table of ["OtpMonthlyRouteStopDay", "OtpDailyRouteStopHour"]) {
-        const column = (await pool.request().query<{ nullable: number; max_length: number }>(
+        const column = (await pool.request().query<{ nullable: boolean; max_length: number }>(
           `SELECT is_nullable nullable, max_length FROM sys.columns
            WHERE object_id = OBJECT_ID('dbo.${table}') AND name = 'measurement_parameters'`)).recordset[0];
         assert.ok(column, `${table} should carry the stamp`);
         // Nullable on purpose: NULL means "not recorded", and every row stored
-        // before this migration is one.
-        assert.equal(column!.nullable, 1);
+        // before this migration is one. (The driver gives sys.columns.is_nullable
+        // as a boolean, not as the BIT's 1.)
+        assert.equal(column!.nullable, true);
       }
     });
 

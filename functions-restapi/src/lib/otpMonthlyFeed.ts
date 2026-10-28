@@ -252,7 +252,7 @@ export async function upsertOtpMonthlyReport(
     ) AS src
     ON target.service_month = src.service_month AND target.route_id = src.route_id
        AND target.stop_id = src.stop_id AND target.day_of_week = src.day_of_week
-    WHEN MATCHED AND ${otpRowDiffersSql()} THEN
+    WHEN MATCHED AND (${otpRowDiffersSql()}${stamp ? ` OR ${otpParametersDifferSql()}` : ""}) THEN
       UPDATE SET
         stop_name = @stop_name, route_label = @route_label,
         pct_early = @pct_early, pct_ontime = @pct_ontime, pct_late = @pct_late,
@@ -260,15 +260,18 @@ export async function upsertOtpMonthlyReport(
         early = @early, ontime = @ontime, late = @late, missed = @missed,
         actual_departures = @actual_departures, total = @total,
         ${stamp ? "measurement_parameters = @measurement_parameters," : ""}
-        updated_at = SYSUTCDATETIME()
-    ${stamp ? `-- A re-poll under a different measurement standard that happens to
-    -- return the same numbers still has to record the standard, or the month
-    -- never leaves the re-pull list and provenance says the opposite of the
-    -- truth. MERGE takes the first matching clause, so this one fires only when
-    -- the figure did not move - and it deliberately leaves updated_at alone,
-    -- because migration 141 made that column mean "the number moved".
-    WHEN MATCHED AND ${otpParametersDifferSql()} THEN
-      UPDATE SET measurement_parameters = @measurement_parameters` : ""}
+        -- A re-poll under a different measurement standard that happens to
+        -- return the same numbers still has to record the standard, or the
+        -- month never leaves the re-pull list and provenance says the opposite
+        -- of the truth. But migration 141 made updated_at mean "the number
+        -- moved", so a stamp-only write must not touch it.
+        --
+        -- The CASE does that inside the one clause rather than a second
+        -- WHEN MATCHED, because SQL Server refuses two WHEN MATCHED clauses
+        -- that both UPDATE ("An action of type 'WHEN MATCHED' cannot appear
+        -- more than once in a 'UPDATE' clause of a MERGE statement") - which
+        -- the restatement contract test caught in CI.
+        updated_at = ${stamp ? `CASE WHEN ${otpRowDiffersSql()} THEN SYSUTCDATETIME() ELSE target.updated_at END` : "SYSUTCDATETIME()"}
     WHEN NOT MATCHED THEN
       INSERT (
         service_month, route_id, stop_id, day_of_week, stop_name, route_label,
@@ -284,8 +287,9 @@ export async function upsertOtpMonthlyReport(
       )`;
 
   // Without migration 141 there is nowhere to record a restatement. The
-  // conditional UPDATE still applies - updated_at is worth being honest about
-  // on its own - so the statement degrades to the MERGE alone.
+  // conditional UPDATE and the updated_at CASE still apply - updated_at is
+  // worth being honest about on its own - so the statement degrades to the
+  // MERGE alone.
   if (!options.ledgerReady) {
     await request.query(`${merge};`);
     return;
