@@ -56,6 +56,10 @@ async function rows(pool: sql.ConnectionPool) {
   )).recordset;
 }
 
+// The measurement standard is not what this test is about, and migration 151
+// is not applied here, so the stamp is deliberately left off (ADR 0042).
+const NO_STAMP = { measurementParameters: "2/5/10/60/0/1/1", stampReady: false };
+
 test("migration 123 lets each direction of a route/stop/hour keep its own row", skip, async () => {
   const pool = await new sql.ConnectionPool(parseConnectionString(connectionString!)).connect();
   try {
@@ -64,23 +68,23 @@ test("migration 123 lets each direction of a route/stop/hour keep its own row", 
 
     // Before 123: the second direction cannot be stored. (Under the old MERGE,
     // which matched without direction, it overwrote the first instead.)
-    await upsertOtpDailyReport(pool, row("N", 1));
-    await assert.rejects(upsertOtpDailyReport(pool, row("S", 1)), /UX_OtpDailyRouteStopHour_Key|UNIQUE KEY/);
+    await upsertOtpDailyReport(pool, row("N", 1), NO_STAMP);
+    await assert.rejects(upsertOtpDailyReport(pool, row("S", 1), NO_STAMP), /UX_OtpDailyRouteStopHour_Key|UNIQUE KEY/);
 
     await apply(pool, "migration-123-otp-daily-direction-key.sql");
     await apply(pool, "migration-123-otp-daily-direction-key.sql"); // re-runnable
 
-    await upsertOtpDailyReport(pool, row("S", 1));
+    await upsertOtpDailyReport(pool, row("S", 1), NO_STAMP);
     assert.deepEqual(await rows(pool), [{ direction: "N", total: 1 }, { direction: "S", total: 1 }]);
 
     // The poll re-reads each day three times: a re-read updates in place.
-    await upsertOtpDailyReport(pool, row("N", 2));
-    await upsertOtpDailyReport(pool, row("S", 3));
+    await upsertOtpDailyReport(pool, row("N", 2), NO_STAMP);
+    await upsertOtpDailyReport(pool, row("S", 3), NO_STAMP);
     assert.deepEqual(await rows(pool), [{ direction: "N", total: 2 }, { direction: "S", total: 3 }]);
 
     // No direction: matched NULL to NULL, so a re-read does not add a row.
-    await upsertOtpDailyReport(pool, row(null, 4));
-    await upsertOtpDailyReport(pool, row(null, 5));
+    await upsertOtpDailyReport(pool, row(null, 4), NO_STAMP);
+    await upsertOtpDailyReport(pool, row(null, 5), NO_STAMP);
     assert.deepEqual(await rows(pool), [
       { direction: null, total: 5 },
       { direction: "N", total: 2 },

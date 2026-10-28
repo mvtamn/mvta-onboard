@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OtpAuditEntry, ReasonCode } from "@mvta/shared";
-import { auditLine, auditLines, reasonLabeller, serviceDateLabel } from "./otpAuditEntries";
+import { auditLine, auditLines, parameterSentence, reasonLabeller, serviceDateLabel } from "./otpAuditEntries";
 
 const codes: ReasonCode[] = [
   { id: "r1", code: "SCHED_RECOVERY", label: "Recovery point", applies_to: "stop", sort_order: 1, is_active: true, updated_by: null, updated_at: "" },
@@ -16,6 +16,12 @@ const stopEntry = (over: Partial<Extract<OtpAuditEntry, { kind: "stop_exclusion"
 const weatherEntry = (over: Partial<Extract<OtpAuditEntry, { kind: "weather_day" }>> = {}): OtpAuditEntry => ({
   kind: "weather_day", at: "2026-09-09T08:00:00.000Z", actor: "sam@example.com",
   reason_code: "WEATHER_SNOW", scope: "Agency", route_id: null, service_date: "20260908", ...over,
+});
+
+const parametersEntry = (over: Partial<Extract<OtpAuditEntry, { kind: "measurement_parameters" }>> = {}): OtpAuditEntry => ({
+  kind: "measurement_parameters", at: "2026-10-27T15:00:00.000Z", actor: "ty@example.com",
+  effective_from: "2026-10-27", segments: "2/5/10/60/0/1/1",
+  source: "Avail confirmation 2026-10-27", notes: null, ...over,
 });
 
 describe("wording an exclusion review entry", () => {
@@ -57,13 +63,40 @@ describe("wording an exclusion review entry", () => {
     expect(auditLine(weatherEntry({ scope: "Route", route_id: 446 }), label).detail).toContain("Route 446");
   });
 
+  it("reads a declared measurement standard in minutes, not as Avail's URL", () => {
+    // "2/5/10/60/0/1/1" means nothing to a reviewer who has not seen the URL,
+    // and this entry is the only thing that explains why a month's figure moved.
+    expect(auditLine(parametersEntry(), label).title).toBe("Measurement standard declared");
+    expect(auditLine(parametersEntry(), label).detail).toBe(
+      "early 2 / late 5 min, outliers 10/60 min · outliers included, detours shown · from 2026-10-27 · Avail confirmation 2026-10-27 · by ty@example.com",
+    );
+  });
+
   it("keeps the moment the server reported, untouched", () => {
     expect(auditLine(stopEntry(), label).at).toBe("2026-09-10T12:00:00.000Z");
   });
 
   it("words a whole timeline against one set of reason codes", () => {
-    const lines = auditLines([stopEntry(), weatherEntry()], codes);
-    expect(lines.map((l) => l.title)).toEqual(["Stop excluded", "Weather day recorded"]);
+    const lines = auditLines([stopEntry(), weatherEntry(), parametersEntry()], codes);
+    expect(lines.map((l) => l.title)).toEqual([
+      "Stop excluded", "Weather day recorded", "Measurement standard declared",
+    ]);
+  });
+});
+
+describe("reading a measurement standard", () => {
+  it("says when outliers are excluded, because that moves the denominator", () => {
+    expect(parameterSentence({ segments: "2/5/10/60/0/0/1" })).toContain("outliers excluded");
+    expect(parameterSentence({ segments: "2/5/10/60/1/1/0" })).toContain("missed stops shown");
+  });
+
+  it("shows the spec-example set every figure before 2026-10-27 was polled under", () => {
+    expect(parameterSentence({ segments: "1/5/15/30/0/1/1" })).toContain("early 1 / late 5 min, outliers 15/30 min");
+  });
+
+  it("leaves a string it cannot read alone rather than inventing a standard", () => {
+    expect(parameterSentence({ segments: "" })).toBe("");
+    expect(parameterSentence({ segments: "2/5" })).toBe("2/5");
   });
 });
 

@@ -93,13 +93,23 @@ test("Pullout is the property-level path with no date suffix", () => {
 test("OTP Daily, OTP Monthly and Missed Trips build their confirmed paths", () => {
   const start = new Date("2026-09-01T00:00:00Z");
   const end = new Date("2026-09-15T00:00:00Z");
+  // The measurement standard comes from the caller now, not from a constant in
+  // availClient: it is MVTA's configuration, it is declared and dated, and the
+  // row it produces is stamped with the same string (ADR 0042).
+  const parameters = "2/5/10/60/0/1/1";
   assert.equal(
-    availUrl("otp_daily", "https://example.test/OtpByRouteStopDayHour/v1/MVTA/", { start, end }),
+    availUrl("otp_daily", "https://example.test/OtpByRouteStopDayHour/v1/MVTA/", { start, end, parameters }),
     "https://example.test/OtpByRouteStopDayHour/v1/MVTA/09-01-2026/09-15-2026/2/5/10/60/0/1/1",
   );
   assert.equal(
-    availUrl("otp_monthly", "https://example.test/OtpByRouteStopDayAgg/v1/MVTA", { month: end }),
+    availUrl("otp_monthly", "https://example.test/OtpByRouteStopDayAgg/v1/MVTA", { month: end, parameters }),
     "https://example.test/OtpByRouteStopDayAgg/v1/MVTA/09-15-2026/2/5/10/60/0/1/1",
+  );
+  // A declared set other than today's reaches the URL unchanged - the point of
+  // moving it out of a constant is that this is possible at all.
+  assert.equal(
+    availUrl("otp_monthly", "https://example.test/OtpByRouteStopDayAgg/v1/MVTA", { month: end, parameters: "1/5/15/30/0/1/1" }),
+    "https://example.test/OtpByRouteStopDayAgg/v1/MVTA/09-15-2026/1/5/15/30/0/1/1",
   );
   assert.equal(
     availUrl("missed_trips", "https://example.test/MissedTripsByRouteStopDay/v1/MVTA", { start, end }),
@@ -113,8 +123,8 @@ test("formatDateMmDdYyyy formats as MM-DD-YYYY", () => {
 
 test("rows come from the lowercase result keys Avail actually returns", async () => {
   const cases = [
-    ["otp_daily", { month: new Date(), start: new Date(), end: new Date() }, { otp: [{ RouteFareboxID: 446 }], results: [] }],
-    ["otp_monthly", { month: new Date() }, { otp: [{ RouteID: 90 }] }],
+    ["otp_daily", { month: new Date(), start: new Date(), end: new Date(), parameters: "2/5/10/60/0/1/1" }, { otp: [{ RouteFareboxID: 446 }], results: [] }],
+    ["otp_monthly", { month: new Date(), parameters: "2/5/10/60/0/1/1" }, { otp: [{ RouteID: 90 }] }],
     ["missed_trips", { start: new Date(), end: new Date() }, { missed: [{ RouteID: 3 }], results: [] }],
     ["detours", {}, { detours: [{ DetourID: 30 }], results: [] }],
   ] as const;
@@ -127,7 +137,7 @@ test("rows come from the lowercase result keys Avail actually returns", async ()
 
 test("OTP Daily also accepts the documented operation-name key", async () => {
   const a = avail(ok({ OtpByRouteStopDayHour: [{ RouteFareboxID: 446 }] }));
-  const rows = await fetchAvail("otp_daily", { start: new Date(), end: new Date() }, CONFIG, a.transport);
+  const rows = await fetchAvail("otp_daily", { start: new Date(), end: new Date(), parameters: "2/5/10/60/0/1/1" }, CONFIG, a.transport);
   assert.equal(rows.length, 1);
 });
 
@@ -135,8 +145,8 @@ test("OTP Daily also accepts the documented operation-name key", async () => {
 // PascalCase missed-trips key (2026-08-06): name the keys, never sync zero.
 test("a moved result key throws naming the keys that came back", async () => {
   for (const [endpoint, request, wrongKey] of [
-    ["otp_daily", { start: new Date(), end: new Date() }, "otpByRouteStopDayHour"],
-    ["otp_monthly", { month: new Date() }, "OtpByRouteStopDayAgg"],
+    ["otp_daily", { start: new Date(), end: new Date(), parameters: "2/5/10/60/0/1/1" }, "otpByRouteStopDayHour"],
+    ["otp_monthly", { month: new Date(), parameters: "2/5/10/60/0/1/1" }, "OtpByRouteStopDayAgg"],
     ["missed_trips", { start: new Date(), end: new Date() }, "MissedTripsByRouteStopDay"],
     ["detours", {}, "Detours"],
   ] as const) {
