@@ -104,6 +104,9 @@ import type {
   OtpMonthlyTrendPoint,
   ReasonCode,
   OtpSettingsRow,
+  OtpMeasurementParametersResponse,
+  DeclareOtpParametersInput,
+  DeclareOtpParametersResponse,
   OtpStopExclusion,
   PeriodKpiAssessment,
   PrepareSuggestedAlertInput,
@@ -2054,6 +2057,26 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<OtpSettingsRow>(
         "/api/otp-settings",
         { method: "PATCH", body: JSON.stringify({ early_late_bias_threshold: earlyLateBiasThreshold }) },
+        true,
+      );
+    },
+
+    // The measurement standard OTP is polled under, its declaration history,
+    // what each stored month was measured under, and which months are no longer
+    // comparable with today's standard (ADR 0042). Reading needs only
+    // compliance-review.view: explaining a figure must not require the right to
+    // change how it is measured.
+    getOtpMeasurementParameters() {
+      return request<OtpMeasurementParametersResponse>("/api/otp-measurement-parameters", {}, true);
+    },
+
+    // Appends a declaration. Re-pulls NOTHING - the response says which months
+    // fell out of step, and runOtpHistoricalBackfill restates the ones somebody
+    // chooses. service-configuration.edit.
+    declareOtpMeasurementParameters(input: DeclareOtpParametersInput) {
+      return request<DeclareOtpParametersResponse>(
+        "/api/otp-measurement-parameters",
+        { method: "POST", body: JSON.stringify(input) },
         true,
       );
     },

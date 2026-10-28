@@ -22,11 +22,13 @@ import { getPool } from "../lib/db";
 import { availConfig, fetchAvail } from "../lib/availClient";
 import {
   mapOtpMonthlyReport,
+  measurementStampReady,
   restatementLedgerReady,
   serviceMonthOf,
   subtractMonths,
   upsertOtpMonthlyReport,
 } from "../lib/otpMonthlyFeed";
+import { readParametersInForce } from "../lib/otpMeasurementParameters";
 import { runFeedIngestion } from "../lib/feedRun";
 
 const TRAILING_MONTHS = 3; // current + prior 2
@@ -45,6 +47,17 @@ app.timer("otpMonthlyFeedPoll", {
       const pool = await getPool();
       // Read once for the whole run, not per row (migration 141).
       const ledgerReady = await restatementLedgerReady(pool);
+      // Likewise the measurement standard and whether it can be recorded
+      // (migration 151, ADR 0042). Reading it once means every row this run
+      // stores is stamped with the standard the run actually asked for, even if
+      // a new set is declared while it is still going.
+      const stampReady = await measurementStampReady(pool);
+      const parameters = await readParametersInForce(pool);
+      context.log(
+        `Avail OTP Monthly poll: measuring at ${parameters.segments} (${parameters.origin === "register"
+          ? `declared ${parameters.declaration?.effective_from}, ${parameters.declaration?.source}`
+          : "compiled default - no declaration in force"}).`,
+      );
       const currentServiceMonth = serviceMonthOf(now);
       let receivedReports = 0;
       let storedReports = 0;
@@ -55,7 +68,7 @@ app.timer("otpMonthlyFeedPoll", {
 
         let reports;
         try {
-          reports = await fetchAvail("otp_monthly", { month: targetDate }, config);
+          reports = await fetchAvail("otp_monthly", { month: targetDate, parameters: parameters.segments }, config);
         } catch (err) {
           // One month failing must not stop the others refreshing, but it does
           // stop this run claiming coverage of the whole trailing window.
@@ -76,7 +89,12 @@ app.timer("otpMonthlyFeedPoll", {
           if (!mapped) continue;
 
           try {
-            await upsertOtpMonthlyReport(pool, mapped, { ledgerReady, currentServiceMonth });
+            await upsertOtpMonthlyReport(pool, mapped, {
+              ledgerReady,
+              currentServiceMonth,
+              measurementParameters: parameters.segments,
+              stampReady,
+            });
             upsertedCount++;
           } catch (err) {
             context.error(`Failed to upsert Avail OTP Monthly report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);

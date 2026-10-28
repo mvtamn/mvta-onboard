@@ -1833,6 +1833,18 @@ export type OtpAuditEntry =
       scope: "Agency" | "Route";
       route_id: number | null;
       service_date: string;
+    }
+  // A measurement standard was declared (ADR 0042). Not scoped to a service
+  // month, unlike the other two: one declaration governs every month polled
+  // after it, so it shows in every month's stream.
+  | {
+      kind: "measurement_parameters";
+      at: string;
+      actor: string;
+      effective_from: string;
+      segments: string;
+      source: string;
+      notes: string | null;
     };
 
 // "missed_trip" added by migration-023 - the same admin-editable table now
@@ -1869,6 +1881,85 @@ export interface OtpSettingsRow {
   early_late_bias_threshold: number;
   updated_by: string | null;
   updated_at: string | null;
+}
+
+// GET/POST /otp-measurement-parameters - the measurement standard fixed-route
+// OTP is polled under, and the provenance of the figures already stored (ADR
+// 0042). These seven numbers are MVTA's Avail configuration rather than a
+// setting of ours, and changing the early threshold rewrites every historical
+// compliance figure - which is why a declaration is dated, sourced, appended
+// rather than edited, and re-pulls nothing by itself.
+export interface OtpMeasurementParameterSet {
+  early_threshold_minutes: number;
+  late_threshold_minutes: number;
+  early_outlier_minutes: number;
+  late_outlier_minutes: number;
+  show_missed_stops: 0 | 1;
+  include_outliers: 0 | 1;
+  show_detours: 0 | 1;
+}
+
+export interface OtpParameterDeclaration extends OtpMeasurementParameterSet {
+  id: string;
+  /** YYYY-MM-DD. */
+  effective_from: string;
+  /** The URL segments sent to Avail, which is also each polled row's stamp. */
+  segments: string;
+  source: string;
+  notes: string | null;
+  declared_by: string;
+  declared_at: string;
+}
+
+export interface OtpParametersInForce {
+  set: OtpMeasurementParameterSet;
+  segments: string;
+  /** "code" means no declaration is in force and the compiled default answered. */
+  origin: "register" | "code";
+  declaration: {
+    id: string;
+    effective_from: string;
+    source: string;
+    notes: string | null;
+    declared_by: string;
+    declared_at: string;
+  } | null;
+}
+
+export interface OtpMonthProvenance {
+  service_month: string;
+  /** Null for rows stored before stamping existed - "not recorded", not "current". */
+  segments: string | null;
+  rows: number;
+  first_stored_at: string;
+  last_stored_at: string;
+}
+
+export interface OtpMonthNeedingRepull {
+  service_month: string;
+  stale: OtpMonthProvenance[];
+  rows_in_force: number;
+  rows_unrecorded: number;
+}
+
+export interface OtpMeasurementParametersResponse {
+  in_force: OtpParametersInForce;
+  history: OtpParameterDeclaration[];
+  provenance: OtpMonthProvenance[];
+  needs_repull: OtpMonthNeedingRepull[];
+}
+
+export interface DeclareOtpParametersInput extends OtpMeasurementParameterSet {
+  /** YYYY-MM-DD. */
+  effective_from: string;
+  source: string;
+  notes?: string | null;
+}
+
+export interface DeclareOtpParametersResponse {
+  declaration: OtpParameterDeclaration;
+  in_force: OtpParametersInForce;
+  needs_repull: OtpMonthNeedingRepull[];
 }
 
 export interface OtpMonthlyTrendPoint {
