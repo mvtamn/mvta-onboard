@@ -141,6 +141,17 @@ export function otpRowDiffersSql(target = "target"): string {
 }
 
 /**
+ * NULL-safe "this row was polled under a different standard", for the same
+ * reason `otpRowDiffersSql` uses EXCEPT: the stamp starts out NULL on every row
+ * stored before migration 151, and NULL -> '2/5/10/60/0/1/1' is precisely the
+ * change worth catching.
+ */
+export function otpParametersDifferSql(target = "target"): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(target)) throw new TypeError("a MERGE alias must be a plain identifier");
+  return `EXISTS (SELECT ${target}.measurement_parameters EXCEPT SELECT @measurement_parameters)`;
+}
+
+/**
  * Whether migration 141's ledger exists. Read once per run by the caller, not
  * per row: this is called about 2,700 times a night, and probing each time
  * would double the poll's round trips to answer a question that cannot change
@@ -149,6 +160,19 @@ export function otpRowDiffersSql(target = "target"): string {
 export async function restatementLedgerReady(pool: sql.ConnectionPool): Promise<boolean> {
   const probe = await pool.request().query<{ ready: number }>(`
     SELECT CASE WHEN OBJECT_ID('dbo.OtpMonthlyRestatements','U') IS NULL THEN 0 ELSE 1 END ready
+  `);
+  return probe.recordset[0]?.ready === 1;
+}
+
+/**
+ * Whether migration 151's stamp column exists. Read once per run, for the same
+ * reason as the ledger probe, and answered honestly rather than optimistically:
+ * a poll that cannot stamp its rows must still store the figures.
+ */
+export async function measurementStampReady(pool: sql.ConnectionPool): Promise<boolean> {
+  const probe = await pool.request().query<{ ready: number }>(`
+    SELECT CASE WHEN COL_LENGTH('dbo.OtpMonthlyRouteStopDay','measurement_parameters') IS NULL
+      THEN 0 ELSE 1 END ready
   `);
   return probe.recordset[0]?.ready === 1;
 }
@@ -167,6 +191,25 @@ export interface UpsertOtpMonthlyOptions {
    * answer, including a run that spans midnight on the 1st.
    */
   currentServiceMonth?: string;
+  /**
+   * The measurement standard this poll asked Avail for, as URL segments -
+   * `parameterSegments` of the set in force (ADR 0042). Stamped onto the row so
+   * a later reader can tell which stored figures are comparable with each
+   * other; without it, a correction to the parameters leaves two standards
+   * mixed in one table with nothing to separate them.
+   *
+   * Required, like `ledgerReady`, and for the same reason: a default would be
+   * indistinguishable from the truth right up to the moment it was wrong.
+   */
+  measurementParameters: string;
+  /**
+   * Whether migration 151's stamp column exists, from
+   * `measurementStampReady`. A merge can ship ahead of the migration being
+   * applied, and writing a column that is not there would fail every upsert in
+   * the run - so the statement drops the stamp instead and the rows read as
+   * "not recorded", which is what they are.
+   */
+  stampReady: boolean;
 }
 
 export async function upsertOtpMonthlyReport(
@@ -196,7 +239,11 @@ export async function upsertOtpMonthlyReport(
   request.input("actual_departures", sql.Int, mapped.actual_departures);
   request.input("total", sql.Int, mapped.total);
   request.input("current_month", sql.Char(6), currentServiceMonth);
+  if (options.stampReady) {
+    request.input("measurement_parameters", sql.NVarChar(40), options.measurementParameters);
+  }
 
+  const stamp = options.stampReady;
   const merge = `
     MERGE OtpMonthlyRouteStopDay WITH (HOLDLOCK) AS target
     USING (
@@ -205,29 +252,44 @@ export async function upsertOtpMonthlyReport(
     ) AS src
     ON target.service_month = src.service_month AND target.route_id = src.route_id
        AND target.stop_id = src.stop_id AND target.day_of_week = src.day_of_week
-    WHEN MATCHED AND ${otpRowDiffersSql()} THEN
+    WHEN MATCHED AND (${otpRowDiffersSql()}${stamp ? ` OR ${otpParametersDifferSql()}` : ""}) THEN
       UPDATE SET
         stop_name = @stop_name, route_label = @route_label,
         pct_early = @pct_early, pct_ontime = @pct_ontime, pct_late = @pct_late,
         pct_not_ontime = @pct_not_ontime, pct_missed = @pct_missed,
         early = @early, ontime = @ontime, late = @late, missed = @missed,
         actual_departures = @actual_departures, total = @total,
-        updated_at = SYSUTCDATETIME()
+        ${stamp ? "measurement_parameters = @measurement_parameters," : ""}
+        -- A re-poll under a different measurement standard that happens to
+        -- return the same numbers still has to record the standard, or the
+        -- month never leaves the re-pull list and provenance says the opposite
+        -- of the truth. But migration 141 made updated_at mean "the number
+        -- moved", so a stamp-only write must not touch it.
+        --
+        -- The CASE does that inside the one clause rather than a second
+        -- WHEN MATCHED, because SQL Server refuses two WHEN MATCHED clauses
+        -- that both UPDATE ("An action of type 'WHEN MATCHED' cannot appear
+        -- more than once in a 'UPDATE' clause of a MERGE statement") - which
+        -- the restatement contract test caught in CI.
+        updated_at = ${stamp ? `CASE WHEN ${otpRowDiffersSql()} THEN SYSUTCDATETIME() ELSE target.updated_at END` : "SYSUTCDATETIME()"}
     WHEN NOT MATCHED THEN
       INSERT (
         service_month, route_id, stop_id, day_of_week, stop_name, route_label,
         pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
         early, ontime, late, missed, actual_departures, total
+        ${stamp ? ", measurement_parameters" : ""}
       )
       VALUES (
         @service_month, @route_id, @stop_id, @day_of_week, @stop_name, @route_label,
         @pct_early, @pct_ontime, @pct_late, @pct_not_ontime, @pct_missed,
         @early, @ontime, @late, @missed, @actual_departures, @total
+        ${stamp ? ", @measurement_parameters" : ""}
       )`;
 
   // Without migration 141 there is nowhere to record a restatement. The
-  // conditional UPDATE still applies - updated_at is worth being honest about
-  // on its own - so the statement degrades to the MERGE alone.
+  // conditional UPDATE and the updated_at CASE still apply - updated_at is
+  // worth being honest about on its own - so the statement degrades to the
+  // MERGE alone.
   if (!options.ledgerReady) {
     await request.query(`${merge};`);
     return;
