@@ -28,7 +28,7 @@ const CREATE = `
 CREATE TABLE dbo.MonitoredMissedTrips (
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL,
   scheduled_departure_at DATETIME2 NOT NULL, grace_deadline_at DATETIME2 NOT NULL,
-  detection_type NVARCHAR(30) NULL,
+  detection_type NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'experimental',
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date)
 );
 CREATE TABLE dbo.TripStartLog (
@@ -60,6 +60,7 @@ interface Seed {
   reported?: Date | null;
   underway?: Date | null;
   isCase?: boolean;
+  quality?: string;
 }
 
 async function seed(pool: sql.ConnectionPool, s: Seed): Promise<void> {
@@ -69,15 +70,16 @@ async function seed(pool: sql.ConnectionPool, s: Seed): Promise<void> {
     .input("block", sql.NVarChar(100), s.block ?? null).input("stop", sql.NVarChar(100), s.stop ?? null)
     .input("scheduled", sql.DateTime2, s.scheduled).input("actual", sql.DateTime2, s.actual ?? null)
     .input("source", sql.NVarChar(20), s.source ?? null).input("predicted", sql.DateTime2, s.predicted ?? null)
-    .input("reported", sql.DateTime2, s.reported ?? null).input("underway", sql.DateTime2, s.underway ?? null);
+    .input("reported", sql.DateTime2, s.reported ?? null).input("underway", sql.DateTime2, s.underway ?? null)
+    .input("quality", sql.NVarChar(30), s.quality ?? "experimental");
   await req.query(`
     INSERT dbo.TripStartLog (service_date, trip_id, block_id, origin_stop_id, origin_stop_name, scheduled_start_at, actual_start_at, actual_start_source, predicted_start_at)
     VALUES (@day, @trip, @block, @stop, CASE WHEN @stop IS NULL THEN NULL ELSE N'Savage Park & Ride' END, @scheduled, @actual, @source, @predicted);
     IF @reported IS NOT NULL OR @underway IS NOT NULL
       INSERT dbo.GtfsTripOperationalEvidence (trip_id, service_date, vehicle_id, first_vehicle_position_at, first_underway_at)
       VALUES (@trip, @day, N'4265', @reported, @underway);
-    ${s.isCase === false ? "" : `INSERT dbo.MonitoredMissedTrips (trip_id, service_date, scheduled_departure_at, grace_deadline_at, detection_type)
-      VALUES (@trip, @day, @scheduled, DATEADD(MINUTE, 30, @scheduled), N'silent_no_show');`}
+    ${s.isCase === false ? "" : `INSERT dbo.MonitoredMissedTrips (trip_id, service_date, scheduled_departure_at, grace_deadline_at, detection_type, data_quality_status)
+      VALUES (@trip, @day, @scheduled, DATEADD(MINUTE, 30, @scheduled), N'silent_no_show', @quality);`}
   `);
 }
 
@@ -108,6 +110,10 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       // Other days at the same stop count toward its record.
       { trip: "EARLIER1", day: "20261009", stop: "S1", scheduled: at("22:30:00", "2026-10-09"), underway: at("23:05:00", "2026-10-09"), reported: at("22:00:00", "2026-10-09") },
       { trip: "EARLIER2", day: "20261002", stop: "S1", scheduled: at("22:30:00", "2026-10-02"), actual: at("22:52:00", "2026-10-02"), source: "trip_update", predicted: at("22:50:00", "2026-10-02"), reported: at("22:40:00", "2026-10-02") },
+      // Cases the evidence could not judge: retired, and raised while the feed
+      // was down. Neither ran, and neither may count against the stop.
+      { trip: "RETIRED", day: "20260909", stop: "S1", scheduled: at("22:30:00", "2026-09-09"), quality: "legacy_unverified" },
+      { trip: "FEEDGAP", day: "20260910", stop: "S1", scheduled: at("22:30:00", "2026-09-10"), quality: "unknown_data_gap" },
       // A block-mate that is not a case, with a bus; another stop's case.
       { trip: "BLOCKMATE", block: "B14C", stop: "S2", scheduled: at("20:00:00"), reported: at("19:50:00"), isCase: false },
       { trip: "ELSEWHERE", stop: "S2", scheduled: at("15:00:00") },
@@ -148,9 +154,15 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       assert.deepEqual(e.vehicle, { reported_at: "2026-10-16T22:20:00.000Z", underway_at: "2026-10-16T23:09:30.000Z", vehicle_id: "4265" });
       // DEPARTED, ECHO and BLOCKMATE run block B14C that day; ECHO had no bus.
       assert.deepEqual(e.block, { block_id: "B14C", trips: 3, trips_reported: 2 });
-      // Nine cases at S1 across three days; DEPARTED, UNDERWAY, EARLIER1 and
-      // EARLIER2 ran. Leaving DEPARTED out: 8 others, 3 of them ran.
+      // Nine judgeable cases at S1 across three days (RETIRED and FEEDGAP are
+      // left out); DEPARTED, UNDERWAY, EARLIER1 and EARLIER2 ran. Leaving
+      // DEPARTED out: 8 others, 3 of them ran.
       assert.deepEqual(e.origin_stop, { stop_id: "S1", name: "Savage Park & Ride", other_cases: 8, other_cases_ran: 3, likely_dead_zone: false });
+    });
+
+    await t.test("a retired case is judged against the stop's whole record, not one short of it", async () => {
+      const evidence = await readCaseEvidence(pool, [{ trip_id: "RETIRED", service_date: "20260909", scheduled_departure_at: at("22:30:00", "2026-09-09"), grace_deadline_at: at("23:00:00", "2026-09-09") }]);
+      assert.deepEqual(evidence.get("RETIRED|20260909")?.origin_stop, { stop_id: "S1", name: "Savage Park & Ride", other_cases: 9, other_cases_ran: 4, likely_dead_zone: false });
     });
 
     await t.test("a case the Dispatch Log never logged comes back with nothing to say", async () => {
