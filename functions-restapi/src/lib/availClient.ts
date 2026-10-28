@@ -74,12 +74,25 @@ const AGENCY_TIME_ZONE = "America/Chicago";
 const PROPERTY = "MVTA";
 
 // OTP report parameters, shared by the daily and monthly operations.
+//
+// These are MVTA's configured measurement standard, confirmed by Avail on
+// 2026-10-27, not our own choice. They were previously 1/5/15/30: the
+// thresholds were believed enum-constrained (they are configurable) and the
+// outlier values were copied from the example in Avail's API specification to
+// rule out our configuration as a source of error, then never aligned. Under
+// the old early threshold OnBoard counted a departure 1-2 minutes early as
+// early, where MVTA's standard counts it on time - measuring the agency
+// stricter than its own rule. Changing any of these restates every figure the
+// feed has ever stored, so they are not a tuning knob.
 const OTP_PARAMETERS = [
-  1, // early threshold - enum-constrained per the API schema
-  5, // late threshold - enum-constrained per the API schema
-  15, // early outlier minutes - owner decision
-  30, // late outlier minutes - owner decision
+  2, // early threshold minutes - MVTA configured
+  5, // late threshold minutes - MVTA configured
+  10, // early outlier minutes - MVTA configured
+  60, // late outlier minutes - MVTA configured
   0, // show missed stops
+  // Include outliers stays 1 pending Avail's answer on whether the BI report
+  // drops outlying departures from its denominator - the likeliest cause of
+  // our 4,271 departures on route 465 against the report's 4,045 (+5.6%).
   1, // include outliers
   1, // show detours
 ].join("/");
