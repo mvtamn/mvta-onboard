@@ -59,6 +59,20 @@ Avail's own BI report (see Tier 1 below). The restatement makes OnBoard's number
 trustworthy, not less. What it invalidates is the acceptance standard, which was calibrated
 against the wrong numbers.
 
+> **Expect every month to appear on the re-pull list once migration 151 is applied — and
+> ignore it.** 1.6.43 (ADR 0042) stamps each stored row with the parameter set it was polled
+> under, and treats an unstamped row as "not recorded", which `monthsNeedingRepull` reports
+> as needing a re-pull. The 2026-10-28/29 backfills ran *before* that stamping existed, so
+> every row is correct but unstamped. The months are genuinely current; the list is
+> reporting absence of a stamp, not a stale figure. Either re-pull once more after the
+> migration purely to acquire the stamps, or confirm from this document and the restatement
+> ledger that the figures are already on `2/5/10/60/0/1/1`. Do not read the list as evidence
+> the backfill failed.
+
+*(Note for anyone reading 1.6.43's changelog entry: its statement that the Tier A months
+"all still hold `1/5/15/30` figures" was true when written on 2026-10-27 and was overtaken
+by the backfills on 2026-10-28/29.)*
+
 **How to use this:** **Tier A is the decision** — OnBoard's figure against the manual one,
 for three months, against an agreed tolerance. Tiers 1 and 3 are the evidence that makes a
 match there mean something. Tier 2 is already run. Tier 4 is the process questions that come
