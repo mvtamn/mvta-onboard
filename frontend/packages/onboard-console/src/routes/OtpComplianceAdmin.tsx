@@ -164,12 +164,21 @@ function monthsBetweenClient(fromYyyymm: string, toYyyymm: string): string[] {
   return months;
 }
 
-// One-time (repeatable) admin action - loops one POST per month rather than
-// sending a whole range in one request. CONFIRMED live 2026-08-06: a
-// 5-month range in a single request hit a 504 gateway timeout (Missed
-// Trips alone has separately taken 15+ minutes for just 3 months). Looping
-// client-side keeps each request bounded and shows real per-month progress
-// instead of one opaque spinner that eventually fails with nothing to show.
+// One-time (repeatable) admin action - loops one POST per month, and per
+// phase within a month, rather than sending a whole range in one request.
+// CONFIRMED live 2026-08-06: a 5-month range in a single request hit a
+// 504 gateway timeout (Missed Trips alone has separately taken 15+ minutes
+// for just 3 months). Looping client-side keeps each request bounded and
+// shows real per-month progress instead of one opaque spinner that
+// eventually fails with nothing to show.
+//
+// The two phases are two requests because they used to be one, and the OTP
+// result rode back on a response the Missed Trips reload was still holding
+// open: on dev 2026-10-28 both 202605 and 202606 reported "OTP Monthly -
+// Request failed (504)" and "0 OTP Monthly rows upserted" for months whose
+// OTP figures had been written in full. Asking for each phase separately
+// means a phase that finished is reported as finished whatever happens to
+// the other one, and a failure now names the phase that actually failed.
 function OtpHistoricalBackfillPanel() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -177,6 +186,9 @@ function OtpHistoricalBackfillPanel() {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<(OtpHistoricalBackfillResponse | null)[]>([]);
   const [totalMonths, setTotalMonths] = useState(0);
+  // Counted in whole months, not in requests or in partially filled rows: a
+  // month is processed once both of its phases have answered.
+  const [completed, setCompleted] = useState(0);
 
   async function run() {
     if (!from || !to) {
@@ -196,27 +208,37 @@ function OtpHistoricalBackfillPanel() {
     setError(null);
     setResults([]);
     setTotalMonths(months.length);
-    for (const month of months) {
-      try {
-        const response = await api.runOtpHistoricalBackfill({ month });
-        setResults((r) => [...r, response]);
-      } catch (err) {
-        setResults((r) => [
-          ...r,
-          {
-            service_month: month,
-            otp_monthly: { reports_seen: 0, upserted: 0, error: err instanceof ApiError ? err.message : "Request failed" },
-            missed_trips: { reports_seen: 0, rows_inserted: 0 },
-          },
-        ]);
+    setCompleted(0);
+    for (const [index, month] of months.entries()) {
+      let merged: OtpHistoricalBackfillResponse = { service_month: month };
+      for (const phase of ["otp_monthly", "missed_trips"] as const) {
+        try {
+          const response = await api.runOtpHistoricalBackfill({ month, phase });
+          merged = { ...merged, ...response, service_month: month };
+        } catch (err) {
+          const error = err instanceof ApiError ? err.message : "Request failed";
+          merged =
+            phase === "otp_monthly"
+              ? { ...merged, otp_monthly: { reports_seen: 0, upserted: 0, error } }
+              : { ...merged, missed_trips: { reports_seen: 0, rows_inserted: 0, error } };
+        }
+        // Rendered as each phase lands, so a slow Missed Trips reload cannot
+        // hide an OTP result that is already in.
+        const settled = merged;
+        setResults((r) => {
+          const next = [...r];
+          next[index] = settled;
+          return next;
+        });
       }
+      setCompleted(index + 1);
     }
     setRunning(false);
   }
 
-  const totalUpserted = results.reduce((sum, r) => sum + (r?.otp_monthly.upserted ?? 0), 0);
-  const totalMissedRows = results.reduce((sum, r) => sum + (r?.missed_trips.rows_inserted ?? 0), 0);
-  const errored = results.filter((r) => r?.otp_monthly.error || r?.missed_trips.error);
+  const totalUpserted = results.reduce((sum, r) => sum + (r?.otp_monthly?.upserted ?? 0), 0);
+  const totalMissedRows = results.reduce((sum, r) => sum + (r?.missed_trips?.rows_inserted ?? 0), 0);
+  const errored = results.filter((r) => r?.otp_monthly?.error || r?.missed_trips?.error);
   const done = !running && results.length > 0;
 
   return (
@@ -238,14 +260,14 @@ function OtpHistoricalBackfillPanel() {
           <input className="f" type="month" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
         <button className="btn-post" disabled={running} onClick={() => void run()}>
-          {running ? `Running… (${results.length}/${totalMonths})` : "Run backfill"}
+          {running ? `Running… (${completed}/${totalMonths})` : "Run backfill"}
         </button>
       </div>
       {error ? <p className="error-text">{error}</p> : null}
       {results.length > 0 ? (
         <div className={done && errored.length === 0 ? "ok-text" : "empty-note"} style={{ marginTop: 10 }}>
           <p>
-            {results.length} of {totalMonths} month{totalMonths === 1 ? "" : "s"} processed
+            {completed} of {totalMonths} month{totalMonths === 1 ? "" : "s"} processed
             {done ? "" : "…"}: {totalUpserted} OTP Monthly rows upserted, {totalMissedRows} Missed
             Trips rows reloaded so far.
           </p>
@@ -253,9 +275,9 @@ function OtpHistoricalBackfillPanel() {
             <ul>
               {errored.map((r) => (
                 <li key={r!.service_month}>
-                  {r!.service_month}: {r!.otp_monthly.error ? `OTP Monthly - ${r!.otp_monthly.error}` : ""}
-                  {r!.otp_monthly.error && r!.missed_trips.error ? "; " : ""}
-                  {r!.missed_trips.error ? `Missed Trips - ${r!.missed_trips.error}` : ""}
+                  {r!.service_month}: {r!.otp_monthly?.error ? `OTP Monthly - ${r!.otp_monthly.error}` : ""}
+                  {r!.otp_monthly?.error && r!.missed_trips?.error ? "; " : ""}
+                  {r!.missed_trips?.error ? `Missed Trips - ${r!.missed_trips.error}` : ""}
                 </li>
               ))}
             </ul>

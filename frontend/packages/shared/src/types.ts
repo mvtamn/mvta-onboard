@@ -1981,14 +1981,29 @@ export interface OtpMonthlyTrendPoint {
 // request, not a range - CONFIRMED live 2026-08-06: a 5-month range in a
 // single request hit a 504 gateway timeout. The console loops one request
 // per month (see OtpModule.tsx's OtpHistoricalBackfillPanel) instead.
+//
+// ONE PHASE per request too, for the same reason: the two feeds used to run
+// back to back inside a single request, and the response carrying the OTP
+// result was never written until Missed Trips had finished as well. A month
+// whose Missed Trips reload outran the gateway reported "Request failed
+// (504)" and "0 rows upserted" for an OTP half that had in fact been
+// written completely (observed on dev 2026-10-28 for 202605 and 202606).
+// Each phase now answers for itself. `phase` is optional so the endpoint
+// still does both when nothing asks for one, but the console always asks.
+export type OtpHistoricalBackfillPhase = "otp_monthly" | "missed_trips";
+
 export interface OtpHistoricalBackfillInput {
   month: string; // YYYYMM
+  phase?: OtpHistoricalBackfillPhase;
 }
 
+// A phase that was not asked for is absent, never a zero: "0 rows upserted"
+// and "not run" are different facts, and reporting the first for the second
+// is the bug this shape exists to make unrepresentable.
 export interface OtpHistoricalBackfillResponse {
   service_month: string;
-  otp_monthly: { reports_seen: number; upserted: number; error?: string };
-  missed_trips: { reports_seen: number; rows_inserted: number; error?: string };
+  otp_monthly?: { reports_seen: number; upserted: number; error?: string };
+  missed_trips?: { reports_seen: number; rows_inserted: number; error?: string };
 }
 
 // GET /maps/token - short-lived Azure AD token scoped to Azure Maps, for

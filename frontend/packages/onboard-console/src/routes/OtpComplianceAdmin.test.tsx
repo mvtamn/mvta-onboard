@@ -32,11 +32,15 @@ vi.mock("../config.js", () => ({ api: {
   getDateExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
   getStopExclusions: vi.fn().mockResolvedValue({ exclusions: [] }),
   getOtpAuditStream: vi.fn().mockResolvedValue({ entries: [] }),
-  runOtpHistoricalBackfill: vi.fn().mockResolvedValue({
-    service_month: "202605",
-    otp_monthly: { reports_seen: 2612, upserted: 2612 },
-    missed_trips: { reports_seen: 0, rows_inserted: 0 },
-  }),
+  // One phase per request, and a response that carries only the phase asked
+  // for - a phase that did not run is absent, not zero.
+  runOtpHistoricalBackfill: vi.fn().mockImplementation(({ month, phase }: { month: string; phase?: string }) =>
+    Promise.resolve(
+      phase === "missed_trips"
+        ? { service_month: month, missed_trips: { reports_seen: 0, rows_inserted: 0 } }
+        : { service_month: month, otp_monthly: { reports_seen: 2612, upserted: 2612 } },
+    ),
+  ),
   // The measurement standard and the provenance of what is already stored
   // (ADR 0042). 2026-05 is one of the three months the OTP compliance
   // validation compares against the manual figure, and it still holds figures
@@ -122,7 +126,37 @@ describe("OTP compliance administration", () => {
     expect(screen.getByText("2,612")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Re-pull" }));
-    expect(api.runOtpHistoricalBackfill).toHaveBeenCalledWith({ month: "202605" });
+    // The OTP phase alone: a re-pull has no business waiting on a Missed
+    // Trips reload it never asked for.
+    expect(api.runOtpHistoricalBackfill).toHaveBeenCalledWith({ month: "202605", phase: "otp_monthly" });
+  });
+
+  // The defect this shape exists to prevent, as seen on dev 2026-10-28: the
+  // backfill reported "OTP Monthly - Request failed (504)" and 0 rows for
+  // 202605 and 202606, both of which had been written in full, because the
+  // OTP result rode back on a response the Missed Trips reload was still
+  // holding open. Each phase is its own request now, so a Missed Trips
+  // failure cannot be reported as an OTP one.
+  it("reports a finished OTP phase even when the Missed Trips phase fails", async () => {
+    const { api } = (await import("../config.js")) as unknown as {
+      api: { runOtpHistoricalBackfill: ReturnType<typeof vi.fn> };
+    };
+    api.runOtpHistoricalBackfill.mockClear();
+    api.runOtpHistoricalBackfill.mockImplementation(({ month, phase }: { month: string; phase?: string }) =>
+      phase === "missed_trips"
+        ? Promise.reject(new Error("504"))
+        : Promise.resolve({ service_month: month, otp_monthly: { reports_seen: 2612, upserted: 2612 } }),
+    );
+    render(<OtpComplianceAdmin />);
+
+    await screen.findByText("Historical data backfill");
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-05" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-05" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run backfill" }));
+
+    expect(await screen.findByText(/2612 OTP Monthly rows upserted/)).toBeInTheDocument();
+    expect(screen.getByText(/202605: Missed Trips - Request failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/OTP Monthly - Request failed/)).not.toBeInTheDocument();
   });
 
   // The hazard the ADR is answering: an admin control that silently restates

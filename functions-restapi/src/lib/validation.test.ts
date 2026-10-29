@@ -556,6 +556,16 @@ test("historical backfill rejects a malformed or missing month", () => {
   assert.ok(validateOtpHistoricalBackfill({}).length > 0);
 });
 
+// One phase per request is what keeps a finished phase's result from waiting
+// on the other phase's work. An omitted phase still means both, as it did
+// before the endpoint could be asked for one.
+test("historical backfill takes either phase, or none, and nothing else", () => {
+  assert.deepStrictEqual(validateOtpHistoricalBackfill({ month: "202601", phase: "otp_monthly" }), []);
+  assert.deepStrictEqual(validateOtpHistoricalBackfill({ month: "202601", phase: "missed_trips" }), []);
+  assert.ok(validateOtpHistoricalBackfill({ month: "202601", phase: "both" }).length > 0);
+  assert.ok(validateOtpHistoricalBackfill({ month: "202601", phase: "" }).length > 0);
+});
+
 test("valid upload-url request passes with no errors", () => {
   const errors = validateUploadUrlRequest({ file_name: "sign.jpg", content_type: "image/jpeg" });
   assert.deepStrictEqual(errors, []);
