@@ -32,8 +32,9 @@ export function serviceDateLabel(yyyymmdd: string): string {
  * One entry as a heading and a line of detail.
  *
  * A stop exclusion says what was decided; a weather day says what was
- * recorded. Both name who did it - the timeline is an audit trail, and an
- * action without an actor is not one.
+ * recorded; a declared measurement standard says what every figure after it is
+ * measured against. All three name who did it - the timeline is an audit trail,
+ * and an action without an actor is not one.
  */
 export function auditLine(entry: OtpAuditEntry, label: (code: string | null) => string): AuditLine {
   if (entry.kind === "stop_exclusion") {
@@ -43,12 +44,40 @@ export function auditLine(entry: OtpAuditEntry, label: (code: string | null) => 
       at: entry.at,
     };
   }
+  if (entry.kind === "measurement_parameters") {
+    // No reason code: this is not a decision about a stop or a date, it is the
+    // standard the whole month is measured against. The segments are spelled
+    // out rather than shown raw, because "2/5/10/60/0/1/1" means nothing to a
+    // reader who has not seen Avail's URL.
+    return {
+      title: "Measurement standard declared",
+      detail: `${parameterSentence(entry)} · from ${entry.effective_from} · ${entry.source} · by ${entry.actor}`,
+      at: entry.at,
+    };
+  }
   const where = entry.scope === "Agency" ? "All routes" : `Route ${entry.route_id}`;
   return {
     title: "Weather day recorded",
     detail: `${serviceDateLabel(entry.service_date)} · ${where} · ${label(entry.reason_code)} · by ${entry.actor}`,
     at: entry.at,
   };
+}
+
+/**
+ * "early 2 / late 5 min, outliers 10/60" - the seven URL segments as a
+ * reviewer would say them. Built from `segments` rather than the numbered
+ * fields so one parser serves the audit stream and the provenance table, which
+ * only ever have the string.
+ */
+export function parameterSentence(entry: { segments: string }): string {
+  const [early, late, earlyOutlier, lateOutlier, missed, outliers, detours] = entry.segments.split("/");
+  if (!early || !late || !earlyOutlier || !lateOutlier) return entry.segments;
+  const flags = [
+    missed === "1" ? "missed stops shown" : null,
+    outliers === "1" ? "outliers included" : "outliers excluded",
+    detours === "1" ? "detours shown" : null,
+  ].filter(Boolean);
+  return `early ${early} / late ${late} min, outliers ${earlyOutlier}/${lateOutlier} min · ${flags.join(", ")}`;
 }
 
 export function auditLines(

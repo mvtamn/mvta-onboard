@@ -203,7 +203,33 @@ Each case is stamped with its result. Do not repeat it.
 **What to send back:** the Tier A comparison table filled in, an explanation for every
 difference above 0.1 points, and a recommendation on the acceptance standard above.
 
-**Two things to know before you start.**
+**Three things to know before you start.**
+
+> **The three decision months must be re-pulled before they are compared (added 2026-10-27).**
+> On 2026-10-27 Avail confirmed MVTA's BI measurement parameters are early 2 / late 5 / early
+> outlier 10 / late outlier 60. OnBoard had been asking for 1/5/15/30 — the thresholds were
+> believed fixed by the API schema, and the outlier values came from the example in Avail's own
+> specification, used to rule out our configuration while the feed was being diagnosed and never
+> aligned afterwards. The early threshold is the one that bites: at 1 minute a departure 1–2
+> minutes early counted as early, where MVTA's standard counts it on time, so OnBoard was
+> measuring the agency stricter than its own rule and the correction raises OTP slightly.
+>
+> **2026-05, 2026-06 and 2026-08 all still hold figures polled under the old parameters.** They
+> are outside the poller's trailing window (current month plus two), so nothing refreshed them.
+> Comparing them against the manual figure as they stand compares two different measurement
+> standards, and any gap would read as a defect in OnBoard rather than as the correction it is.
+>
+> Administration → OTP Compliance now lists every month measured under a different standard,
+> with a **Re-pull** button each (ADR 0042). Re-pull all three, note the figure before and after
+> — the move is the correction and belongs in the Tier A table — and then work the comparison.
+> The acceptance standard itself is unchanged: three months, 0.5 points, no tier change.
+>
+> One open question still sits under this. `Include Outliers` is 1 and deliberately unchanged,
+> pending Avail's answer on whether the BI report drops outlying departures from its
+> denominator. It is the likeliest explanation of the gap between the API and the report —
+> 4,271 departures on route 465 against the report's 4,045, 5.6% more. **If that answer has
+> arrived, say so before the comparison is run**: it changes the denominator, and it would be a
+> fourth declared standard rather than a discrepancy to explain.
 
 *The system changed on 2026-09-22.* Weather days now subtract from the figure, they can be
 approved from the console, and a restatement of a closed month is recorded. If anything
@@ -222,6 +248,7 @@ feed rows, and it is not the live figure.
 | Decision months | **2026-05**, **2026-06**, **2026-08** — see "What this is for" |
 | Also useful | **2026-07**, the only other month carrying approved and rejected stop exclusions |
 | Never validate a page reading | "Sample data" — that is mock preview, not the feed |
+| Before comparing a month | Re-pull it if Administration → OTP Compliance lists it as measured under a different standard |
 
 Rob needs two things:
 

@@ -30,7 +30,14 @@ import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateOtpHistoricalBackfill } from "../lib/validation";
 import { availConfig, fetchAvail } from "../lib/availClient";
-import { mapOtpMonthlyReport, restatementLedgerReady, serviceMonthOf, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
+import {
+  mapOtpMonthlyReport,
+  measurementStampReady,
+  restatementLedgerReady,
+  serviceMonthOf,
+  upsertOtpMonthlyReport,
+} from "../lib/otpMonthlyFeed";
+import { readParametersInForce } from "../lib/otpMeasurementParameters";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
@@ -76,21 +83,32 @@ app.http("otpHistoricalBackfill", {
 
     const pool = await getPool();
     const ledgerReady = await restatementLedgerReady(pool);
+    const stampReady = await measurementStampReady(pool);
     const currentServiceMonth = serviceMonthOf(new Date());
+    // This is the one action that restates a closed month on purpose, which is
+    // why ADR 0042 leaves re-pulling to a human rather than doing it on a
+    // declaration: the month comes back measured at whatever is in force now,
+    // and that is what the rows will say they were measured at.
+    const parameters = await readParametersInForce(pool);
 
-    let otpResult: { reports_seen: number; upserted: number; error?: string };
+    let otpResult: { reports_seen: number; upserted: number; measurement_parameters?: string; error?: string };
     try {
-      const reports = await fetchAvail("otp_monthly", { month: monthToDate(month) }, otp.config);
+      const reports = await fetchAvail("otp_monthly", { month: monthToDate(month), parameters: parameters.segments }, otp.config);
       let upserted = 0;
       for (const report of reports) {
         const mapped = mapOtpMonthlyReport(report, month);
         if (!mapped) continue;
         // A backfill that changes an already-ingested past month is a
         // restatement like any other, and is recorded as one.
-        await upsertOtpMonthlyReport(pool, mapped, { ledgerReady, currentServiceMonth });
+        await upsertOtpMonthlyReport(pool, mapped, {
+          ledgerReady,
+          currentServiceMonth,
+          measurementParameters: parameters.segments,
+          stampReady,
+        });
         upserted++;
       }
-      otpResult = { reports_seen: reports.length, upserted };
+      otpResult = { reports_seen: reports.length, upserted, measurement_parameters: parameters.segments };
       context.log(`OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

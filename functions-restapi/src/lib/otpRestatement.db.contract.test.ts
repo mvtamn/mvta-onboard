@@ -14,7 +14,13 @@ import { restatementLedgerReady, upsertOtpMonthlyReport, type MappedOtpMonthlyRe
 // up across two runs over real rows.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_otp_restatement_contract";
-const MIGRATIONS = ["014-otp-monthly", "016-route-classification", "141-otp-monthly-restatements"];
+const MIGRATIONS = [
+  "014-otp-monthly", "016-route-classification", "141-otp-monthly-restatements",
+  // 151 is here because its stamp shares the MERGE with the ledger: a re-poll
+  // under a new measurement standard has to record the standard without being
+  // mistaken for Avail restating the figure (ADR 0042).
+  "151-otp-measurement-parameters",
+];
 
 function batches(text: string): string[] {
   return text.split(/^\s*GO\s*$/im).map(b => b.trim()).filter(Boolean);
@@ -43,7 +49,8 @@ const row = (over: Partial<MappedOtpMonthlyReport> = {}): MappedOtpMonthlyReport
 
 // September is "now" throughout: 202608 is a closed month, 202609 is the one
 // still filling.
-const NOW = { ledgerReady: true, currentServiceMonth: "202609" };
+const DECLARED = "2/5/10/60/0/1/1";
+const NOW = { ledgerReady: true, currentServiceMonth: "202609", measurementParameters: DECLARED, stampReady: true };
 
 test("recording an Avail restatement against real SQL", { skip: !connectionString && "DECISION_MATRIX_TEST_SQL_CONNECTION_STRING not set" }, async t => {
   const pool = await ownDatabase(connectionString!);
@@ -142,13 +149,36 @@ test("recording an Avail restatement against real SQL", { skip: !connectionStrin
       assert.equal(Number(entry.new_total), 40);
     });
 
+    await t.test("a re-poll under a new standard stamps the row without claiming Avail restated it", async () => {
+      // The case the stamp-only MERGE clause exists for: the parameters moved,
+      // the figures did not. Provenance has to change; updated_at must not,
+      // because migration 141 made it mean "the number moved".
+      const before = await stamps();
+      const ledgerBefore = Number(await ledger());
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      await upsertOtpMonthlyReport(pool, row({ ontime: 70, total: 98, stop_name: "Apple Valley Transit Station", pct_ontime: 0.714 }), {
+        ...NOW,
+        measurementParameters: "1/5/15/30/0/1/1",
+      });
+
+      const after = await stamps();
+      assert.equal(after.updated_at.getTime(), before.updated_at.getTime());
+      assert.equal(Number(await ledger()), ledgerBefore);
+      const stamped = (await pool.request().query<{ measurement_parameters: string }>(
+        "SELECT measurement_parameters FROM OtpMonthlyRouteStopDay WHERE service_month='202608' AND stop_id=100")).recordset[0];
+      assert.equal(stamped.measurement_parameters, "1/5/15/30/0/1/1");
+
+      // Put it back, so the later subtests see the declared set.
+      await upsertOtpMonthlyReport(pool, row({ ontime: 70, total: 98, stop_name: "Apple Valley Transit Station", pct_ontime: 0.714 }), NOW);
+    });
+
     await t.test("without the ledger the upsert still runs, and still tells the truth about updated_at", async () => {
       await pool.request().batch("DROP VIEW dbo.vw_OtpRestatement; DROP TABLE dbo.OtpMonthlyRestatements;");
       assert.equal(await restatementLedgerReady(pool), false);
 
       const before = await stamps();
       await new Promise((resolve) => setTimeout(resolve, 15));
-      await upsertOtpMonthlyReport(pool, row({ ontime: 70, total: 98, stop_name: "Apple Valley Transit Station", pct_ontime: 0.714 }), { ledgerReady: false });
+      await upsertOtpMonthlyReport(pool, row({ ontime: 70, total: 98, stop_name: "Apple Valley Transit Station", pct_ontime: 0.714 }), { ledgerReady: false, measurementParameters: DECLARED, stampReady: true });
       assert.equal((await stamps()).updated_at.getTime(), before.updated_at.getTime());
     });
   } finally {

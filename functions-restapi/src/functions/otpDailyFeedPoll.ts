@@ -17,7 +17,14 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { availConfig, fetchAvail } from "../lib/availClient";
 import { agencyServiceDate } from "../lib/missedTripTime";
-import { mapOtpDailyReport, otpDailyCoverage, otpDailyWindow, upsertOtpDailyReport } from "../lib/otpDailyFeed";
+import {
+  dailyMeasurementStampReady,
+  mapOtpDailyReport,
+  otpDailyCoverage,
+  otpDailyWindow,
+  upsertOtpDailyReport,
+} from "../lib/otpDailyFeed";
+import { readParametersInForce } from "../lib/otpMeasurementParameters";
 import { runFeedIngestion } from "../lib/feedRun";
 
 const RETENTION_DAYS = 90;
@@ -34,8 +41,16 @@ app.timer("otpDailyFeedPoll", {
     const now = new Date();
     const window = otpDailyWindow(now);
     await runFeedIngestion("avail_otp_daily", context, async () => {
-      const reports = await fetchAvail("otp_daily", { start: window.requestStart, end: window.requestEnd }, config);
       const pool = await getPool();
+      // The measurement standard in force, read before the request so the URL
+      // and the stamp cannot disagree (ADR 0042). Same seven numbers as the
+      // monthly feed, from the same register.
+      const parameters = await readParametersInForce(pool);
+      const reports = await fetchAvail(
+        "otp_daily",
+        { start: window.requestStart, end: window.requestEnd, parameters: parameters.segments },
+        config,
+      );
 
       // A missing table is a failure of this feed, not a quiet skip: the ledger
       // would otherwise keep reading as whatever it last said.
@@ -46,6 +61,7 @@ app.timer("otpDailyFeedPoll", {
         return { kind: "failed", reason: "OtpDailyRouteStopHour does not exist (migration 020 not applied)." };
       }
 
+      const stampReady = await dailyMeasurementStampReady(pool);
       let upsertedCount = 0;
       const storedByDate = new Map<string, number>();
       for (const report of reports) {
@@ -59,7 +75,7 @@ app.timer("otpDailyFeedPoll", {
         if (!mapped) continue;
 
         try {
-          await upsertOtpDailyReport(pool, mapped);
+          await upsertOtpDailyReport(pool, mapped, { measurementParameters: parameters.segments, stampReady });
           upsertedCount++;
           storedByDate.set(mapped.calendar_date, (storedByDate.get(mapped.calendar_date) ?? 0) + 1);
         } catch (err) {
