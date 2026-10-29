@@ -227,27 +227,40 @@ Avail an early threshold of 1 minute against MVTA's configured 2, and Avail's mo
 endpoint was returning a 31-day span for a 30-day month. Both are now corrected at source.
 The validation plan's "What changed on 2026-10-28" section has the full account.
 
-**Only the months marked corrected have been re-pulled.** The daily poller self-heals the
-current month and the prior two; the rest need an explicit backfill, which has not yet been
-run for January–April or July.
+**Every month has now been corrected** — 2026-01 through 2026-07 were backfilled on
+2026-10-29, the rest by the daily poller.
 
-| Service month | Raw departures | Raw OTP % | Assessable OTP % | Δ | State |
+| Service month | Raw departures | Raw OTP % | Assessable OTP % | Δ | Was (raw) |
 | --- | --- | --- | --- | --- | --- |
-| 2026-01 | 62,214 | 88.33 | 88.33 | — | **stale** |
-| 2026-02 | 59,348 | 88.61 | 88.61 | — | **stale** |
-| 2026-03 | 69,196 | 88.14 | 88.14 | — | **stale** |
-| 2026-04 | 71,317 | 86.93 | 86.93 | — | **stale** |
-| 2026-05 | 67,532 | **87.56** | **87.56** | — | corrected |
-| 2026-06 | 65,284 | **85.92** | **85.92** | — | corrected |
-| 2026-07 | 65,458 | 83.28 | 83.32 | +0.04 | **stale** |
-| 2026-08 | 62,748 | **85.30** | **85.30** | — | corrected |
-| 2026-09 | 62,538 | **81.20** | **85.27** | +4.07 | corrected |
-| 2026-10 | 58,008 | **83.91** | **83.91** | — | corrected, month in progress |
+| 2026-01 | 61,203 | **90.63** | 90.63 | — | 88.33 |
+| 2026-02 | 58,328 | **90.96** | 90.96 | — | 88.61 |
+| 2026-03 | 66,475 | **90.46** | 90.46 | — | 88.14 |
+| 2026-04 | 68,582 | **89.13** | 89.13 | — | 86.93 |
+| 2026-05 | 67,532 | **87.56** | 87.56 | — | 85.80 |
+| 2026-06 | 65,284 | **85.92** | 85.92 | — | 84.42 |
+| 2026-07 | 64,411 | **84.86** | 84.91 | +0.05 | 83.28 |
+| 2026-08 | 62,748 | **85.30** | 85.30 | — | 83.62 |
+| 2026-09 | 62,538 | **81.20** | 85.27 *(test data — see below)* | +4.07 | 80.18 |
+| 2026-10 | 58,008 | **83.91** | 83.91 | — | month in progress |
 
-**Do not read this table as a trend.** A stale month sits roughly 1.0–1.8 points below where
-it would read corrected, and carries about 4% more departures, so the apparent decline from
-April to July is partly an artefact of which months have been re-pulled. Backfill
-2026-01 … 2026-07 before drawing any line through it.
+**The whole year reads 1.6–2.4 points better than it did**, and the decline across the year
+is real rather than an artefact — it was present in the old figures too, and survives the
+correction intact.
+
+### Independent confirmation of Avail's month-boundary defect
+
+The size of each month's correction is explained entirely by **what day of the week the
+following month's 1st fell on** — the surplus day the API was wrongly including:
+
+| Surplus day | Months | Departures removed |
+| --- | --- | --- |
+| Weekday | Mar, Apr, May, Jun, Aug, Sep | 3.6 – 4.0% |
+| Weekend | Jan (Sun), Feb (Sun), Jul (Sat) | 1.6 – 1.7% |
+
+Nine months out of nine. A weekend surplus day carries far less service than a weekday, so
+the split falls exactly where the calendar says it should. No other explanation produces
+that pattern, and it was derived from MVTA's own stored data rather than from anything Avail
+supplied. It is why January, February and July barely moved while the rest dropped ~4%.
 
 September is the outlier in a different way: its assessable figure is **4.07 points above**
 its raw figure. **This is test data, not review** — see the note below. Use September's

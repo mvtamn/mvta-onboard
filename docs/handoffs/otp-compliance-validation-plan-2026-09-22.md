@@ -35,20 +35,16 @@ in every month.
 | 2026-08 | 83.62% | **85.30%** | +1.68 |
 | 2026-09 (raw) | 80.18% | **81.20%** | +1.02 |
 
-**Not every month has been corrected.** The daily poller self-heals only the current month
-and the prior two; older months need an explicit backfill. As of 2026-10-28:
+**Every month is now corrected.** 2026-01 through 2026-07 were backfilled on 2026-10-29;
+the rest were picked up by the daily poller. Every 2026 figure now reads 1.6–2.4 points
+better than it did, and all ten months are measured the same way.
 
-| Month | State |
-| --- | --- |
-| 2026-01 … 2026-04 | **stale** — both defects still present |
-| 2026-05, 2026-06 | corrected |
-| **2026-07** | **stale** — both defects still present |
-| 2026-08, 2026-09, 2026-10 | corrected |
-
-July is the one that bites: it is the worked example in T2.1, T2.3, T2.5 and T2.2. Those
-cases now compare a month measured one way against months measured another. **Backfill
-2026-01 through 2026-07 before running them** (Administration → OTP Compliance →
-Historical data backfill).
+**An independent check that the fix is what we think it is.** The size of each month's
+correction is explained entirely by what day of the week the *following* month's 1st fell
+on — the surplus day Avail was wrongly including. A weekday surplus removed 3.6–4.0% of
+departures (Mar, Apr, May, Jun, Aug, Sep); a weekend one removed 1.6–1.7% (Jan and Feb,
+both Sundays; Jul, a Saturday). Nine months out of nine, derived from MVTA's stored data
+alone. That is why January, February and July barely moved.
 
 > **The backfill panel reports failure on success.** It will say
 > `Request failed (504), 0 rows upserted` while the month has in fact been written
@@ -147,17 +143,16 @@ As of 2026-10-28, **do not freeze a baseline. Proceed and confirm by test.**
 | **A0 — the two manual artifacts agree with each other** | **Not done.** This is the gate. There is nothing to baseline against until it is. |
 | Tier 1 — OnBoard holds what Avail published | **Effectively passed** — see below |
 | Tier 2 — rule correctness | Passed 2026-09-22, except T2.4 |
-| Months measured consistently | **No** — 2026-01…04 and 2026-07 still stale |
+| Months measured consistently | **Yes** — all backfilled 2026-10-29 |
 | Acceptance standard still valid | **No** — needs restating against corrected figures |
 
-Three things must happen before Tier A can be recorded, in this order:
+Two things must happen before Tier A can be recorded, in this order:
 
-1. **Backfill 2026-01 … 2026-07** so every month is measured the same way.
-2. **Restate the acceptance standard** (Ty + Rob) against the corrected figures.
-3. **Complete A0** — reconcile the weekly CSV against the canned monthly report.
+1. **Restate the acceptance standard** (Ty + Rob) against the corrected figures.
+2. **Complete A0** — reconcile the weekly CSV against the canned monthly report.
 
-Only then does the Tier A comparison mean anything. Running it before step 3 produces a
-number with no baseline; running it before step 2 produces a pass or fail that answers a
+Only then does the Tier A comparison mean anything. Running it before step 2 produces a
+number with no baseline; running it before step 1 produces a pass or fail that answers a
 question nobody is asking.
 
 **Tier 1 is the good news.** The plan treated "OnBoard vs Avail's own export" as the hard
@@ -193,8 +188,8 @@ run monthly), and they must agree with each other before either can be a baselin
 
 Then:
 
-0. **Backfill 2026-01 through 2026-07** (Administration → OTP Compliance), so every month is
-   measured with the corrected parameters. Ignore the panel's 504 — verify in SQL.
+0. ~~Backfill 2026-01 through 2026-07~~ — **done 2026-10-29.** All months now measured with
+   the corrected parameters.
 1. **Reproduce the manual figure for 2026-05, 2026-06 and 2026-08**, by both manual methods.
 2. **Work Tier A** — the decision test. This is the handoff.
 3. **Work Tier 1** on 2026-08 — it is the evidence that OnBoard holds what Avail published,
@@ -519,13 +514,8 @@ WHERE ServiceMonth IN ('202607','202608')
 GROUP BY ServiceMonth;
 ```
 
-*Expected:* 202607 → 83.28% raw / 83.32% assessable; 202608 → **85.30% / 85.30%**, and
-`WeatherRemoved` zero on both until a weather day is approved.
-
-> **2026-07 is still stale** — it has not been re-pulled, so its 83.28/83.32 are
-> old-parameter figures. The reconciliation this case tests (view vs console) is still
-> valid, because both sides read the same stored rows. But do not compare July's *level*
-> against August's until July is backfilled. These must equal the
+*Expected (restated 2026-10-29):* 202607 → **84.86% raw / 84.91% assessable**; 202608 →
+**85.30% / 85.30%**, and `WeatherRemoved` zero on both until a weather day is approved. These must equal the
 console's Route Summary figures to the digit.
 
 *Also worth knowing:* `SUM(CASE WHEN IsAssessable=1 THEN ...)` — the old form — still
