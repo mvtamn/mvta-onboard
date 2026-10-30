@@ -94,20 +94,29 @@ one. Step A0 of our validation plan - reconciling the weekly-CSV spreadsheet
 against the canned monthly report before either is treated as a baseline -
 appears not to have been completed.
 
-## 4. For Avail
+## 4. For Avail — all closed as of 29 Oct
 
-1. **Thank you for the month-boundary fix** - it resolved the departure-count
-   gap exactly. For the record, please confirm the time it went live so we can
-   mark which of our stored months predate it.
+Avail confirmed MVTA's BI parameters and fixed the month-boundary defect. The
+three questions we were holding are all answered:
 
-2. **Does the BI report exclude outlying departures from its denominator?**
-   We send `Include Outliers = 1`. With the two known defects fixed the
-   residual gap is now ~0.1 points, so this is a precision question rather
-   than an open problem.
+1. **Month boundary** — fixed and verified by Avail, and confirmed independently
+   from our own data across all ten months of 2026.
+2. **`Include Outliers`** — Avail confirms BI runs it **True**, which is what we
+   send. This had been our hypothesis for the denominator gap; it was never the
+   cause. The month boundary was.
+3. **Default thresholds when unspecified** — moot, we send all seven explicitly.
 
-3. **Default thresholds when unspecified** - you offered to confirm whether
-   the API defaults to Early = 1 / Late = 5. We now send all four explicitly,
-   so this is for the record.
+Avail's own testing reports a sub-1% rounding difference between the API and BI
+when parameters match. Ours is 0.10 points agency-wide and 0.11 at worst per
+route, which needs no action.
+
+One confirmation outstanding, not a suspected fault: our calls send
+`09-01-2026` (MM-DD-YYYY) where Avail's examples show `2026-09-01`. Both parse
+correctly, but every monthly call uses day `01`, which is ambiguous between
+MM-DD and DD-MM, so it is worth having stated rather than inferred.
+
+**Nothing with Avail is blocking.** Draft reply:
+`docs/handoffs/avail-reply-2026-10-29.md`.
 
 ## 5. Consequence for MVTA
 
