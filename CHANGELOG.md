@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.46] - 2026-10-28
+
+- **The Schedule Review page tests wait for the route fetch.** `ScheduleReview.test.tsx` asserted `getGtfsPredictionRiskRoute` was called synchronously right after `findByRole` found the route list, but the page fetches the route in an effect after that list renders, so under CI load the assertion could run first ("Number of calls: 0") and fail an unrelated PR. The four route-fetch assertions now sit in `waitFor`. Test-only; the page is unchanged.
+
 ## [1.6.43] - 2026-10-27
 
 - **The OTP measurement parameters are declared, dated and sourced instead of compiled in (ADR 0042, migration 151).** `OTP_PARAMETERS` in `lib/availClient.ts` is gone; the seven URL segments Avail's OTP operations take come from `OtpMeasurementParameters`, an append-only register with an `effective_from` date, a stated source, and the principal who declared it. A change is a new row: editing a past one would retroactively rewrite the meaning of every figure polled under it. `lib/otpMeasurementParameters.ts` keeps the compiled set as the fallback default, reported as `origin: "code"` so a fallback never reads as a declaration — the same contract as `thresholdOrDefault`.

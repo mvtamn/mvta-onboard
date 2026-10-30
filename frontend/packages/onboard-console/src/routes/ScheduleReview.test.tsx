@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import type { MyAccess, ObservedSummaryResponse, PredictionRiskCheckDefinition, PredictionRiskReview } from "@mvta/shared";
@@ -87,7 +87,7 @@ describe("ScheduleReview page", () => {
     expect(within(links[0]).getByText("PM 46% late at 157th Street Station westbound, against 4% midday")).toBeInTheDocument();
     expect(within(links[2]).getByText("+1 not a schedule fix")).toBeInTheDocument();
     expect(within(links[2]).getByText("not measured by Avail")).toBeInTheDocument();
-    expect(api.getGtfsPredictionRiskRoute).toHaveBeenCalledWith("420");
+    await waitFor(() => expect(api.getGtfsPredictionRiskRoute).toHaveBeenCalledWith("420"));
   });
 
   it("opens the route the URL names, and a route link changes the URL so Back works", async () => {
@@ -97,11 +97,11 @@ describe("ScheduleReview page", () => {
 
     const list = await screen.findByRole("navigation", { name: "Routes, ranked" });
     expect(within(list).getByRole("link", { name: /^490/ })).toHaveAttribute("aria-current", "page");
-    expect(api.getGtfsPredictionRiskRoute).toHaveBeenCalledWith("490");
+    await waitFor(() => expect(api.getGtfsPredictionRiskRoute).toHaveBeenCalledWith("490"));
 
     await userEvent.click(within(list).getByRole("link", { name: /^442/ }));
     expect(screen.getByTestId("where")).toHaveTextContent("?route=442");
-    expect(api.getGtfsPredictionRiskRoute).toHaveBeenLastCalledWith("442");
+    await waitFor(() => expect(api.getGtfsPredictionRiskRoute).toHaveBeenLastCalledWith("442"));
   });
 
   it("offers the same ranked routes as one Route picker for a narrow page", async () => {
@@ -119,7 +119,7 @@ describe("ScheduleReview page", () => {
     expect(picker).toHaveValue("420");
     await userEvent.selectOptions(picker, "490");
     expect(screen.getByTestId("where")).toHaveTextContent("?route=490");
-    expect(api.getGtfsPredictionRiskRoute).toHaveBeenLastCalledWith("490");
+    await waitFor(() => expect(api.getGtfsPredictionRiskRoute).toHaveBeenLastCalledWith("490"));
   });
 
   it("filters to routes with a flag a chosen owner can fix", async () => {
