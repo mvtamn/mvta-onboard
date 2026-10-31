@@ -142,3 +142,10 @@
 .rp-mob-notes h3 { font-size: 1rem; margin: 0 0 6px; }
 .rp-mob-notes ul { margin: 0 0 16px; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem; }
 .rp-tp { max-width: 420px; }
+/* PROTOTYPE — APC tab */
+.rp-apc-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.rp-apc-head .rp-aux { display: flex; gap: 2px; }
+.rp-apc-ratio { max-width: 760px; }
+.rp label.rp-apc-tp { display: flex; flex-direction: row; width: fit-content; gap: 6px; align-items: center; margin-bottom: 6px; }
+.rp-apc-tp input { width: auto; margin: 0; }
+@media (max-width: 720px) { .rp-apc-cards { grid-template-columns: 1fr; } }

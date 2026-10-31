@@ -207,7 +207,7 @@ const VARIANTS = [
   { key: "mobile", group: "Operator app (future)", tag: "D", label: "Operator mobile", desc: "Operators count on an MVTA device instead of paper." },
   { key: "print", group: "Supporting screens", tag: "", label: "Print Count Sheets", desc: "The redesigned sheet, printed overnight." },
   { key: "garages", group: "Supporting screens", tag: "", label: "Block → garage list", desc: "Planning keeps this each service change." },
-  { key: "apc", group: "Supporting screens", tag: "", label: "Compare with Avail APC", desc: "Manual counts vs Avail APC boards/alights (future)." },
+  { key: "apc", group: "Supporting screens", tag: "", label: "Compare with Avail APC", desc: "Manual counts vs Avail APC, shaped on the real stop-level feed (future)." },
 ] as const;
 type Variant = (typeof VARIANTS)[number]["key"];
 const isVariant = (v: string | null): v is Variant => VARIANTS.some((x) => x.key === v);
@@ -697,97 +697,234 @@ function OperatorMobile() {
 
 // ---------------------------------------------------------------- Avail APC comparison (future)
 
-// Shape from Avail360 "APC Ridership By Service Level, Block, Route, Trip,
-// Timepoint" (ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1/{Property}).
-// The spec gives filters (Block/Route/Trip Farebox IDs, date range) but no
-// response schema, so these field names are guesses until a sample comes back.
-interface ApcTimepoint { timepoint: string; boards: number; alights: number }
-interface ApcTrip { serviceLevel: string; blockFareboxId: string; routeFareboxId: string; tripFareboxId: string; dir: string; start: string; bus: string; manual: number | null; timepoints: ApcTimepoint[] | null; health: "ok" | "no_apc" | "door_fault" }
+// PROTOTYPE — rows shaped exactly like Avail360 ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1
+// as seen in the 2026-10-28 sample (spec §12): one row per STOP per trip, Trip = scheduled
+// start HHMM, Block as an int, one StopName-null row per trip for boardings not placed at a
+// stop, pseudo-routes mixed in, and no vehicle/operator/health field. Stop names and every
+// figure here are made up; nothing is read from the real sample.
+interface ApcRow {
+  CalendarDate: string; ServiceLevelDesc: string; Block: number; RouteID: number; RouteName: string;
+  Trip: number; TripName: string; Direction: "North" | "South" | "East" | "West" | null;
+  StopName: string | null; Timepoint: 0 | 1; Boards: number; Alights: number;
+}
 
-const TIMEPOINTS: Record<string, string[]> = {
-  "495": ["Burnsville TS", "Apple Valley TS", "Mall of America"],
-  "436": ["Eagan TS", "Cedar Grove", "Blackhawk P&R", "Eagan TS"],
-  "460": ["Burnsville TS", "I-35W & 46th", "Downtown Mpls"],
-  "446": ["Eagan TS", "Cliff Rd", "Burnsville Ctr"],
-  "477": ["Lakeville Cedar", "Burnsville TS", "Downtown Mpls"],
-  "420": ["Burnsville TS", "Nicollet Ave", "Burnsville TS"],
-  "442": ["Burnsville TS", "Apple Valley TS"], "444": ["Savage", "Burnsville TS"],
+const PSEUDO_ROUTES: Record<number, string> = { 999: "Deadhead", 1010: "Flex", 1121: "MN United", 4444: "MVTA Connect", 5555: "Training", 6666: "Maintenance" };
+const DIR_WORD = { N: "North", S: "South", E: "East", W: "West" } as const;
+const DIR_LETTER = { North: "N", South: "S", East: "E", West: "W" } as const;
+
+// [stop id, made-up name, timepoint]
+const ROUTE_STOPS: Record<string, [number, string, 0 | 1][]> = {
+  "495": [[40101, "Burnsville Transit Station", 1], [40112, "County Rd 42 at Elm St", 0], [40130, "Apple Valley Transit Station", 1], [40144, "Cedar Ave at 140th St", 0], [40188, "Mall of America Transit Ctr", 1]],
+  "436": [[30535, "Eagan Transit Station", 1], [30540, "Yankee Rd at Oak Dr", 0], [30552, "Lone Pine Rd at Ridge Ct", 0], [30561, "Cedar Grove Station", 1], [30577, "Blackhawk Park & Ride", 1]],
+  "460": [[40101, "Burnsville Transit Station", 1], [40160, "Heart of the City P&R", 0], [51552, "46th St Station Gate J", 1], [51600, "Marquette Ave at 7th St", 1]],
+  "442": [[40101, "Burnsville Transit Station", 1], [40121, "Southcross Dr at Maple Ln", 0], [40130, "Apple Valley Transit Station", 1]],
+  "444": [[40201, "Savage Park & Ride", 1], [40210, "Hwy 13 at Quarry Rd", 0], [40101, "Burnsville Transit Station", 1]],
+  "446": [[30535, "Eagan Transit Station", 1], [30610, "Cliff Rd at Birch Ave", 0], [40170, "Burnsville Center", 1]],
+  "477": [[40301, "Lakeville Cedar P&R", 1], [40101, "Burnsville Transit Station", 1], [51600, "Marquette Ave at 7th St", 1]],
+  "420": [[40101, "Burnsville Transit Station", 1], [40140, "Nicollet Ave at 130th St", 0], [40145, "Nicollet Ave at Burnsville Pkwy", 1], [40150, "River Hills Dr at Pine Ln", 0]],
 };
 
-function apcFixtures(): ApcTrip[] {
-  const health: Record<string, ApcTrip["health"]> = { "4421": "ok", "4388": "ok", "4502": "door_fault", "4513": "no_apc", "4610": "ok", "4702": "ok" };
-  const drift: Record<string, number> = { "4421": 0.94, "4388": 1.02, "4610": 0.71, "4702": 1.0 };
-  const out: ApcTrip[] = [];
-  for (const b of blocksFor("2026-10-28")) {
-    const bus = b.avail?.bus ?? "—";
-    const h = health[bus] ?? "no_apc";
-    for (const t of b.trips) {
-      if (!needsCount(t)) continue;
-      const total = t.median4wk === null ? 0 : Math.round(t.median4wk * (drift[bus] ?? 1) + (t.tripId.endsWith("7") ? 3 : 0));
-      const tps = TIMEPOINTS[t.route] ?? ["Start", "End"];
-      // Boards split across all but the last timepoint, alights across all but the first.
-      const split = (n: number, parts: number) => Array.from({ length: parts }, (_, i) => Math.floor(n / parts) + (i < n % parts ? 1 : 0));
-      const boards = [...split(total, tps.length - 1), 0];
-      const alights = [0, ...split(total, tps.length - 1)];
-      const timepoints = h === "ok" ? tps.map((name, i) => ({ timepoint: name, boards: boards[i], alights: alights[i] }))
-        : h === "door_fault" ? tps.map((name) => ({ timepoint: name, boards: 0, alights: 0 })) : null;
-      out.push({ serviceLevel: "Weekday", blockFareboxId: String(Number(b.block)), routeFareboxId: t.route, tripFareboxId: t.tripId.slice(-4), dir: t.dir, start: t.start, bus, manual: t.median4wk, timepoints, health: h });
-    }
-  }
+const SAMPLE_DATE = "2026-10-28";
+const hhmm = (start: string) => Number(start.replace(":", ""));
+const fromHhmm = (n: number) => `${String(Math.floor(n / 100)).padStart(2, "0")}:${String(n % 100).padStart(2, "0")}`;
+const blockNum = (b: string) => Number(b);
+const blockStr = (n: number) => String(n).padStart(3, "0");
+
+function spread(n: number, parts: number, seed: number) {
+  const out = Array(parts).fill(0) as number[];
+  for (let i = 0; i < n; i++) out[(i * 7 + seed) % parts]++;
   return out;
 }
 
-const sumBoards = (t: ApcTrip) => t.timepoints?.reduce((s, x) => s + x.boards, 0) ?? null;
+function apcTripRows(block: number, route: string, dir: keyof typeof DIR_WORD, start: number, boards: number, unplaced: number): ApcRow[] {
+  const stops = ROUTE_STOPS[route] ?? [[1, "Start", 1], [2, "End", 1]];
+  const placed = Math.max(0, boards - unplaced);
+  const b = [...spread(placed, stops.length - 1, start), 0];
+  const a = [0, ...spread(placed, stops.length - 1, start + 3)];
+  const base = { CalendarDate: `${SAMPLE_DATE}T00:00:00.000`, ServiceLevelDesc: "Weekday", Block: block, RouteID: Number(route), RouteName: route, Trip: start, TripName: `${start}-${dir}`, Direction: DIR_WORD[dir] };
+  const rows: ApcRow[] = stops.map(([id, name, tp], i) => ({ ...base, StopName: `${id} - ${name}`.slice(0, 48), Timepoint: tp, Boards: b[i], Alights: a[i] }));
+  // The feed sorts by StopName (no stop sequence) and puts the unplaced row first.
+  rows.sort((x, y) => x.StopName!.localeCompare(y.StopName!));
+  if (unplaced > 0 || start % 3 === 0) rows.unshift({ ...base, StopName: null, Timepoint: 0, Boards: unplaced, Alights: unplaced ? 1 : boards ? 2 : 0 });
+  return rows;
+}
+
+// APC ÷ true ridership by bus, to make the by-bus view say something.
+const BUS_RATIO: Record<string, number> = { "4421": 1.12, "4388": 1.45, "4502": 1.08, "4513": 0, "4610": 0.7, "4702": 1.04 };
+
+function apcSampleRows(): ApcRow[] {
+  const out: ApcRow[] = [];
+  for (const b of blocksFor(SAMPLE_DATE)) {
+    const ratio = BUS_RATIO[b.avail?.bus ?? ""] ?? 1.1;
+    for (const t of b.trips) {
+      if (!needsCount(t)) continue;
+      if (t.tripId === "1436863") continue; // scheduled, ran, but no APC rows at all
+      const zero = ratio === 0 || t.tripId === "1436421"; // whole bus, or one trip, reads zero everywhere
+      const boards = zero ? 0 : Math.round((t.median4wk ?? 0) * ratio);
+      out.push(...apcTripRows(blockNum(b.block), t.route, t.dir, hhmm(t.start), boards, zero ? 0 : Number(t.tripId.slice(-1)) % 3));
+    }
+  }
+  // A tripper APC saw that the Dispatch Log does not carry (spec §4 unscheduled trip).
+  out.push(...apcTripRows(105, "460", "N", 750, 23, 1));
+  // Pseudo-routes: Trip 0, "(X) Undefined", no direction.
+  const pseudo = (block: number, route: number, boards: number): ApcRow => ({ CalendarDate: `${SAMPLE_DATE}T00:00:00.000`, ServiceLevelDesc: "Weekday", Block: block, RouteID: route, RouteName: PSEUDO_ROUTES[route], Trip: 0, TripName: "(X) Undefined", Direction: null, StopName: null, Timepoint: 0, Boards: boards, Alights: boards });
+  out.push(pseudo(1, 999, 2), pseudo(24, 999, 1), pseudo(105, 999, 0), pseudo(418, 5555, 0), pseudo(212, 1121, 3));
+  return out;
+}
+
+type ApcStatus = "compared" | "all_zero" | "no_rows" | "apc_only" | "no_manual";
+interface ApcTripView {
+  key: string; block: string; route: string; dir: string; start: string; tripName: string; bus: string | null;
+  manual: number | null; apc: number | null; unplaced: number; rows: ApcRow[]; status: ApcStatus;
+}
+
+// Match: Block (int → 001) + route + direction + scheduled start (Trip HHMM) on the service date.
+function buildApcView(rows: ApcRow[]) {
+  const revenue = rows.filter((r) => !(r.RouteID in PSEUDO_ROUTES));
+  const pseudo = rows.filter((r) => r.RouteID in PSEUDO_ROUTES);
+  const keyOf = (block: string, route: string, dir: string, start: number) => `${block}|${route}|${dir}|${start}`;
+  const apcByKey = new Map<string, ApcRow[]>();
+  for (const r of revenue) {
+    const k = keyOf(blockStr(r.Block), String(r.RouteID), DIR_LETTER[r.Direction!], r.Trip);
+    apcByKey.set(k, [...(apcByKey.get(k) ?? []), r]);
+  }
+  const trips: ApcTripView[] = [];
+  const blocks = blocksFor(SAMPLE_DATE);
+  for (const b of blocks) for (const t of b.trips) {
+    if (!needsCount(t)) continue;
+    const k = keyOf(b.block, t.route, t.dir, hhmm(t.start));
+    const mine = apcByKey.get(k) ?? [];
+    apcByKey.delete(k);
+    const apc = mine.reduce((s, r) => s + r.Boards, 0);
+    const allZero = mine.length > 0 && mine.every((r) => r.Boards === 0 && r.Alights === 0);
+    const manual = t.median4wk;
+    const status: ApcStatus = mine.length === 0 ? "no_rows" : allZero ? "all_zero" : manual === null ? "no_manual" : "compared";
+    trips.push({ key: k, block: b.block, route: t.route, dir: t.dir, start: t.start, tripName: mine[0]?.TripName ?? `${hhmm(t.start)}-${t.dir}`, bus: b.avail?.bus ?? null, manual, apc: status === "compared" || status === "no_manual" ? apc : null, unplaced: mine.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0), rows: mine, status });
+  }
+  for (const [k, mine] of apcByKey) {
+    const [block, route, dir, start] = k.split("|");
+    trips.push({ key: k, block, route, dir, start: fromHhmm(Number(start)), tripName: mine[0].TripName, bus: blocks.find((b) => b.block === block)?.avail?.bus ?? null, manual: null, apc: mine.reduce((s, r) => s + r.Boards, 0), unplaced: mine.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0), rows: mine, status: "apc_only" });
+  }
+  trips.sort((a, b) => a.block.localeCompare(b.block) || a.start.localeCompare(b.start));
+  return { revenue, pseudo, trips };
+}
+
+const STATUS_PILL: Record<ApcStatus, [string, string]> = {
+  compared: ["rp-pill-ok", "Compared"],
+  no_manual: ["rp-pill-muted", "No manual count"],
+  all_zero: ["rp-pill-bad", "All zeros — treated as no APC"],
+  no_rows: ["rp-pill-muted", "No APC rows"],
+  apc_only: ["rp-pill-warn", "APC only — unscheduled trip?"],
+};
+
+function ratioTable(label: string, groups: { name: string; trips: ApcTripView[] }[], tolerance: number, hint: string) {
+  return (
+    <table className="rp-b-list rp-apc-ratio">
+      <thead><tr><th>{label}</th><th className="num">Trips</th><th className="num">Manual</th><th className="num">APC</th><th className="num">APC ÷ manual</th><th /></tr></thead>
+      <tbody>{groups.map((g) => {
+        const m = g.trips.reduce((s, r) => s + r.manual!, 0); const a = g.trips.reduce((s, r) => s + r.apc!, 0);
+        const ratio = m ? a / m : 1;
+        return <tr key={g.name}><td className="mono">{g.name}</td><td className="num">{g.trips.length}</td><td className="num">{m}</td><td className="num">{a}</td><td className="num">{ratio.toFixed(2)}</td><td>{Math.abs(ratio - 1) > tolerance / 100 && <span className="rp-pill rp-pill-warn">{hint}</span>}</td></tr>;
+      })}</tbody>
+    </table>
+  );
+}
 
 function ApcComparison() {
   const [tolerance, setTolerance] = useState(15);
   const [open, setOpen] = useState<string | null>(null);
-  const rows = apcFixtures();
-  const comparable = rows.filter((r) => r.health === "ok" && r.manual !== null);
-  const diffPct = (r: ApcTrip) => { const a = sumBoards(r)!; const m = r.manual!; return m === 0 ? (a === 0 ? 0 : 100) : Math.round((100 * (a - m)) / m); };
-  const within = comparable.filter((r) => Math.abs(diffPct(r)) <= tolerance).length;
-  const sumManual = comparable.reduce((s, r) => s + r.manual!, 0);
-  const sumApc = comparable.reduce((s, r) => s + sumBoards(r)!, 0);
-  const byBus = [...new Set(comparable.map((r) => r.bus))].map((bus) => {
-    const mine = comparable.filter((r) => r.bus === bus);
-    const m = mine.reduce((s, r) => s + r.manual!, 0); const a = mine.reduce((s, r) => s + sumBoards(r)!, 0);
-    return { bus, trips: mine.length, ratio: m ? a / m : 1 };
-  });
+  const [show, setShow] = useState<"all" | "compared" | "not">("all");
+  const [tpOnly, setTpOnly] = useState(false);
+  const [byWhat, setByWhat] = useState<"route" | "bus">("route");
+  const { revenue, pseudo, trips } = useMemo(() => buildApcView(apcSampleRows()), []);
+
+  const compared = trips.filter((r) => r.status === "compared");
+  const diffPct = (r: ApcTripView) => (r.manual === 0 ? (r.apc === 0 ? 0 : 100) : Math.round((100 * (r.apc! - r.manual!)) / r.manual!));
+  const within = compared.filter((r) => Math.abs(diffPct(r)) <= tolerance).length;
+  const sumManual = compared.reduce((s, r) => s + r.manual!, 0);
+  const sumApc = compared.reduce((s, r) => s + r.apc!, 0);
+  const scheduled = trips.filter((r) => r.status !== "apc_only");
+  const matched = scheduled.filter((r) => r.status !== "no_rows");
+  const apcOnly = trips.filter((r) => r.status === "apc_only");
+  const unplacedBoards = revenue.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0);
+  const groupBy = (f: (r: ApcTripView) => string) => [...new Set(compared.map(f))].sort().map((name) => ({ name, trips: compared.filter((r) => f(r) === name) }));
+  const visible = trips.filter((r) => show === "all" || (show === "compared" ? r.status === "compared" : r.status !== "compared"));
 
   return (
     <div className="rp-apc">
-      <div className="rp-banner rp-banner-soft">FUTURE · shaped on Avail360 <span className="mono">ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1</span> · response field names assumed until a sample arrives · made-up figures</div>
-      <div className="rp-b-garages">
-        <div className="rp-b-garage"><div className="rp-eyebrow">Trips comparable</div><div className="rp-big">{comparable.length} / {rows.length}</div><div className="rp-dim">bus has working APC and a manual count</div></div>
-        <div className="rp-b-garage"><div className="rp-eyebrow">Agreement</div><div className="rp-big">{comparable.length ? Math.round((100 * within) / comparable.length) : 0}%</div><div className="rp-dim">within ±<input className="rp-tol" value={tolerance} onChange={(e) => setTolerance(Number(e.target.value.replace(/\D/g, "")) || 0)} />% of manual</div></div>
-        <div className="rp-b-garage"><div className="rp-eyebrow">Boardings, 2026-10-28</div><div className="rp-big">{sumManual} vs {sumApc}</div><div className="rp-dim">manual vs APC on comparable trips</div></div>
+      <div className="rp-banner rp-banner-soft">FUTURE · rows shaped on the real Avail360 <span className="mono">ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1</span> response (sample 2026-10-28) · stop names and figures made up · service date {SAMPLE_DATE}</div>
+
+      <div className="rp-b-garages rp-apc-cards">
+        <div className="rp-b-garage">
+          <div className="rp-eyebrow">1 · Avail feed</div>
+          <div className="rp-big">{revenue.length + pseudo.length} rows</div>
+          <div className="rp-dim">one per stop per trip · {new Set(revenue.map((r) => `${r.Block}|${r.RouteID}|${r.Trip}|${r.Direction}`)).size} revenue trips · {pseudo.length} pseudo-route rows set aside · {unplacedBoards} boardings not placed at a stop, kept in trip totals</div>
+        </div>
+        <div className="rp-b-garage">
+          <div className="rp-eyebrow">2 · Matched to Dispatch Log</div>
+          <div className="rp-big">{matched.length} / {scheduled.length}</div>
+          <div className="rp-dim">by block + route + direction + start (Trip HHMM) · {apcOnly.length} APC trip{apcOnly.length === 1 ? "" : "s"} with no scheduled match</div>
+        </div>
+        <div className="rp-b-garage">
+          <div className="rp-eyebrow">3 · Manual vs APC</div>
+          <div className="rp-big">{sumManual} vs {sumApc}</div>
+          <div className="rp-dim">{compared.length} compared trips · {compared.length ? Math.round((100 * within) / compared.length) : 0}% within ±<input className="rp-tol" aria-label="Tolerance percent" value={tolerance} onChange={(e) => setTolerance(Number(e.target.value.replace(/\D/g, "")) || 0)} />%</div>
+        </div>
       </div>
-      <h3 className="rp-b-title">By bus — is it the counter or the sheet?</h3>
+
+      <div className="rp-apc-head">
+        <h3 className="rp-b-title">Where does the gap sit?</h3>
+        <div className="rp-aux" role="tablist">
+          <button className={byWhat === "route" ? "active" : ""} onClick={() => setByWhat("route")}>By route</button>
+          <button className={byWhat === "bus" ? "active" : ""} onClick={() => setByWhat("bus")}>By bus</button>
+        </div>
+      </div>
+      {byWhat === "route"
+        ? ratioTable("Route", groupBy((r) => r.route), tolerance, "Gap on the whole route — counting practice or counters?")
+        : <>
+            {ratioTable("Bus", groupBy((r) => r.bus ?? "not in pull-out"), tolerance, "Steady gap on one bus — check this counter")}
+            <p className="rp-dim">The APC feed has no vehicle. Bus comes from Avail's pull-out report by block, so a block that changed bus mid-day is attributed to the first bus.</p>
+          </>}
+
+      <div className="rp-apc-head">
+        <h3 className="rp-b-title">By trip — click a row for Avail's stop rows</h3>
+        <div className="rp-aux" role="tablist">
+          {([["all", `All ${trips.length}`], ["compared", `Compared ${compared.length}`], ["not", `Not compared ${trips.length - compared.length}`]] as const).map(([k, l]) => (
+            <button key={k} className={show === k ? "active" : ""} onClick={() => setShow(k)}>{l}</button>
+          ))}
+        </div>
+      </div>
       <table className="rp-b-list">
-        <thead><tr><th>Bus</th><th>Trips</th><th>APC ÷ manual</th><th /></tr></thead>
-        <tbody>{byBus.map((b) => <tr key={b.bus}><td className="mono">{b.bus}</td><td>{b.trips}</td><td>{b.ratio.toFixed(2)}</td><td>{Math.abs(b.ratio - 1) > tolerance / 100 && <span className="rp-pill rp-pill-warn">Steady gap — check this counter, or this operator's sheets</span>}</td></tr>)}</tbody>
-      </table>
-      <h3 className="rp-b-title">By trip — click a row for Avail's timepoint detail</h3>
-      <table className="rp-b-list">
-        <thead><tr><th>Service level</th><th>Block FB</th><th>Route FB</th><th>Trip FB</th><th>Start</th><th>Bus</th><th className="num">Manual</th><th className="num">APC boards</th><th className="num">Diff</th><th>APC health</th></tr></thead>
-        <tbody>{rows.flatMap((r) => {
-          const k = `${r.blockFareboxId}-${r.tripFareboxId}`;
-          const ok = r.health === "ok" && r.manual !== null;
-          const d = ok ? diffPct(r) : null;
+        <thead><tr><th>Block</th><th>Route</th><th>Start</th><th>TripName</th><th>Bus</th><th className="num">Manual</th><th className="num">APC boards</th><th className="num">Unplaced</th><th className="num">Diff</th><th>Status</th></tr></thead>
+        <tbody>{visible.flatMap((r) => {
+          const d = r.status === "compared" ? diffPct(r) : null;
+          const [pill, label] = STATUS_PILL[r.status];
+          const stops = tpOnly ? r.rows.filter((x) => x.Timepoint === 1 || x.StopName === null) : r.rows;
           return [
-            <tr key={k} onClick={() => setOpen(open === k ? null : k)} className={open === k ? "open" : ""}>
-              <td>{r.serviceLevel}</td><td className="mono">{r.blockFareboxId}</td><td>{r.routeFareboxId} {r.dir}</td><td className="mono">{r.tripFareboxId}</td><td className="mono">{r.start}</td><td className="mono">{r.bus}</td>
-              <td className="num">{r.manual ?? "—"}</td><td className="num">{r.health === "ok" ? sumBoards(r) : "—"}</td>
+            <tr key={r.key} onClick={() => setOpen(open === r.key ? null : r.key)} className={open === r.key ? "open" : ""}>
+              <td className="mono">{r.block}</td><td>{r.route} {r.dir}</td><td className="mono">{r.start}</td><td className="mono">{r.tripName}</td><td className="mono">{r.bus ?? "—"}</td>
+              <td className="num">{r.manual ?? "—"}</td><td className="num">{r.apc ?? "—"}</td><td className="num">{r.rows.length ? r.unplaced : "—"}</td>
               <td className="num">{d === null ? "—" : <span className={Math.abs(d) > tolerance ? "rp-bad" : ""}>{d > 0 ? "+" : ""}{d}%</span>}</td>
-              <td>{r.health === "ok" ? <span className="rp-pill rp-pill-ok">Working</span> : r.health === "door_fault" ? <span className="rp-pill rp-pill-bad">All zeros — excluded</span> : <span className="rp-pill rp-pill-muted">No APC on bus</span>}</td>
+              <td><span className={`rp-pill ${pill}`}>{label}</span></td>
             </tr>,
-            open === k && <tr key={`${k}-tp`} className="rp-b-drawer"><td colSpan={10}>
-              {r.timepoints ? (
-                <table className="rp-trips rp-tp"><thead><tr><th>Timepoint</th><th className="num">Boards</th><th className="num">Alights</th></tr></thead>
-                  <tbody>{r.timepoints.map((x, i) => <tr key={i}><td>{x.timepoint}</td><td className="num">{x.boards}</td><td className="num">{x.alights}</td></tr>)}</tbody></table>
-              ) : <span className="rp-dim">No APC data for this bus.</span>}
+            open === r.key && <tr key={`${r.key}-stops`} className="rp-b-drawer"><td colSpan={10}>
+              {r.rows.length ? (<>
+                <label className="rp-dim rp-apc-tp"><input type="checkbox" checked={tpOnly} onChange={(e) => setTpOnly(e.target.checked)} /> Timepoints only</label>
+                <table className="rp-trips rp-tp"><thead><tr><th>StopName</th><th>TP</th><th className="num">Boards</th><th className="num">Alights</th></tr></thead>
+                  <tbody>{stops.map((x, i) => <tr key={i}><td>{x.StopName ?? <em className="rp-dim">Not placed at a stop</em>}</td><td>{x.Timepoint ? "●" : ""}</td><td className="num">{x.Boards}</td><td className="num">{x.Alights}</td></tr>)}</tbody></table>
+                <p className="rp-dim">Avail sends stops in StopName order with no stop sequence, so this is not the order the bus served them.</p>
+              </>) : <span className="rp-dim">Avail sent no rows for this trip.</span>}
             </td></tr>,
           ];
+        })}</tbody>
+      </table>
+
+      <h3 className="rp-b-title">Set aside — pseudo-routes in the same feed</h3>
+      <table className="rp-b-list rp-apc-ratio">
+        <thead><tr><th>Route</th><th>Name</th><th className="num">Rows</th><th className="num">Boards</th><th>Why</th></tr></thead>
+        <tbody>{[...new Set(pseudo.map((r) => r.RouteID))].sort((a, b) => a - b).map((id) => {
+          const mine = pseudo.filter((r) => r.RouteID === id);
+          return <tr key={id}><td className="mono">{id}</td><td>{PSEUDO_ROUTES[id]}</td><td className="num">{mine.length}</td><td className="num">{mine.reduce((s, r) => s + r.Boards, 0)}</td><td className="rp-dim">{id === 1121 ? "Special event — possible source for event counts (C7)" : "Not fixed-route service"}</td></tr>;
         })}</tbody>
       </table>
     </div>
