@@ -151,3 +151,15 @@
 @media (max-width: 720px) { .rp-apc-cards { grid-template-columns: 1fr; } }
 .rp-apc-note { margin: 0; }
 .rp-apc-flags td { vertical-align: middle; }
+/* PROTOTYPE — chosen combined flow */
+.rp-x { display: flex; flex-direction: column; gap: 10px; }
+.rp-x-garages button.rp-b-garage { text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.rp-x-garages button.rp-b-garage.active { border-color: var(--brand-green); box-shadow: inset 0 3px 0 var(--brand-green); }
+.rp-x-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border-soft); }
+.rp-x-step { display: flex; gap: 12px; }
+.rp-x-step button:disabled { opacity: 0.4; cursor: default; }
+.rp-x-toast { background: var(--pill-success-bg); color: var(--pill-success-fg); border-radius: 6px; padding: 6px 10px; font-weight: 600; font-size: 0.85rem; }
+.rp-x-keys { margin: 0; }
+.rp-kbd { display: inline-block; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 0.75rem; font-family: ui-monospace, monospace; }
+.rp-x-done ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.rp-blank-msg { margin-top: 8px; display: inline-block; }

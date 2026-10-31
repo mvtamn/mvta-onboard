@@ -201,9 +201,10 @@ const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
 // ---------------------------------------------------------------- shell
 
 const VARIANTS = [
-  { key: "sheet", group: "OCC entry — pick one", tag: "A", label: "Sheet", desc: "Pick a block; the form mirrors the paper sheet. Closest to Access today." },
-  { key: "worklist", group: "OCC entry — pick one", tag: "B", label: "Worklist", desc: "Starts from what is missing by garage; enter sheets inline." },
-  { key: "datasheet", group: "OCC entry — pick one", tag: "C", label: "Datasheet", desc: "One keyboard grid for the whole day; fastest for a stack of sheets." },
+  { key: "combined", group: "OCC entry — chosen", tag: "★", label: "Worklist → sheet", desc: "Decided 2026-10-30: B's worklist opens A's form; the keyboard runs through the day." },
+  { key: "sheet", group: "OCC entry — options considered", tag: "A", label: "Sheet", desc: "Pick a block; the form mirrors the paper sheet. Closest to Access today." },
+  { key: "worklist", group: "OCC entry — options considered", tag: "B", label: "Worklist", desc: "Starts from what is missing by garage; enter sheets inline." },
+  { key: "datasheet", group: "OCC entry — options considered", tag: "C", label: "Datasheet", desc: "One keyboard grid for the whole day; fastest for a stack of sheets." },
   { key: "mobile", group: "Operator app (future)", tag: "D", label: "Operator mobile", desc: "Operators count on an MVTA device instead of paper." },
   { key: "print", group: "Supporting screens", tag: "", label: "Print Count Sheets", desc: "The redesigned sheet, printed overnight." },
   { key: "garages", group: "Supporting screens", tag: "", label: "Block → garage list", desc: "Planning keeps this each service change." },
@@ -215,7 +216,7 @@ const isVariant = (v: string | null): v is Variant => VARIANTS.some((x) => x.key
 export function RidershipEntryPrototype() {
   const [searchParams, setSearchParams] = useSearchParams();
   const vp = searchParams.get("variant");
-  const variant: Variant = isVariant(vp) ? vp : "sheet";
+  const variant: Variant = isVariant(vp) ? vp : "combined";
   const [entries, setEntries] = useState<Entries>(seedEntries);
   const [garages, setGarages] = useState<Record<string, Garage>>(INITIAL_GARAGES);
 
@@ -265,6 +266,7 @@ export function RidershipEntryPrototype() {
         ))}
       </nav>
       <h2 className="rp-current">{current.tag && `${current.tag} · `}{current.label}</h2>
+      {variant === "combined" && <CombinedVariant {...props} />}
       {variant === "sheet" && <SheetVariant {...props} />}
       {variant === "worklist" && <WorklistVariant {...props} />}
       {variant === "datasheet" && <DatasheetVariant {...props} />}
@@ -286,14 +288,29 @@ interface VariantProps {
 
 // ---------------------------------------------------------------- shared entry form
 
-function SheetForm({ b, e, update, garage, compact = false }: { b: Block; e: SheetEntry; update: VariantProps["update"]; garage: Garage; compact?: boolean }) {
+function SheetForm({ b, e, update, garage, compact = false, onSave, nav }: { b: Block; e: SheetEntry; update: VariantProps["update"]; garage: Garage; compact?: boolean; onSave?: () => void; nav?: React.ReactNode }) {
   const set = (fn: (e: SheetEntry) => SheetEntry) => update(b.serviceDate, b.block, fn);
   const state = sheetState(b, e);
   const [adding, setAdding] = useState(false);
+  const [blankMsg, setBlankMsg] = useState<string | null>(null);
+  const blanks = b.trips.filter((t) => needsCount(t) && (e.counts[t.tripId] ?? "") === "");
+  function save(root: HTMLElement | null) {
+    if (blanks.length) {
+      setBlankMsg(`${blanks.length} trip${blanks.length === 1 ? "" : "s"} still blank — every trip that ran needs a count.`);
+      const el = root?.querySelector<HTMLInputElement>(`[data-trip-input][data-trip="${blanks[0].tripId}"]`);
+      el?.focus();
+      return;
+    }
+    setBlankMsg(null);
+    set((x) => ({ ...x, enteredAt: TODAY }));
+    onSave?.();
+  }
   const [draft, setDraft] = useState({ route: "", dir: "N", start: "", reason: "Tripper", count: "" });
 
   return (
-    <div className={`rp-form ${compact ? "compact" : ""}`}>
+    <div className={`rp-form ${compact ? "compact" : ""}`}
+      onKeyDown={(ev) => { if (onSave && ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); save(ev.currentTarget); } }}>
+      {nav}
       <div className="rp-form-head">
         <div>
           <div className="rp-eyebrow">Count Sheet · {b.serviceDate} · {garage ?? "Unassigned garage"}</div>
@@ -303,7 +320,7 @@ function SheetForm({ b, e, update, garage, compact = false }: { b: Block; e: She
       </div>
 
       <div className="rp-who">
-        <label>Operator<input value={e.operator} onChange={(ev) => set((x) => ({ ...x, operator: ev.target.value, operatorOverridden: ev.target.value !== (b.avail?.operator ?? "") }))} /></label>
+        <label>Operator<input autoFocus={!compact && b.avail === null} value={e.operator} onChange={(ev) => set((x) => ({ ...x, operator: ev.target.value, operatorOverridden: ev.target.value !== (b.avail?.operator ?? "") }))} /></label>
         <label>Operator ID<input value={e.operatorId} onChange={(ev) => set((x) => ({ ...x, operatorId: ev.target.value, operatorOverridden: true }))} /></label>
         <label>Bus<input value={e.bus} onChange={(ev) => set((x) => ({ ...x, bus: ev.target.value, operatorOverridden: true }))} /></label>
         <div className="rp-source">
@@ -325,9 +342,9 @@ function SheetForm({ b, e, update, garage, compact = false }: { b: Block; e: She
                 <td>{TRIP_STATUS_LABEL[t.status]}</td>
                 <td className="num">
                   {needsCount(t)
-                    ? <input data-trip-input aria-label={`Boardings trip ${t.tripId}`} inputMode="numeric" value={v} autoFocus={!compact && i === 0}
+                    ? <input data-trip-input data-trip={t.tripId} aria-label={`Boardings trip ${t.tripId}`} inputMode="numeric" value={v} autoFocus={!compact && i === 0 && b.avail !== null}
                         onChange={(ev) => set((x) => ({ ...x, counts: { ...x.counts, [t.tripId]: ev.target.value.replace(/\D/g, "") } }))}
-                        onKeyDown={(ev) => { if (ev.key === "Enter") focusNext(ev.currentTarget); }} />
+                        onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.metaKey && !ev.ctrlKey) { ev.preventDefault(); focusNext(ev.currentTarget); } }} />
                     : <span className="rp-dim">not required</span>}
                 </td>
                 <td>{flag && <span className="rp-pill rp-pill-warn" title="In January this becomes a flag the contractor answers">{flag}</span>}</td>
@@ -360,8 +377,9 @@ function SheetForm({ b, e, update, garage, compact = false }: { b: Block; e: She
       <div className="rp-form-foot">
         <label className="rp-check"><input type="checkbox" checked={e.reconstructed} onChange={(ev) => set((x) => ({ ...x, reconstructed: ev.target.checked }))} /> Sheet marked <strong>Reconstructed</strong></label>
         <span className="rp-dim">Due by end of {deadlineFor(b.serviceDate)}</span>
-        <button className="rp-primary" onClick={() => set((x) => ({ ...x, enteredAt: TODAY }))}>Save sheet</button>
+        <button data-save className="rp-primary" onClick={(ev) => save(ev.currentTarget.closest(".rp-form"))}>{onSave ? "Save · next sheet" : "Save sheet"}</button>
       </div>
+      {blankMsg && <div className="rp-pill rp-pill-bad rp-blank-msg">{blankMsg}</div>}
     </div>
   );
 }
@@ -369,8 +387,151 @@ function SheetForm({ b, e, update, garage, compact = false }: { b: Block; e: She
 function focusNext(el: HTMLInputElement) {
   const all = Array.from(document.querySelectorAll<HTMLInputElement>("[data-trip-input]"));
   const i = all.indexOf(el);
-  all[i + 1]?.focus();
-  all[i + 1]?.select();
+  if (!all[i + 1]) { document.querySelector<HTMLButtonElement>("[data-save]")?.focus(); return; }
+  all[i + 1].focus();
+  all[i + 1].select();
+}
+
+// ---------------------------------------------------------------- ★ Chosen: worklist → sheet form (PROTOTYPE)
+
+// Decided 2026-10-30 (spec §4): land on B's worklist; a row opens A's form full-width;
+// Enter moves down the trips and onto Save; Save (or Ctrl/⌘+Enter) goes straight to the
+// next sheet in the queue; Esc returns to the worklist. ↑/↓ + Enter work on the list.
+const SHEET_ORDER: SheetState[] = ["late", "missing", "partial", "entered_late", "entered"];
+
+function CombinedVariant({ entries, update, garages }: VariantProps) {
+  const [garage, setGarage] = useState<string>("All");
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [queue, setQueue] = useState<string[]>([]);
+  const [cursor, setCursor] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const all = SERVICE_DATES.flatMap((d) => blocksFor(d).map((b) => ({ b, k: key(d, b.block), s: sheetState(b, entries[key(d, b.block)]) })));
+  const isOpenSheet = (s: SheetState) => s !== "entered" && s !== "entered_late";
+  const byGarage = ["Burnsville", "Eagan", "Unassigned"].map((g) => {
+    const mine = all.filter((r) => (garages[r.b.block] ?? "Unassigned") === g);
+    const required = mine.flatMap((r) => r.b.trips.filter(needsCount).map((t) => ({ r, t })));
+    const have = required.filter(({ r, t }) => (entries[r.k].counts[t.tripId] ?? "") !== "").length;
+    return { g, open: mine.filter((r) => isOpenSheet(r.s)).length, late: mine.filter((r) => r.s === "late").length, pct: required.length ? Math.round((100 * have) / required.length) : 100 };
+  });
+  const outstanding = all
+    .filter((r) => isOpenSheet(r.s) && (garage === "All" || (garages[r.b.block] ?? "Unassigned") === garage))
+    .sort((x, y) => SHEET_ORDER.indexOf(x.s) - SHEET_ORDER.indexOf(y.s) || x.b.serviceDate.localeCompare(y.b.serviceDate) || x.b.block.localeCompare(y.b.block));
+  const enteredToday = all.filter((r) => entries[r.k].enteredAt === TODAY);
+
+  function open(k: string) {
+    // Snapshot the queue so saving a sheet doesn't reshuffle what "next" means.
+    const q = outstanding.map((r) => r.k);
+    setQueue(q.includes(k) ? q : [k, ...q]);
+    setOpenKey(k);
+    setToast(null);
+  }
+  function close() {
+    setOpenKey(null);
+  }
+  function savedGoNext(k: string) {
+    const rest = queue.slice(queue.indexOf(k) + 1).filter((x) => x !== k);
+    const [d, blk] = k.split("|");
+    if (rest.length) {
+      const [nd, nb] = rest[0].split("|");
+      setToast(`Block ${blk} (${d}) saved — now on block ${nb} (${nd}).`);
+      setOpenKey(rest[0]);
+    } else {
+      setToast(`Block ${blk} (${d}) saved — that was the last sheet in the queue.`);
+      setOpenKey(null);
+    }
+  }
+
+  useEffect(() => {
+    function onKey(ev: KeyboardEvent) {
+      const el = ev.target as HTMLElement | null;
+      if (openKey) {
+        if (ev.key === "Escape") { ev.preventDefault(); close(); }
+        return;
+      }
+      if (el?.matches("input, textarea, select")) return;
+      if (ev.key === "ArrowDown") { ev.preventDefault(); setCursor((c) => Math.min(c + 1, outstanding.length - 1)); }
+      if (ev.key === "ArrowUp") { ev.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
+      if (ev.key === "Enter" && outstanding[cursor] && !el?.matches("button")) { ev.preventDefault(); open(outstanding[cursor].k); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  if (openKey) {
+    const [d, blk] = openKey.split("|");
+    const b = blocksFor(d).find((x) => x.block === blk)!;
+    const pos = queue.indexOf(openKey);
+    const prev = pos > 0 ? queue[pos - 1] : null;
+    const next = pos >= 0 && pos < queue.length - 1 ? queue[pos + 1] : null;
+    const nav = (
+      <div className="rp-x-nav">
+        <button className="rp-link" onClick={close}>← Worklist <span className="rp-kbd">Esc</span></button>
+        <span className="rp-dim">Sheet {pos + 1} of {queue.length}{garage !== "All" ? ` · ${garage}` : ""}</span>
+        <span className="rp-x-step">
+          <button className="rp-link" disabled={!prev} onClick={() => prev && setOpenKey(prev)}>‹ Previous</button>
+          <button className="rp-link" disabled={!next} onClick={() => next && setOpenKey(next)}>Skip ›</button>
+        </span>
+      </div>
+    );
+    return (
+      <div className="rp-x">
+        {toast && <div className="rp-x-toast" role="status">{toast}</div>}
+        <div className="rp-a-paper">
+          <SheetForm key={openKey} b={b} e={entries[openKey]} update={update} garage={garages[b.block] ?? null} onSave={() => savedGoNext(openKey)} nav={nav} />
+        </div>
+        <p className="rp-dim rp-x-keys"><span className="rp-kbd">Enter</span> next trip, then Save · <span className="rp-kbd">Ctrl/⌘ Enter</span> save from anywhere · <span className="rp-kbd">Esc</span> back to the worklist · operator/bus are skipped unless you click them</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rp-x">
+      {toast && <div className="rp-x-toast" role="status">{toast}</div>}
+      <div className="rp-b-garages rp-x-garages">
+        {byGarage.map((g) => (
+          <button key={g.g} className={`rp-b-garage ${g.late ? "bad" : ""} ${garage === g.g ? "active" : ""}`} onClick={() => { setGarage(garage === g.g ? "All" : g.g); setCursor(0); }} aria-pressed={garage === g.g}>
+            <div className="rp-eyebrow">{g.g}</div>
+            <div className="rp-big">{g.pct}%</div>
+            <div className="rp-dim">trips counted · {g.open} sheets open{g.late ? ` · ${g.late} late` : ""}</div>
+          </button>
+        ))}
+      </div>
+      <div className="rp-apc-head">
+        <h3 className="rp-b-title">Sheets to enter ({outstanding.length}){garage !== "All" && <> · {garage} <button className="rp-link" onClick={() => setGarage("All")}>show all</button></>}</h3>
+        {outstanding.length > 0 && <button className="rp-primary" onClick={() => open(outstanding[0].k)}>Start entering — {outstanding.length} sheet{outstanding.length === 1 ? "" : "s"}</button>}
+      </div>
+      <table className="rp-b-list">
+        <thead><tr><th>Status</th><th>Service date</th><th>Block</th><th>Garage</th><th>Routes</th><th>Operator · bus</th><th>Trips</th><th>Due</th></tr></thead>
+        <tbody>
+          {outstanding.map(({ b, k, s }, i) => {
+            const e = entries[k];
+            const need = b.trips.filter(needsCount);
+            const missing = need.filter((t) => (e.counts[t.tripId] ?? "") === "").length;
+            return (
+              <tr key={k} className={i === cursor ? "open" : ""} onClick={() => open(k)} onMouseEnter={() => setCursor(i)}>
+                <td><span className={`rp-pill ${STATE_PILL[s]}`}>{STATE_LABEL[s]}</span></td>
+                <td>{b.serviceDate}</td><td className="mono">{b.block}</td>
+                <td>{garages[b.block] ?? <span className="rp-pill rp-pill-warn">Unassigned</span>}</td>
+                <td>{[...new Set(b.trips.map((t) => t.route))].join(", ")}</td>
+                <td>{b.avail ? <span className="mono">{b.avail.operatorId} · {b.avail.bus}</span> : <span className="rp-dim">no Avail login</span>}</td>
+                <td>{missing === need.length ? `${need.length}` : `${missing} of ${need.length} blank`}</td>
+                <td>{deadlineFor(b.serviceDate)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {outstanding.length === 0 && <p className="rp-dim">Every sheet{garage !== "All" ? ` for ${garage}` : ""} is entered.</p>}
+      <p className="rp-dim rp-x-keys"><span className="rp-kbd">↑</span> <span className="rp-kbd">↓</span> choose · <span className="rp-kbd">Enter</span> open · late sheets first, then oldest service date · click a garage to work only its sheets</p>
+      {enteredToday.length > 0 && (
+        <details className="rp-x-done">
+          <summary>Entered today ({enteredToday.length})</summary>
+          <ul>{enteredToday.map((r) => <li key={r.k}><button className="rp-link" onClick={() => open(r.k)}>Block {r.b.block} · {r.b.serviceDate}</button> <span className={`rp-pill ${STATE_PILL[r.s]}`}>{STATE_LABEL[r.s]}</span></li>)}</ul>
+        </details>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------- A: Sheet
