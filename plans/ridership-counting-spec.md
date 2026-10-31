@@ -192,6 +192,7 @@ need `decision-matrix.view`, and Planning would not look for it there).
   | Month close | recorder marks complete; manager closes and reopens |
   | Totals & export | anyone with `ridership.view`; operator names hidden unless the role may see them |
   | APC comparison (future, §12) | manager |
+  | APC health (future, §14) | recorder, manager; Fleet read-only |
 
 - **Planning's setup** (the block-to-garage list and the flag thresholds) is an
   **Administration** page beside Service Configuration, listed once in
@@ -340,9 +341,9 @@ How it fits OnBoard:
   candidates for unscheduled trips.
 - **APC per trip** = the sum of all its rows' `Boards`, including the null-stop
   row. Stop and timepoint rows are kept for drill-down.
-- **Bus** comes from Avail's pull-out report (`FixedRouteDepartures`, by block),
-  not from this feed. That makes the "by bus" view a join, and it can be wrong
-  when a block changes bus mid-day.
+- **Bus** comes from the GTFS-RT vehicle on each trip, with pull-out
+  (`FixedRouteDepartures`, by block) as the fallback, not from this feed.
+  Pull-out alone cannot see a mid-day bus change (§14).
 - **Excluded from fixed-route totals:** routes 999, 1010, 4444, 5555, 6666.
   Route 1121 (MN United) is a possible source for special-event counts (C7).
 - **A trip whose rows are all zero** is treated as "no APC" rather than "0
@@ -359,6 +360,7 @@ How it fits OnBoard:
 - How soon after the service day the data is complete, and whether it is
   restated later (compare ADR 0039 for OTP).
 - Whether MVTA's APC data is certified for NTD reporting.
+- The troubleshooting questions in §14.
 
 **Decisions for later,** once the answers are in: the tolerance and number of
 weeks that let a bus or route drop the paper sheet; and which figure is the
@@ -389,6 +391,150 @@ Decisions this needs:
 3. **Buses with working APC:** skip manual counting, or count both during
    validation (§12).
 4. **Rollout:** a pilot garage or route first, with paper as backup.
+
+## 14. Future — APC troubleshooting
+
+Agreed with the user 2026-10-30 (design conversation, before anything is
+built). It builds on §12: §12 compares APC with manual counts, and this section
+explains **why** they disagree for a trip, a bus or a route, in either
+direction. On 2026-10-28 APC ran about 16% above manual on every route, so the
+tool must explain an over-count as well as an under-count.
+
+**Two layers.**
+
+1. **APC health**, nightly, on every trip, with no manual count needed. Most
+   counter, GPS, cellular and logon faults show in APC and AVL data alone.
+2. **Manual vs APC comparison** (§12) on top of it, only on buses the health
+   layer finds usable.
+
+**Unit: the bus-day** (one vehicle on one service date), with its trips
+underneath. A counter, a GPS receiver and a modem belong to a bus, and Fleet
+fixes buses. Route views roll bus-days up.
+
+**Which bus ran a trip.** The GTFS-RT `vehicle_id` per trip
+(`GtfsTripOperationalEvidence`), with pull-out (`FixedRouteDepartures`) as the
+fallback. This replaces §12's pull-out join. On 2026-10-28 the two sources used
+the same bus numbers and agreed on all 138 single-bus blocks, and GTFS-RT had a
+vehicle for all 606 revenue trips. Pull-out holds one row per block, so it
+cannot see a swap: 6 blocks ran on two buses according to GTFS-RT. When the two
+sources disagree, OnBoard records a bus-swap finding and does not pick a
+winner.
+
+### Causes and their evidence
+
+Each named cause is a **finding** with its evidence attached. Every threshold
+is a setting, not code, as in §6. Starting values come from the 2026-10-28
+sample and are retuned after a month of nightly runs.
+
+| Family | Cause | Fingerprint | Corroboration |
+|---|---|---|---|
+| Equipment | Counter dead | Every trip on the bus-day is zero (2026-10-28: blocks 6, 313, 366) | Trips ran (Dispatch Log actual start, positions) |
+| Equipment | Counter failing | ≥ 75% of trips zero, with a trickle on the rest (blocks 18: 7 of 9 trips zero, 4 boards; 358: 7 of 8, 1 board) | Same |
+| Equipment | Counter miscalibrated | Bus-day alights ÷ boards stays far from 1 over several days (fleet median 0.97; block 349 at 0.63, 59 at 1.27). The APC ÷ manual ratio on that bus is steady across operators | Multi-day only; one day is too noisy |
+| Equipment | GPS loss | Share of the bus-day's boardings on the null-`StopName` row > 25% (system 4.2%; block 63 at 87%, 49 at 59%) | Position gap ≥ 10 min inside a trip (new coverage columns) |
+| Equipment | Cellular loss | A run of trips with no APC rows **and** no positions, then recovery | Coverage columns; the Dispatch Log shows the trips ran |
+| AVL assignment | Counted outside a revenue trip | Deadhead (route 999) boardings > 15% of the bus-day (block 1: 17 deadhead vs 47 revenue) | Logon time against the first trip |
+| AVL assignment | Late or missing logon | Pull-out `login_actual` after the first trip's scheduled start, or none | Low or zero APC on the early trips |
+| AVL assignment | Wrong trip or block | APC trips that match no Dispatch Log trip, or one trip counted on two blocks | Dispatch Log, GTFS-RT trip assignment |
+| AVL assignment | Swap without re-logon | GTFS-RT vehicle ≠ pull-out vehicle inside a block | — |
+| Manual sheet | Sheet error | Bus healthy and the gap appears on one sheet only, or the gap follows one block or operator across buses | §6 flag history |
+| Avail delivery | Late, restated or missing | A day's data arrives late or changes on re-pull; a trip that ran has no APC rows while the bus's other trips do | Nightly re-pull (below) |
+
+**Deadhead boardings** are shown as a separate line, "counted outside a revenue
+trip", on the bus-day and the route. They never go into a trip's total and are
+never re-attributed, because the feed carries no times to place them by.
+
+### Outcome
+
+- Each bus-day carries **every finding that fired**, each with its evidence,
+  plus a **leading cause** or **Undetermined**. A bus can fail two ways at
+  once, and Undetermined is an allowed answer, as Indeterminate trip is for
+  missed trips.
+- Findings are proposals. A person **confirms or dismisses** them. Evidence
+  corroborates and never decides (the ADR 0035 stance).
+- Findings that repeat (same bus, same cause) roll up into **one open issue
+  per bus and cause**: first seen, last seen, days affected; Confirmed or
+  Dismissed; **Resolved** once a clean day follows a fix, which the next
+  nightly run can show.
+
+### Who it reaches
+
+| Family | Goes to |
+|---|---|
+| Equipment | Fleet/maintenance, as a per-bus list |
+| AVL assignment | Contractor dispatch (logon practice) and Avail support (trip matching on their side) |
+| Manual sheet | The contractor, through the §6 flag flow |
+| Avail delivery | Avail support |
+
+Delivery: a console worklist, plus a **weekly digest email** for each audience.
+A **newly dead counter** alerts the next morning. OnBoard has no work-order
+system to write to.
+
+**§6 flags.** When a flagged count sits on a bus-day with an open equipment or
+assignment finding, the flag shows that finding as context ("APC not usable
+here: counter dead"). It never resolves the flag, and no one settles a flag
+against an unusable APC figure.
+
+**§8 occurrences.** None in v1; the tool is diagnostic. Whether repeated
+logon findings (contractor practice) should propose occurrences is for later.
+
+### Console and access
+
+- An **APC health** tab in Ridership (§10):
+  - **Bus issues:** the open issues per bus and cause, with confirm and
+    dismiss.
+  - **Bus-day drill-down:** trips, boardings, unplaced boardings, deadhead
+    boardings, position gaps, logon time, and the bus on each trip.
+- The ridership roles from §10 use it. **Fleet gets a read-only view** of Bus
+  issues.
+- Avail APC delivery appears on **Integrations & Data Health** as a new feed.
+
+### Data
+
+- **Position coverage per trip.** OnBoard keeps no GPS history for ordinary
+  service: `AvailAvlVehiclePositions` holds only each vehicle's current
+  position, and history exists only during Events. Add a few columns to
+  `GtfsTripOperationalEvidence` from the GTFS-RT poller: positions received,
+  longest gap, and the gap's start and end. These **cannot be backfilled**, so
+  they land early as a small change of their own. Missed-trip evidence can
+  use them too.
+- **APC backfill:** on the first run, pull the last 90 days so each bus has a
+  baseline (miscalibration needs many days). Backfilled days get findings
+  from APC alone, with no gap evidence, and say so.
+- **Restatement:** re-pull the trailing 7 days each night and record changes
+  as ADR 0039 does for OTP. A late or changed delivery is itself an Avail
+  delivery finding.
+
+### Build order
+
+1. Position coverage columns on the GTFS-RT poller. Can go ahead of the rest.
+2. APC ingestion (§12) with the health layer: the bus per trip, findings and
+   bus-day issues.
+3. Worklist, weekly digests, the next-morning dead-counter alert and the Fleet
+   view.
+4. The manual comparison, and finding context on §6 flags, once manual entry
+   exists.
+
+### Steps outside the code (numbered, owner in brackets)
+
+1. Add a read-only APC health action (e.g. `ridership.apc-health.view`) and
+   assign it to Fleet/maintenance staff in Access & Identity. [Engineering +
+   an access administrator]
+2. Name the digest recipients for Fleet, contractor dispatch and Avail
+   support. [Planning + Operations]
+3. Share Avail's APC health report for review, and fold its fields into the
+   findings above. [User]
+
+### Questions for Avail (added to §12's list)
+
+- What the **APC health report** covers, its endpoint, and whether it carries
+  the vehicle.
+- How APC assigns a boarding to a trip when the operator is logged on to the
+  wrong trip or not logged on, and whether those boardings go to Deadhead 999.
+- Whether a counter that needs calibration can be seen on Avail's side
+  (door-level counts, board/alight balance).
+- Whether the ridership report can carry the vehicle and the door per row.
+- Whether a null `StopName` means no GPS fix or only "between stops".
 
 ## Open
 
