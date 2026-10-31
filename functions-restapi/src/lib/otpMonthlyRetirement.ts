@@ -161,17 +161,24 @@ export async function retireVanishedMonthlyKeys(
     .input("service_month", sql.Char(6), input.serviceMonth)
     .input("returned", sql.NVarChar(sql.MAX), payload).query<{ stored: number; returned: number }>(`
       WITH returned AS (
-        SELECT route_id, stop_id, day_of_week
+        -- DISTINCT so a payload that repeated a key cannot report more
+        -- coverage than the month has rows, which would turn the gate the
+        -- wrong way round.
+        SELECT DISTINCT route_id, stop_id, day_of_week
         FROM OPENJSON(@returned)
         WITH (route_id INT '$.r', stop_id INT '$.s', day_of_week NVARCHAR(20) '$.d')
       )
-      SELECT COUNT(*) stored,
-             SUM(CASE WHEN EXISTS (
-               SELECT 1 FROM returned k
-               WHERE k.route_id = m.route_id AND k.stop_id = m.stop_id
-                 AND k.day_of_week = m.day_of_week
-             ) THEN 1 ELSE 0 END) returned
+      -- A LEFT JOIN and COUNT of the joined column, not SUM(CASE WHEN EXISTS):
+      -- SQL Server refuses an aggregate over an expression containing a
+      -- subquery ("Cannot perform an aggregate function on an expression
+      -- containing an aggregate or a subquery"), which the contract test caught
+      -- in CI. COUNT ignores the NULLs the misses produce, so this counts the
+      -- stored keys that came back.
+      SELECT COUNT(*) stored, COUNT(k.route_id) returned
       FROM dbo.OtpMonthlyRouteStopDay m
+      LEFT JOIN returned k
+        ON k.route_id = m.route_id AND k.stop_id = m.stop_id
+       AND k.day_of_week = m.day_of_week
       WHERE m.service_month = @service_month
     `);
 
