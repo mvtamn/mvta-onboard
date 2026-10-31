@@ -163,3 +163,26 @@
 .rp-kbd { display: inline-block; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 0.75rem; font-family: ui-monospace, monospace; }
 .rp-x-done ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; }
 .rp-blank-msg { margin-top: 8px; display: inline-block; }
+/* PROTOTYPE — module shell by role (spec §10) */
+.rp-proto-bar { border-style: dashed; }
+.rp-role { width: 190px; }
+.rp-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-alt-bg); color: var(--text); cursor: pointer; font: inherit; font-size: 0.85rem; }
+.rp-chip.active { border-color: var(--brand-green); box-shadow: 0 0 0 1px var(--brand-green) inset; }
+.rp-modtabs { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.rp-modtabs .rp-aux { border-bottom: none; flex-wrap: wrap; }
+.rp-adminlink { font-size: 0.85rem; padding-bottom: 8px; }
+.rp-count { display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--pill-warning-bg); color: var(--pill-warning-fg); font-size: 0.72rem; font-weight: 700; text-align: center; }
+.rp-crumb { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.rp-flags, .rp-close, .rp-totals, .rp-setup { display: flex; flex-direction: column; gap: 10px; }
+.rp-flag-edit { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rp-flag-edit input { width: 180px; }
+.rp-raise { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: 8px; }
+.rp-raise .rp-eyebrow { width: 100%; }
+.rp-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.rp-steps > li { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-bg); }
+.rp-steps > li.done { border-color: var(--pill-success-fg); }
+.rp-step-body { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.rp-step-body input { width: 200px; }
+.rp-primary:disabled { opacity: 0.45; cursor: default; }
+.rp-thresholds { display: flex; gap: 14px; flex-wrap: wrap; }
+.rp-thresholds input { width: 70px; }

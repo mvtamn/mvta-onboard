@@ -153,6 +153,9 @@ function seedEntries(): Entries {
         for (const t of b.trips) if (needsCount(t)) e.counts[t.tripId] = String(t.median4wk ?? 0);
         e.enteredAt = date === "2026-10-28" ? "2026-10-29" : "2026-10-30";
         if (b.block === "329" && date === "2026-10-29") e.counts["1436640"] = "7";
+        // PROTOTYPE — two counts that trip the §6 rule, for the Flags tab.
+        if (date === "2026-10-28" && b.block === "105") e.counts["1436420"] = "140";
+        if (date === "2026-10-28" && b.block === "024") e.counts["1436311"] = "0";
       }
       out[key(date, b.block)] = e;
     }
@@ -200,82 +203,361 @@ const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
 
 // ---------------------------------------------------------------- shell
 
+// PROTOTYPE — the module as spec §10 places it: tabs gated by role, Planning's setup in
+// Administration, and the layouts we didn't pick kept under "Options considered".
 const VARIANTS = [
-  { key: "combined", group: "OCC entry — chosen", tag: "★", label: "Worklist → sheet", desc: "Decided 2026-10-30: B's worklist opens A's form; the keyboard runs through the day." },
-  { key: "sheet", group: "OCC entry — options considered", tag: "A", label: "Sheet", desc: "Pick a block; the form mirrors the paper sheet. Closest to Access today." },
-  { key: "worklist", group: "OCC entry — options considered", tag: "B", label: "Worklist", desc: "Starts from what is missing by garage; enter sheets inline." },
-  { key: "datasheet", group: "OCC entry — options considered", tag: "C", label: "Datasheet", desc: "One keyboard grid for the whole day; fastest for a stack of sheets." },
-  { key: "mobile", group: "Operator app (future)", tag: "D", label: "Operator mobile", desc: "Operators count on an MVTA device instead of paper." },
-  { key: "print", group: "Supporting screens", tag: "", label: "Print Count Sheets", desc: "The redesigned sheet, printed overnight." },
-  { key: "garages", group: "Supporting screens", tag: "", label: "Block → garage list", desc: "Planning keeps this each service change." },
-  { key: "apc", group: "Supporting screens", tag: "", label: "Compare with Avail APC", desc: "Manual counts vs Avail APC, shaped on the real stop-level feed (future)." },
+  { key: "combined", kind: "tab", tag: "", label: "Enter sheets", desc: "Worklist opening the sheet form (decided 2026-10-30)." },
+  { key: "print", kind: "tab", tag: "", label: "Print sheets", desc: "The redesigned sheet, printed overnight." },
+  { key: "flags", kind: "tab", tag: "", label: "Flags", desc: "Outlier and Planning-raised flags, answered by the contractor." },
+  { key: "close", kind: "tab", tag: "", label: "Month close", desc: "Contractor marks complete by the 5th; Planning closes by the 10th." },
+  { key: "totals", kind: "tab", tag: "", label: "Totals & export", desc: "Totals by route and day type; names only for roles that may see them." },
+  { key: "apc", kind: "tab", tag: "", label: "APC comparison", desc: "Manual counts vs Avail APC (future)." },
+  { key: "garages", kind: "admin", tag: "", label: "Ridership setup", desc: "Block → garage list and flag thresholds (Administration)." },
+  { key: "sheet", kind: "option", tag: "A", label: "Sheet", desc: "Pick a block; the form mirrors the paper sheet." },
+  { key: "worklist", kind: "option", tag: "B", label: "Worklist", desc: "Completeness by garage; enter sheets inline." },
+  { key: "datasheet", kind: "option", tag: "C", label: "Datasheet", desc: "One keyboard grid for the whole day." },
+  { key: "mobile", kind: "option", tag: "D", label: "Operator mobile", desc: "Operators count on an MVTA device (future)." },
 ] as const;
 type Variant = (typeof VARIANTS)[number]["key"];
 const isVariant = (v: string | null): v is Variant => VARIANTS.some((x) => x.key === v);
 
+type Role = "recorder" | "manager" | "compliance" | "viewer";
+const ROLES: { key: Role; label: string; held: string }[] = [
+  { key: "recorder", label: "ridership-recorder", held: "Contractor OCC staff" },
+  { key: "manager", label: "ridership-manager", held: "MVTA Planning" },
+  { key: "compliance", label: "Compliance", held: "Compliance roles" },
+  { key: "viewer", label: "ridership.view only", held: "Anyone else allowed to see totals" },
+];
+const isRole = (v: string | null): v is Role => ROLES.some((r) => r.key === v);
+const ROLE_VIEWS: Record<Role, Variant[]> = {
+  recorder: ["combined", "print", "flags", "close", "totals"],
+  manager: ["combined", "print", "flags", "close", "totals", "apc", "garages"],
+  compliance: ["flags", "close", "totals"],
+  viewer: ["totals"],
+};
+const seesNames = (r: Role) => r !== "viewer";
+
+interface FlagAnswer { kind: "corrected" | "confirmed"; reason: string; from: string; to: string; note: string; by: Role }
+interface RaisedFlag { id: string; date: string; block: string; tripId: string; reason: string }
+interface MonthClose { completeAt: string | null; closedAt: string | null; log: string[] }
+
 export function RidershipEntryPrototype() {
   const [searchParams, setSearchParams] = useSearchParams();
   const vp = searchParams.get("variant");
-  const variant: Variant = isVariant(vp) ? vp : "combined";
+  const rp = searchParams.get("role");
+  const role: Role = isRole(rp) ? rp : "recorder";
+  const allowed = ROLE_VIEWS[role];
+  const asked: Variant = isVariant(vp) ? vp : "combined";
+  const askedKind = VARIANTS.find((v) => v.key === asked)!.kind;
+  // Options considered are prototype controls, open to every role; tabs and setup follow the role.
+  const variant: Variant = askedKind === "option" || allowed.includes(asked) ? asked : allowed[0];
   const [entries, setEntries] = useState<Entries>(seedEntries);
   const [garages, setGarages] = useState<Record<string, Garage>>(INITIAL_GARAGES);
+  const [answers, setAnswers] = useState<Record<string, FlagAnswer>>({});
+  const [raised, setRaised] = useState<RaisedFlag[]>([]);
+  const [month, setMonth] = useState<MonthClose>({ completeAt: null, closedAt: null, log: [] });
 
-  function setVariant(next: Variant) {
+  function setParams(next: { variant?: Variant; role?: Role }) {
     const p = new URLSearchParams(searchParams);
     p.set("prototype", "ridership");
-    p.set("variant", next);
+    if (next.variant) p.set("variant", next.variant);
+    if (next.role) {
+      p.set("role", next.role);
+      if (askedKind !== "option" && !ROLE_VIEWS[next.role].includes(variant)) p.set("variant", ROLE_VIEWS[next.role][0]);
+    }
     setSearchParams(p);
   }
+  const setVariant = (v: Variant) => setParams({ variant: v });
+  const cycle = [...allowed, ...VARIANTS.filter((v) => v.kind === "option").map((v) => v.key)];
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const el = event.target as HTMLElement | null;
       if (el?.matches("input, textarea, select, [contenteditable='true']")) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      const i = VARIANTS.findIndex((x) => x.key === variant);
+      const i = cycle.indexOf(variant);
       const off = event.key === "ArrowLeft" ? -1 : 1;
-      setVariant(VARIANTS[(i + off + VARIANTS.length) % VARIANTS.length].key);
+      setVariant(cycle[(i + off + cycle.length) % cycle.length]);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [searchParams, variant]);
+  }, [searchParams, variant, role]);
 
   const update = (date: string, block: string, fn: (e: SheetEntry) => SheetEntry) =>
     setEntries((all) => ({ ...all, [key(date, block)]: fn(all[key(date, block)]) }));
 
   const props: VariantProps = { entries, update, garages };
-  const groups = [...new Set(VARIANTS.map((v) => v.group))];
   const current = VARIANTS.find((v) => v.key === variant)!;
+  const flags = buildFlags(entries, answers, raised);
 
   return (
     <div className="rp">
       <div className="rp-banner">PROTOTYPE · made-up data · nothing is saved · today is {TODAY}</div>
-      <nav className="rp-options" aria-label="Prototype options">
-        {groups.map((g) => (
-          <div key={g} className="rp-options-group">
-            <div className="rp-eyebrow">{g}</div>
-            <div className="rp-options-row">
-              {VARIANTS.filter((v) => v.group === g).map((v) => (
-                <button key={v.key} className={`rp-option ${v.key === variant ? "active" : ""}`} onClick={() => setVariant(v.key)} aria-pressed={v.key === variant}>
-                  <span className="rp-option-title">{v.tag && <span className="rp-option-tag">{v.tag}</span>}{v.label}</span>
-                  <span className="rp-option-desc">{v.desc}</span>
-                </button>
-              ))}
-            </div>
+      <nav className="rp-options rp-proto-bar" aria-label="Prototype controls">
+        <div className="rp-options-group">
+          <div className="rp-eyebrow">Prototype control — view as role</div>
+          <div className="rp-options-row">
+            {ROLES.map((r) => (
+              <button key={r.key} className={`rp-option rp-role ${r.key === role ? "active" : ""}`} onClick={() => setParams({ role: r.key })} aria-pressed={r.key === role}>
+                <span className="rp-option-title mono">{r.label}</span>
+                <span className="rp-option-desc">{r.held} · sees {ROLE_VIEWS[r.key].length} view{ROLE_VIEWS[r.key].length === 1 ? "" : "s"}</span>
+              </button>
+            ))}
           </div>
-        ))}
+        </div>
+        <div className="rp-options-group">
+          <div className="rp-eyebrow">Entry layouts considered (not chosen)</div>
+          <div className="rp-options-row">
+            {VARIANTS.filter((v) => v.kind === "option").map((v) => (
+              <button key={v.key} className={`rp-chip ${v.key === variant ? "active" : ""}`} onClick={() => setVariant(v.key)} title={v.desc}>
+                <span className="rp-option-tag">{v.tag}</span>{v.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </nav>
-      <h2 className="rp-current">{current.tag && `${current.tag} · `}{current.label}</h2>
+
+      {current.kind === "admin" ? (
+        <div className="rp-crumb"><span className="rp-dim">Administration › Service setup ›</span> <strong>Ridership setup</strong> <button className="rp-link" onClick={() => setVariant("combined")}>Back to Ridership</button></div>
+      ) : current.kind === "option" ? (
+        <div className="rp-crumb"><span className="rp-pill rp-pill-muted">Option considered</span> <strong>{current.tag} · {current.label}</strong> <span className="rp-dim">{current.desc}</span> <button className="rp-link" onClick={() => setVariant(allowed[0])}>Back to the module</button></div>
+      ) : (
+        <div className="rp-modtabs">
+          <div className="rp-aux" role="tablist" aria-label="Ridership">
+            {VARIANTS.filter((v) => v.kind === "tab" && allowed.includes(v.key)).map((v) => (
+              <button key={v.key} role="tab" aria-selected={v.key === variant} className={v.key === variant ? "active" : ""} onClick={() => setVariant(v.key)} title={v.desc}>
+                {v.label}{v.key === "flags" && flags.filter((f) => !f.answer).length > 0 && <span className="rp-count">{flags.filter((f) => !f.answer).length}</span>}{v.key === "apc" && <span className="rp-dim"> (future)</span>}
+              </button>
+            ))}
+          </div>
+          {allowed.includes("garages") && <button className="rp-link rp-adminlink" onClick={() => setVariant("garages")}>Ridership setup is in Administration →</button>}
+        </div>
+      )}
+
       {variant === "combined" && <CombinedVariant {...props} />}
       {variant === "sheet" && <SheetVariant {...props} />}
       {variant === "worklist" && <WorklistVariant {...props} />}
       {variant === "datasheet" && <DatasheetVariant {...props} />}
       {variant === "mobile" && <OperatorMobile />}
       {variant === "print" && <PrintSheets garages={garages} />}
-      {variant === "garages" && <GarageList garages={garages} setGarages={setGarages} />}
+      {variant === "flags" && <FlagsTab role={role} flags={flags} entries={entries} update={update} answers={answers} setAnswers={setAnswers} raised={raised} setRaised={setRaised} />}
+      {variant === "close" && <MonthCloseTab role={role} entries={entries} flags={flags} month={month} setMonth={setMonth} />}
+      {variant === "totals" && <TotalsTab role={role} entries={entries} />}
+      {variant === "garages" && <RidershipSetup garages={garages} setGarages={setGarages} />}
       {variant === "apc" && <ApcComparison />}
       <StatePanel entries={entries} garages={garages} />
-      <Switcher variant={variant} setVariant={setVariant} />
+      <Switcher variant={variant} keys={cycle} setVariant={setVariant} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Flags (PROTOTYPE)
+
+interface FlagItem { id: string; date: string; b: Block; t: Trip; value: string; reason: string; source: "rule" | "planning"; answer: FlagAnswer | null }
+
+function buildFlags(entries: Entries, answers: Record<string, FlagAnswer>, raised: RaisedFlag[]): FlagItem[] {
+  const out: FlagItem[] = [];
+  for (const date of SERVICE_DATES) for (const b of blocksFor(date)) {
+    const e = entries[key(date, b.block)];
+    for (const t of b.trips) {
+      if (!needsCount(t)) continue;
+      const id = `${date}|${b.block}|${t.tripId}`;
+      const v = e.counts[t.tripId] ?? "";
+      const reason = outlier(t, v);
+      // A corrected count stops tripping the rule; keep it listed with its answer.
+      if (reason || answers[id]) out.push({ id, date, b, t, value: v, reason: reason ?? answers[id].reason, source: "rule", answer: answers[id] ?? null });
+    }
+  }
+  for (const r of raised) {
+    const b = blocksFor(r.date).find((x) => x.block === r.block)!;
+    const t = b.trips.find((x) => x.tripId === r.tripId)!;
+    out.push({ id: r.id, date: r.date, b, t, value: entries[key(r.date, r.block)].counts[r.tripId] ?? "", reason: r.reason, source: "planning", answer: answers[r.id] ?? null });
+  }
+  return out;
+}
+
+function FlagsTab({ role, flags, entries, update, answers, setAnswers, raised, setRaised }: {
+  role: Role; flags: FlagItem[]; entries: Entries; update: VariantProps["update"];
+  answers: Record<string, FlagAnswer>; setAnswers: (a: Record<string, FlagAnswer>) => void; raised: RaisedFlag[]; setRaised: (r: RaisedFlag[]) => void;
+}) {
+  const canAnswer = role === "recorder" || role === "manager";
+  const [editing, setEditing] = useState<{ id: string; kind: "corrected" | "confirmed"; text: string } | null>(null);
+  const [raise, setRaise] = useState({ pick: "", reason: "" });
+  const open = flags.filter((f) => !f.answer);
+  const counted = SERVICE_DATES.flatMap((d) => blocksFor(d).flatMap((b) => b.trips.filter((t) => (entries[key(d, b.block)].counts[t.tripId] ?? "") !== "").map((t) => ({ d, b, t }))));
+
+  function save(f: FlagItem) {
+    if (!editing) return;
+    const a: FlagAnswer = { kind: editing.kind, reason: f.reason, from: f.value, to: editing.kind === "corrected" ? editing.text : f.value, note: editing.kind === "confirmed" ? editing.text : "", by: role };
+    if (editing.kind === "corrected") update(f.date, f.b.block, (x) => ({ ...x, counts: { ...x.counts, [f.t.tripId]: editing.text } }));
+    setAnswers({ ...answers, [f.id]: a });
+    setEditing(null);
+  }
+
+  return (
+    <div className="rp-flags">
+      <p className="rp-dim rp-apc-note">A flag is a question, not a finding (§6). The contractor corrects the count or confirms it with a note; any flag still open at month close becomes a candidate occurrence. {canAnswer ? "" : "Read-only for your role."}</p>
+      <div className="rp-b-garages">
+        <div className="rp-b-garage"><div className="rp-eyebrow">Open</div><div className="rp-big">{open.length}</div><div className="rp-dim">waiting on the contractor</div></div>
+        <div className="rp-b-garage"><div className="rp-eyebrow">Answered</div><div className="rp-big">{flags.length - open.length}</div><div className="rp-dim">corrected or confirmed</div></div>
+        <div className="rp-b-garage"><div className="rp-eyebrow">Rule</div><div className="rp-dim">count &gt; 3× the 4-week median and ≥ 10 above it, or 0 when the median is ≥ 5 — settings in Ridership setup</div></div>
+      </div>
+      <table className="rp-b-list rp-flag-list">
+        <thead><tr><th>Service date</th><th>Block</th><th>Trip</th><th className="num">Count</th><th className="num">4-wk median</th><th>Why</th><th>Raised by</th><th>Answer</th></tr></thead>
+        <tbody>{flags.map((f) => (
+          <tr key={f.id}>
+            <td>{f.date}</td><td className="mono">{f.b.block}</td><td>{f.t.route} {f.t.dir} <span className="mono">{f.t.start}</span></td>
+            <td className="num"><strong>{f.value === "" ? "—" : f.value}</strong></td><td className="num">{f.t.median4wk ?? "—"}</td>
+            <td><span className="rp-pill rp-pill-warn">{f.reason}</span></td>
+            <td>{f.source === "rule" ? "Rule" : "Planning"}</td>
+            <td>
+              {f.answer ? (
+                f.answer.kind === "corrected"
+                  ? <span className="rp-pill rp-pill-ok">Corrected {f.answer.from} → {f.answer.to}</span>
+                  : <span className="rp-pill rp-pill-ok" title={f.answer.note}>Confirmed · “{f.answer.note}”</span>
+              ) : editing?.id === f.id ? (
+                <span className="rp-flag-edit">
+                  <input autoFocus placeholder={editing.kind === "corrected" ? "Correct count" : "Why the count is right"} value={editing.text}
+                    onChange={(e) => setEditing({ ...editing, text: editing.kind === "corrected" ? e.target.value.replace(/\D/g, "") : e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter" && editing.text) save(f); if (e.key === "Escape") setEditing(null); }} />
+                  <button className="rp-primary" disabled={!editing.text} onClick={() => save(f)}>Save</button>
+                  <button className="rp-link" onClick={() => setEditing(null)}>Cancel</button>
+                </span>
+              ) : canAnswer ? (
+                <span className="rp-flag-edit">
+                  <button className="rp-link" onClick={() => setEditing({ id: f.id, kind: "corrected", text: "" })}>Correct the count</button>
+                  <button className="rp-link" onClick={() => setEditing({ id: f.id, kind: "confirmed", text: "" })}>Confirm with a note</button>
+                </span>
+              ) : <span className="rp-pill rp-pill-muted">Waiting on the contractor</span>}
+            </td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {flags.length === 0 && <p className="rp-dim">No flags.</p>}
+      {role === "manager" && (
+        <div className="rp-raise">
+          <div className="rp-eyebrow">Planning only — raise a flag on any counted trip</div>
+          <select value={raise.pick} onChange={(e) => setRaise({ ...raise, pick: e.target.value })}>
+            <option value="">Choose a trip…</option>
+            {counted.map(({ d, b, t }) => <option key={`${d}|${b.block}|${t.tripId}`} value={`${d}|${b.block}|${t.tripId}`}>{d} · block {b.block} · {t.route} {t.dir} {t.start} · {entries[key(d, b.block)].counts[t.tripId]}</option>)}
+          </select>
+          <input placeholder="Why (e.g. looks low for a school day)" value={raise.reason} onChange={(e) => setRaise({ ...raise, reason: e.target.value })} />
+          <button className="rp-primary" disabled={!raise.pick || !raise.reason} onClick={() => {
+            const [date, block, tripId] = raise.pick.split("|");
+            setRaised([...raised, { id: `raised-${Date.now()}`, date, block, tripId, reason: raise.reason }]);
+            setRaise({ pick: "", reason: "" });
+          }}>Raise flag</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Month close (PROTOTYPE)
+
+function MonthCloseTab({ role, entries, flags, month, setMonth }: { role: Role; entries: Entries; flags: FlagItem[]; month: MonthClose; setMonth: (m: MonthClose) => void }) {
+  const [reason, setReason] = useState("");
+  const sheets = SERVICE_DATES.flatMap((d) => blocksFor(d).map((b) => ({ b, s: sheetState(b, entries[key(d, b.block)]) })));
+  const openFlags = flags.filter((f) => !f.answer);
+  // One candidate occurrence per Count Sheet that is missing, late, entered late or has an open flag (§8).
+  const candidates = sheets.filter(({ b, s }) => s === "late" || s === "entered_late" || s === "missing" || s === "partial" || openFlags.some((f) => f.date === b.serviceDate && f.b.block === b.block));
+  const why = (b: Block, s: SheetState) => [
+    s === "late" || s === "missing" || s === "partial" ? "not entered" : null,
+    s === "entered_late" ? "entered late" : null,
+    openFlags.some((f) => f.date === b.serviceDate && f.b.block === b.block) ? "open flag" : null,
+  ].filter(Boolean).join(" · ");
+  const canComplete = (role === "recorder" || role === "manager") && !month.completeAt && openFlags.length === 0;
+
+  return (
+    <div className="rp-close">
+      <p className="rp-dim rp-apc-note">October 2026 · the prototype only has two service days (2026-10-28 and -29), so read this as the month.</p>
+      <ol className="rp-steps">
+        <li className={month.completeAt ? "done" : ""}>
+          <div><strong>1 · Contractor marks the month complete</strong> <span className="rp-dim">due 2026-11-05</span></div>
+          {month.completeAt ? <span className="rp-pill rp-pill-ok">Marked complete {month.completeAt}</span>
+            : <div className="rp-step-body">
+                {openFlags.length > 0 && <span className="rp-pill rp-pill-warn">{openFlags.length} flag{openFlags.length === 1 ? "" : "s"} still to answer</span>}
+                {role === "recorder" || role === "manager"
+                  ? <button className="rp-primary" disabled={!canComplete} onClick={() => setMonth({ ...month, completeAt: TODAY, log: [...month.log, `${TODAY} marked complete (${role})`] })}>Mark October complete</button>
+                  : <span className="rp-dim">Contractor's step.</span>}
+              </div>}
+        </li>
+        <li className={month.closedAt ? "done" : ""}>
+          <div><strong>2 · Planning closes the month</strong> <span className="rp-dim">due 2026-11-10 · produces the monthly totals</span></div>
+          {month.closedAt ? (
+            <div className="rp-step-body">
+              <span className="rp-pill rp-pill-ok">Closed {month.closedAt}</span>
+              {role === "manager" && <>
+                <input placeholder="Reason to reopen" value={reason} onChange={(e) => setReason(e.target.value)} />
+                <button className="rp-link" disabled={!reason} onClick={() => { setMonth({ ...month, closedAt: null, log: [...month.log, `${TODAY} reopened: ${reason}`] }); setReason(""); }}>Reopen</button>
+              </>}
+            </div>
+          ) : role === "manager"
+            ? <div className="rp-step-body"><button className="rp-primary" disabled={!month.completeAt} onClick={() => setMonth({ ...month, closedAt: TODAY, log: [...month.log, `${TODAY} closed (manager)`] })}>Close October</button>{!month.completeAt && <span className="rp-dim">after the contractor marks it complete</span>}</div>
+            : <div className="rp-step-body rp-dim">Planning's step.</div>}
+        </li>
+        <li>
+          <div><strong>3 · Compliance confirms candidate occurrences</strong> <span className="rp-dim">Incident and Data Reporting · one per Count Sheet · confirmed in the Compliance area, not here</span></div>
+          <table className="rp-b-list rp-apc-ratio">
+            <thead><tr><th>Service date</th><th>Block</th><th>Why</th></tr></thead>
+            <tbody>{candidates.map(({ b, s }) => <tr key={key(b.serviceDate, b.block)}><td>{b.serviceDate}</td><td className="mono">{b.block}</td><td>{why(b, s)}</td></tr>)}</tbody>
+          </table>
+          {role === "compliance" && <button className="rp-link">Open in Compliance → (not mocked)</button>}
+        </li>
+      </ol>
+      {month.log.length > 0 && <details><summary>History ({month.log.length})</summary><ul>{month.log.map((l, i) => <li key={i} className="rp-dim">{l}</li>)}</ul></details>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Totals & export (PROTOTYPE)
+
+function TotalsTab({ role, entries }: { role: Role; entries: Entries }) {
+  const rows = SERVICE_DATES.flatMap((d) => blocksFor(d).flatMap((b) => {
+    const e = entries[key(d, b.block)];
+    return [
+      ...b.trips.filter((t) => (e.counts[t.tripId] ?? "") !== "").map((t) => ({ d, route: t.route, n: Number(e.counts[t.tripId]), op: `${e.operator || "—"} (${e.operatorId || "—"})` })),
+      ...e.added.filter((a) => a.count !== "").map((a) => ({ d, route: a.route, n: Number(a.count), op: `${e.operator || "—"} (${e.operatorId || "—"})` })),
+    ];
+  }));
+  const group = (f: (r: (typeof rows)[number]) => string) => [...new Set(rows.map(f))].sort().map((k) => ({ k, trips: rows.filter((r) => f(r) === k).length, n: rows.filter((r) => f(r) === k).reduce((s, r) => s + r.n, 0) }));
+  return (
+    <div className="rp-totals">
+      <p className="rp-dim rp-apc-note">Weekday totals from entered counts · day type from the service calendar (§9) · ServiceType column blank until its source is settled.</p>
+      <div className="rp-apc-head">
+        <h3 className="rp-b-title">By route</h3>
+        <button className="rp-link" title="Columns per §9: ServiceDate, Route, DayType, ServiceType, Boardings">Export month (CSV) — not mocked</button>
+      </div>
+      <table className="rp-b-list rp-apc-ratio">
+        <thead><tr><th>Route</th><th className="num">Trips counted</th><th className="num">Boardings</th></tr></thead>
+        <tbody>{group((r) => r.route).map((g) => <tr key={g.k}><td>{g.k}</td><td className="num">{g.trips}</td><td className="num">{g.n}</td></tr>)}</tbody>
+      </table>
+      <h3 className="rp-b-title">By operator</h3>
+      {seesNames(role) ? (
+        <table className="rp-b-list rp-apc-ratio">
+          <thead><tr><th>Operator</th><th className="num">Trips counted</th><th className="num">Boardings</th></tr></thead>
+          <tbody>{group((r) => r.op).map((g) => <tr key={g.k}><td>{g.k}</td><td className="num">{g.trips}</td><td className="num">{g.n}</td></tr>)}</tbody>
+        </table>
+      ) : <p className="rp-pill rp-pill-muted">Operator names are hidden for your role (§10) — totals only, and exports leave the names out.</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Administration › Ridership setup (PROTOTYPE)
+
+function RidershipSetup({ garages, setGarages }: { garages: Record<string, Garage>; setGarages: (g: Record<string, Garage>) => void }) {
+  return (
+    <div className="rp-setup">
+      <p className="rp-dim rp-apc-note">An Administration page beside Service Configuration, gated by <span className="mono">ridership.configure</span> (ridership-manager only).</p>
+      <h3 className="rp-b-title">Block → garage</h3>
+      <GarageList garages={garages} setGarages={setGarages} />
+      <h3 className="rp-b-title">Flag thresholds</h3>
+      <div className="rp-thresholds">
+        <label>Times the 4-week median<input defaultValue="3" /></label>
+        <label>And at least this many above it<input defaultValue="10" /></label>
+        <label>Flag a zero when the median is at least<input defaultValue="5" /></label>
+      </div>
+      <p className="rp-dim">Settings, not code (§6). Not wired to the flag rule in the prototype.</p>
     </div>
   );
 }
@@ -1149,16 +1431,17 @@ function StatePanel({ entries, garages }: { entries: Entries; garages: Record<st
   );
 }
 
-function Switcher({ variant, setVariant }: { variant: Variant; setVariant: (v: Variant) => void }) {
+function Switcher({ variant, keys, setVariant }: { variant: Variant; keys: Variant[]; setVariant: (v: Variant) => void }) {
   if (!import.meta.env.DEV) return null;
-  const i = VARIANTS.findIndex((x) => x.key === variant);
-  const prev = VARIANTS[(i - 1 + VARIANTS.length) % VARIANTS.length];
-  const next = VARIANTS[(i + 1) % VARIANTS.length];
+  const i = Math.max(0, keys.indexOf(variant));
+  const label = (k: Variant) => VARIANTS.find((x) => x.key === k)!.label;
+  const prev = keys[(i - 1 + keys.length) % keys.length];
+  const next = keys[(i + 1) % keys.length];
   return (
-    <div className="rp-switcher" aria-label="Prototype layout switcher">
-      <button onClick={() => setVariant(prev.key)} aria-label={`Show ${prev.label}`}>←</button>
-      <span>{i + 1}/{VARIANTS.length} · <strong>{VARIANTS[i].label}</strong> · ← → keys</span>
-      <button onClick={() => setVariant(next.key)} aria-label={`Show ${next.label}`}>→</button>
+    <div className="rp-switcher" aria-label="Prototype view switcher">
+      <button onClick={() => setVariant(prev)} aria-label={`Show ${label(prev)}`}>←</button>
+      <span>{i + 1}/{keys.length} · <strong>{label(variant)}</strong> · ← → keys</span>
+      <button onClick={() => setVariant(next)} aria-label={`Show ${label(next)}`}>→</button>
     </div>
   );
 }

@@ -34,6 +34,7 @@ import { SuggestedAlerts } from "./routes/SuggestedAlerts.js";
 import { Subscribers } from "./routes/Subscribers.js";
 import { AuditLog } from "./routes/AuditLog.js";
 import { OccTools } from "./routes/OccTools.js";
+import { RidershipPrototypePage } from "./routes/RidershipPrototypePage.js";
 import { TripStartLog } from "./routes/modules/tripStartLog/TripStartLog.js";
 import { EventMonitoring } from "./routes/modules/EventMonitoring.js";
 import { DecisionMatrixAdmin } from "./routes/DecisionMatrixAdmin.js";
@@ -96,6 +97,8 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     title: "OCC Tools",
     sub: "Service-risk prediction, procedure guidance, and vehicle monitoring",
   },
+  // PROTOTYPE — dev-only ridership module (plans/ridership-counting-spec.md §10).
+  { match: (p) => p === "/ridership", title: "Ridership", sub: "Count Sheets, flags, month close and totals — PROTOTYPE, dev only" },
   {
     match: (p) => p === "/schedule-review",
     title: "Schedule Review",
@@ -380,6 +383,8 @@ function AuthenticatedApp({ account, signOut }: {
         canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour />, count: pendingIntakeCount },
         canSeeDetours && { to: "/detour-reports", label: "Detour Register", desc: "Every detour, active and past — search, filter and export, read-only", icon: <IconClock /> },
         canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
+        // PROTOTYPE — dev only; the real entry is gated by ridership.view (spec §10).
+        import.meta.env.DEV && { to: "/ridership", label: "Ridership", desc: "PROTOTYPE · Count Sheets, flags, month close and totals", icon: <IconBus /> },
         // Analysis of the published schedule, not compliance; schedule data only, so every signed-in role sees it.
         { to: "/schedule-review", label: "Schedule Review", desc: "What in the published schedule makes predictions worse, with the evidence", icon: <IconClock /> },
       ),
@@ -646,6 +651,7 @@ function AuthenticatedApp({ account, signOut }: {
               <Route path="/audit" element={<RequireAccess action="governance-audit.view"><AuditLog /></RequireAccess>} />
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/schedule-review" element={<ScheduleReview />} />
+              {import.meta.env.DEV && <Route path="/ridership" element={<RidershipPrototypePage />} />}
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireAccess anyOf={[...ADMIN_ACTIONS]}><AdminLayout /></RequireAccess>}>
                 <Route index element={<AdminHome />} />
