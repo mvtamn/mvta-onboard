@@ -3,7 +3,8 @@
 **Status:** draft for MVTA Planning and Operations, 2026-10-30. Amends
 OPR-038-00 so it agrees with the agreed ridership design (one boardings total
 per trip) and hands the detail to the new Ridership Counting and Reporting SOP,
-cited here as **OPR-XXX-00** until MVTA registers its code.
+cited here as **OPR-XXX-00** until MVTA registers its code. These amendments
+are issued together with OPR-XXX-00 and take effect on the same date.
 
 Each change below names the place in OPR-038 it replaces. Text not listed is
 unchanged.
