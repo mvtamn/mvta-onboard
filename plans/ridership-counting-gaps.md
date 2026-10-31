@@ -97,7 +97,12 @@ has three measurable parts: **completeness** (all trips), **accuracy**, and
 | H1 | The Connect export (240 MB, rider PII) was sent by email/file share, and sits untracked but not git-ignored in the main checkout. |
 | H2 | Count Sheets carry operator name and ID; no handling rule beyond retention. |
 
-## Proposed direction (draft, pending enhancement details)
+## Proposed direction
+
+Superseded by the decisions in `plans/ridership-counting-spec.md` (agreed
+2026-10-30) and the contractor procedure draft
+`plans/ridership-counting-procedure-draft.md`. The original sketch is kept
+below for the record.
 
 - Operators (or OCC, from the sheet) enter counts in OnBoard against the
   Dispatch Log trip instead of in Access. The Dispatch Log already writes one
