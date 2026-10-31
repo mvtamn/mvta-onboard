@@ -201,20 +201,21 @@ const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
 // ---------------------------------------------------------------- shell
 
 const VARIANTS = [
-  { key: "sheet", label: "Sheet — mirror the paper" },
-  { key: "worklist", label: "Worklist — completeness first" },
-  { key: "datasheet", label: "Datasheet — keyboard grid" },
+  { key: "sheet", group: "OCC entry — pick one", tag: "A", label: "Sheet", desc: "Pick a block; the form mirrors the paper sheet. Closest to Access today." },
+  { key: "worklist", group: "OCC entry — pick one", tag: "B", label: "Worklist", desc: "Starts from what is missing by garage; enter sheets inline." },
+  { key: "datasheet", group: "OCC entry — pick one", tag: "C", label: "Datasheet", desc: "One keyboard grid for the whole day; fastest for a stack of sheets." },
+  { key: "mobile", group: "Operator app (future)", tag: "D", label: "Operator mobile", desc: "Operators count on an MVTA device instead of paper." },
+  { key: "print", group: "Supporting screens", tag: "", label: "Print Count Sheets", desc: "The redesigned sheet, printed overnight." },
+  { key: "garages", group: "Supporting screens", tag: "", label: "Block → garage list", desc: "Planning keeps this each service change." },
+  { key: "apc", group: "Supporting screens", tag: "", label: "Compare with Avail APC", desc: "Manual counts vs Avail APC boards/alights (future)." },
 ] as const;
 type Variant = (typeof VARIANTS)[number]["key"];
 const isVariant = (v: string | null): v is Variant => VARIANTS.some((x) => x.key === v);
-
-type Aux = "entry" | "print" | "garages" | "apc";
 
 export function RidershipEntryPrototype() {
   const [searchParams, setSearchParams] = useSearchParams();
   const vp = searchParams.get("variant");
   const variant: Variant = isVariant(vp) ? vp : "sheet";
-  const [aux, setAux] = useState<Aux>("entry");
   const [entries, setEntries] = useState<Entries>(seedEntries);
   const [garages, setGarages] = useState<Record<string, Garage>>(INITIAL_GARAGES);
 
@@ -242,24 +243,37 @@ export function RidershipEntryPrototype() {
     setEntries((all) => ({ ...all, [key(date, block)]: fn(all[key(date, block)]) }));
 
   const props: VariantProps = { entries, update, garages };
+  const groups = [...new Set(VARIANTS.map((v) => v.group))];
+  const current = VARIANTS.find((v) => v.key === variant)!;
 
   return (
     <div className="rp">
-      <div className="rp-banner">PROTOTYPE · fixtures only · nothing is saved · today is {TODAY}</div>
-      <div className="rp-aux" role="tablist">
-        <button className={aux === "entry" ? "active" : ""} onClick={() => setAux("entry")}>Ridership entry</button>
-        <button className={aux === "print" ? "active" : ""} onClick={() => setAux("print")}>Print Count Sheets</button>
-        <button className={aux === "garages" ? "active" : ""} onClick={() => setAux("garages")}>Block → garage list</button>
-        <button className={aux === "apc" ? "active" : ""} onClick={() => setAux("apc")}>Compare with Avail APC (future)</button>
-      </div>
-      {aux === "entry" && variant === "sheet" && <SheetVariant {...props} />}
-      {aux === "entry" && variant === "worklist" && <WorklistVariant {...props} />}
-      {aux === "entry" && variant === "datasheet" && <DatasheetVariant {...props} />}
-      {aux === "print" && <PrintSheets garages={garages} />}
-      {aux === "garages" && <GarageList garages={garages} setGarages={setGarages} />}
-      {aux === "apc" && <ApcComparison />}
+      <div className="rp-banner">PROTOTYPE · made-up data · nothing is saved · today is {TODAY}</div>
+      <nav className="rp-options" aria-label="Prototype options">
+        {groups.map((g) => (
+          <div key={g} className="rp-options-group">
+            <div className="rp-eyebrow">{g}</div>
+            <div className="rp-options-row">
+              {VARIANTS.filter((v) => v.group === g).map((v) => (
+                <button key={v.key} className={`rp-option ${v.key === variant ? "active" : ""}`} onClick={() => setVariant(v.key)} aria-pressed={v.key === variant}>
+                  <span className="rp-option-title">{v.tag && <span className="rp-option-tag">{v.tag}</span>}{v.label}</span>
+                  <span className="rp-option-desc">{v.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+      <h2 className="rp-current">{current.tag && `${current.tag} · `}{current.label}</h2>
+      {variant === "sheet" && <SheetVariant {...props} />}
+      {variant === "worklist" && <WorklistVariant {...props} />}
+      {variant === "datasheet" && <DatasheetVariant {...props} />}
+      {variant === "mobile" && <OperatorMobile />}
+      {variant === "print" && <PrintSheets garages={garages} />}
+      {variant === "garages" && <GarageList garages={garages} setGarages={setGarages} />}
+      {variant === "apc" && <ApcComparison />}
       <StatePanel entries={entries} garages={garages} />
-      {aux === "entry" && <Switcher variant={variant} setVariant={setVariant} />}
+      <Switcher variant={variant} setVariant={setVariant} />
     </div>
   );
 }
@@ -580,71 +594,200 @@ function GarageList({ garages, setGarages }: { garages: Record<string, Garage>; 
   );
 }
 
+// ---------------------------------------------------------------- Operator mobile (future)
+
+// The operator's block comes from their Avail login, so there is nothing to
+// scan. Counting buttons lock while AVL says the bus is moving: OPR-038 bans
+// device use while operating, so this is an MVTA-issued device, used at stops.
+function OperatorMobile() {
+  const b = blocksFor("2026-10-29").find((x) => x.block === "329")!;
+  const [screen, setScreen] = useState<"start" | "count" | "review" | "done">("start");
+  const [moving, setMoving] = useState(false);
+  const [active, setActive] = useState(0);
+  const [tally, setTally] = useState<Record<string, number>>({});
+  const [dno, setDno] = useState<Record<string, boolean>>({});
+  const t = b.trips[active];
+  const bump = (d: number) => setTally((x) => ({ ...x, [t.tripId]: Math.max(0, (x[t.tripId] ?? 0) + d) }));
+
+  return (
+    <div className="rp-mob-wrap">
+      <div className="rp-phone">
+        <div className="rp-phone-status"><span>9:41</span><span>MVTA device</span></div>
+        {screen === "start" && (
+          <div className="rp-mob">
+            <div className="rp-eyebrow">Passenger count</div>
+            <h3>Good afternoon, T. Okafor</h3>
+            <div className="rp-mob-card">
+              <div className="rp-dim">From your Avail login</div>
+              <div className="rp-mob-big">Block {b.block}</div>
+              <div>Bus {b.avail?.bus} · {b.trips.length} trips · Route 446</div>
+            </div>
+            <button className="rp-mob-primary" onClick={() => setScreen("count")}>Start counting</button>
+            <button className="rp-link">Not your block? Scan the sheet QR</button>
+          </div>
+        )}
+        {screen === "count" && (
+          <div className="rp-mob">
+            <div className="rp-mob-trips">
+              {b.trips.map((x, i) => (
+                <button key={x.tripId} className={i === active ? "active" : ""} onClick={() => setActive(i)}>
+                  <span className="mono">{x.start}</span><span>{x.route} {x.dir}</span><strong>{dno[x.tripId] ? "DNO" : tally[x.tripId] ?? 0}</strong>
+                </button>
+              ))}
+            </div>
+            {moving ? (
+              <div className="rp-mob-locked">Bus moving — counting locked<br /><span className="rp-dim">Count at the stop.</span></div>
+            ) : (
+              <div className="rp-mob-counter">
+                <div className="rp-dim">{t.route} {t.dir} · {t.start}–{t.end}</div>
+                <div className="rp-mob-count">{tally[t.tripId] ?? 0}</div>
+                <div className="rp-mob-buttons">
+                  <button onClick={() => bump(-1)} aria-label="Minus one">−</button>
+                  <button className="plus" onClick={() => bump(1)} aria-label="Plus one">+1</button>
+                </div>
+                <label className="rp-check"><input type="checkbox" checked={!!dno[t.tripId]} onChange={(e) => setDno({ ...dno, [t.tripId]: e.target.checked })} /> This trip did not operate</label>
+              </div>
+            )}
+            <div className="rp-mob-foot">
+              <button className="rp-link" disabled={active === 0} onClick={() => setActive(active - 1)}>‹ Prev trip</button>
+              {active < b.trips.length - 1
+                ? <button className="rp-link" onClick={() => setActive(active + 1)}>Next trip ›</button>
+                : <button className="rp-mob-primary small" onClick={() => setScreen("review")}>Finish block</button>}
+            </div>
+          </div>
+        )}
+        {screen === "review" && (
+          <div className="rp-mob">
+            <h3>Check and submit</h3>
+            <table className="rp-trips">
+              <tbody>{b.trips.map((x) => <tr key={x.tripId}><td className="mono">{x.start}</td><td>{x.route} {x.dir}</td><td className="num"><strong>{dno[x.tripId] ? "Did not operate" : tally[x.tripId] ?? 0}</strong></td></tr>)}</tbody>
+            </table>
+            <button className="rp-link">+ Add an unscheduled trip</button>
+            <button className="rp-mob-primary" onClick={() => setScreen("done")}>Submit at pull-in</button>
+            <button className="rp-link" onClick={() => setScreen("count")}>Back</button>
+          </div>
+        )}
+        {screen === "done" && (
+          <div className="rp-mob">
+            <div className="rp-mob-card ok"><div className="rp-mob-big">Submitted</div><div>Block {b.block} · {Object.values(tally).reduce((s, n) => s + n, 0)} boardings</div><div className="rp-dim">On time — no paper sheet needed.</div></div>
+            <button className="rp-link" onClick={() => { setScreen("start"); setTally({}); setDno({}); setActive(0); }}>Start over (prototype)</button>
+          </div>
+        )}
+      </div>
+      <aside className="rp-mob-notes">
+        <h3>How this would work</h3>
+        <ul>
+          <li><strong>No scanning.</strong> The block comes from the operator's Avail login, the same source the OCC screen pre-fills from.</li>
+          <li><strong>Counts at stops only.</strong> Counting locks while AVL says the bus is moving.
+            <label className="rp-check"><input type="checkbox" checked={moving} onChange={(e) => setMoving(e.target.checked)} /> Simulate bus moving</label></li>
+          <li><strong>Submitting replaces the sheet.</strong> The submission time is the "timely" proof, and OCC entry is no longer needed for that block.</li>
+          <li><strong>Same rules as OCC entry:</strong> did-not-operate, unscheduled trips, deadline, outlier flags.</li>
+        </ul>
+        <h3>Decisions this needs</h3>
+        <ul>
+          <li><strong>Device.</strong> OPR-038 bans personal devices on duty, so this needs an MVTA-issued phone or tablet, or the MDT. Which?</li>
+          <li><strong>Mounting.</strong> Handheld, or mounted at the farebox?</li>
+          <li><strong>Buses with APC.</strong> Skip manual counting entirely, or count on both during validation?</li>
+          <li><strong>Offline.</strong> Counts must save on the device through dead zones and send later.</li>
+        </ul>
+      </aside>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Avail APC comparison (future)
 
-// ASSUMPTION: no APC data reaches OnBoard today. This mocks a per-trip Avail APC
-// boardings figure, as Avail's APC reporting would give it, for buses with
-// working counters. Shape and availability are unconfirmed.
-interface ApcRow { tripId: string; route: string; dir: string; start: string; block: string; bus: string; manual: number | null; apc: number | null; apcHealth: "ok" | "no_apc" | "door_fault" }
+// Shape from Avail360 "APC Ridership By Service Level, Block, Route, Trip,
+// Timepoint" (ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1/{Property}).
+// The spec gives filters (Block/Route/Trip Farebox IDs, date range) but no
+// response schema, so these field names are guesses until a sample comes back.
+interface ApcTimepoint { timepoint: string; boards: number; alights: number }
+interface ApcTrip { serviceLevel: string; blockFareboxId: string; routeFareboxId: string; tripFareboxId: string; dir: string; start: string; bus: string; manual: number | null; timepoints: ApcTimepoint[] | null; health: "ok" | "no_apc" | "door_fault" }
 
-function apcFixtures(): ApcRow[] {
-  const rows: ApcRow[] = [];
-  const apcBuses: Record<string, ApcRow["apcHealth"]> = { "4421": "ok", "4388": "ok", "4502": "door_fault", "4513": "no_apc", "4610": "ok", "4702": "ok" };
+const TIMEPOINTS: Record<string, string[]> = {
+  "495": ["Burnsville TS", "Apple Valley TS", "Mall of America"],
+  "436": ["Eagan TS", "Cedar Grove", "Blackhawk P&R", "Eagan TS"],
+  "460": ["Burnsville TS", "I-35W & 46th", "Downtown Mpls"],
+  "446": ["Eagan TS", "Cliff Rd", "Burnsville Ctr"],
+  "477": ["Lakeville Cedar", "Burnsville TS", "Downtown Mpls"],
+  "420": ["Burnsville TS", "Nicollet Ave", "Burnsville TS"],
+  "442": ["Burnsville TS", "Apple Valley TS"], "444": ["Savage", "Burnsville TS"],
+};
+
+function apcFixtures(): ApcTrip[] {
+  const health: Record<string, ApcTrip["health"]> = { "4421": "ok", "4388": "ok", "4502": "door_fault", "4513": "no_apc", "4610": "ok", "4702": "ok" };
   const drift: Record<string, number> = { "4421": 0.94, "4388": 1.02, "4610": 0.71, "4702": 1.0 };
+  const out: ApcTrip[] = [];
   for (const b of blocksFor("2026-10-28")) {
     const bus = b.avail?.bus ?? "—";
-    const health = apcBuses[bus] ?? "no_apc";
+    const h = health[bus] ?? "no_apc";
     for (const t of b.trips) {
       if (!needsCount(t)) continue;
-      const manual = t.median4wk;
-      const apc = health === "ok" && manual !== null ? Math.round(manual * (drift[bus] ?? 1) + (t.tripId.endsWith("7") ? 3 : 0)) : health === "door_fault" ? 0 : null;
-      rows.push({ tripId: t.tripId, route: t.route, dir: t.dir, start: t.start, block: b.block, bus, manual, apc, apcHealth: health });
+      const total = t.median4wk === null ? 0 : Math.round(t.median4wk * (drift[bus] ?? 1) + (t.tripId.endsWith("7") ? 3 : 0));
+      const tps = TIMEPOINTS[t.route] ?? ["Start", "End"];
+      // Boards split across all but the last timepoint, alights across all but the first.
+      const split = (n: number, parts: number) => Array.from({ length: parts }, (_, i) => Math.floor(n / parts) + (i < n % parts ? 1 : 0));
+      const boards = [...split(total, tps.length - 1), 0];
+      const alights = [0, ...split(total, tps.length - 1)];
+      const timepoints = h === "ok" ? tps.map((name, i) => ({ timepoint: name, boards: boards[i], alights: alights[i] }))
+        : h === "door_fault" ? tps.map((name) => ({ timepoint: name, boards: 0, alights: 0 })) : null;
+      out.push({ serviceLevel: "Weekday", blockFareboxId: String(Number(b.block)), routeFareboxId: t.route, tripFareboxId: t.tripId.slice(-4), dir: t.dir, start: t.start, bus, manual: t.median4wk, timepoints, health: h });
     }
   }
-  return rows;
+  return out;
 }
+
+const sumBoards = (t: ApcTrip) => t.timepoints?.reduce((s, x) => s + x.boards, 0) ?? null;
 
 function ApcComparison() {
   const [tolerance, setTolerance] = useState(15);
+  const [open, setOpen] = useState<string | null>(null);
   const rows = apcFixtures();
-  const comparable = rows.filter((r) => r.apcHealth === "ok" && r.manual !== null && r.apc !== null);
-  const diffPct = (r: ApcRow) => (r.manual! === 0 ? (r.apc! === 0 ? 0 : 100) : Math.round((100 * (r.apc! - r.manual!)) / r.manual!));
+  const comparable = rows.filter((r) => r.health === "ok" && r.manual !== null);
+  const diffPct = (r: ApcTrip) => { const a = sumBoards(r)!; const m = r.manual!; return m === 0 ? (a === 0 ? 0 : 100) : Math.round((100 * (a - m)) / m); };
   const within = comparable.filter((r) => Math.abs(diffPct(r)) <= tolerance).length;
   const sumManual = comparable.reduce((s, r) => s + r.manual!, 0);
-  const sumApc = comparable.reduce((s, r) => s + r.apc!, 0);
+  const sumApc = comparable.reduce((s, r) => s + sumBoards(r)!, 0);
   const byBus = [...new Set(comparable.map((r) => r.bus))].map((bus) => {
     const mine = comparable.filter((r) => r.bus === bus);
-    const m = mine.reduce((s, r) => s + r.manual!, 0); const a = mine.reduce((s, r) => s + r.apc!, 0);
+    const m = mine.reduce((s, r) => s + r.manual!, 0); const a = mine.reduce((s, r) => s + sumBoards(r)!, 0);
     return { bus, trips: mine.length, ratio: m ? a / m : 1 };
   });
 
   return (
     <div className="rp-apc">
-      <div className="rp-banner rp-banner-soft">FUTURE · assumes Avail APC per-trip boardings reach OnBoard — not available today</div>
+      <div className="rp-banner rp-banner-soft">FUTURE · shaped on Avail360 <span className="mono">ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1</span> · response field names assumed until a sample arrives · made-up figures</div>
       <div className="rp-b-garages">
         <div className="rp-b-garage"><div className="rp-eyebrow">Trips comparable</div><div className="rp-big">{comparable.length} / {rows.length}</div><div className="rp-dim">bus has working APC and a manual count</div></div>
-        <div className="rp-b-garage"><div className="rp-eyebrow">Agreement</div><div className="rp-big">{comparable.length ? Math.round((100 * within) / comparable.length) : 0}%</div><div className="rp-dim">within ±<input className="rp-tol" value={tolerance} onChange={(e) => setTolerance(Number(e.target.value.replace(/\D/g, "")) || 0)} />%</div></div>
-        <div className="rp-b-garage"><div className="rp-eyebrow">Day total</div><div className="rp-big">{sumManual} vs {sumApc}</div><div className="rp-dim">manual vs APC on comparable trips</div></div>
+        <div className="rp-b-garage"><div className="rp-eyebrow">Agreement</div><div className="rp-big">{comparable.length ? Math.round((100 * within) / comparable.length) : 0}%</div><div className="rp-dim">within ±<input className="rp-tol" value={tolerance} onChange={(e) => setTolerance(Number(e.target.value.replace(/\D/g, "")) || 0)} />% of manual</div></div>
+        <div className="rp-b-garage"><div className="rp-eyebrow">Boardings, 2026-10-28</div><div className="rp-big">{sumManual} vs {sumApc}</div><div className="rp-dim">manual vs APC on comparable trips</div></div>
       </div>
-      <h3 className="rp-b-title">By bus — is the counter or the sheet drifting?</h3>
+      <h3 className="rp-b-title">By bus — is it the counter or the sheet?</h3>
       <table className="rp-b-list">
         <thead><tr><th>Bus</th><th>Trips</th><th>APC ÷ manual</th><th /></tr></thead>
-        <tbody>{byBus.map((b) => <tr key={b.bus}><td className="mono">{b.bus}</td><td>{b.trips}</td><td>{b.ratio.toFixed(2)}</td><td>{Math.abs(b.ratio - 1) > tolerance / 100 && <span className="rp-pill rp-pill-warn">Consistent gap — check the counter or this operator's sheets</span>}</td></tr>)}</tbody>
+        <tbody>{byBus.map((b) => <tr key={b.bus}><td className="mono">{b.bus}</td><td>{b.trips}</td><td>{b.ratio.toFixed(2)}</td><td>{Math.abs(b.ratio - 1) > tolerance / 100 && <span className="rp-pill rp-pill-warn">Steady gap — check this counter, or this operator's sheets</span>}</td></tr>)}</tbody>
       </table>
-      <h3 className="rp-b-title">By trip · 2026-10-28</h3>
+      <h3 className="rp-b-title">By trip — click a row for Avail's timepoint detail</h3>
       <table className="rp-b-list">
-        <thead><tr><th>Block</th><th>Trip</th><th>Route</th><th>Start</th><th>Bus</th><th className="num">Manual</th><th className="num">APC</th><th className="num">Diff</th><th>APC health</th></tr></thead>
-        <tbody>{rows.map((r) => {
-          const ok = r.apcHealth === "ok" && r.manual !== null && r.apc !== null;
+        <thead><tr><th>Service level</th><th>Block FB</th><th>Route FB</th><th>Trip FB</th><th>Start</th><th>Bus</th><th className="num">Manual</th><th className="num">APC boards</th><th className="num">Diff</th><th>APC health</th></tr></thead>
+        <tbody>{rows.flatMap((r) => {
+          const k = `${r.blockFareboxId}-${r.tripFareboxId}`;
+          const ok = r.health === "ok" && r.manual !== null;
           const d = ok ? diffPct(r) : null;
-          return (
-            <tr key={r.tripId}>
-              <td className="mono">{r.block}</td><td className="mono">{r.tripId}</td><td>{r.route} {r.dir}</td><td className="mono">{r.start}</td><td className="mono">{r.bus}</td>
-              <td className="num">{r.manual ?? "—"}</td><td className="num">{r.apc ?? "—"}</td>
+          return [
+            <tr key={k} onClick={() => setOpen(open === k ? null : k)} className={open === k ? "open" : ""}>
+              <td>{r.serviceLevel}</td><td className="mono">{r.blockFareboxId}</td><td>{r.routeFareboxId} {r.dir}</td><td className="mono">{r.tripFareboxId}</td><td className="mono">{r.start}</td><td className="mono">{r.bus}</td>
+              <td className="num">{r.manual ?? "—"}</td><td className="num">{r.health === "ok" ? sumBoards(r) : "—"}</td>
               <td className="num">{d === null ? "—" : <span className={Math.abs(d) > tolerance ? "rp-bad" : ""}>{d > 0 ? "+" : ""}{d}%</span>}</td>
-              <td>{r.apcHealth === "ok" ? <span className="rp-pill rp-pill-ok">Working</span> : r.apcHealth === "door_fault" ? <span className="rp-pill rp-pill-bad">Door sensor fault — excluded</span> : <span className="rp-pill rp-pill-muted">No APC on bus</span>}</td>
-            </tr>
-          );
+              <td>{r.health === "ok" ? <span className="rp-pill rp-pill-ok">Working</span> : r.health === "door_fault" ? <span className="rp-pill rp-pill-bad">All zeros — excluded</span> : <span className="rp-pill rp-pill-muted">No APC on bus</span>}</td>
+            </tr>,
+            open === k && <tr key={`${k}-tp`} className="rp-b-drawer"><td colSpan={10}>
+              {r.timepoints ? (
+                <table className="rp-trips rp-tp"><thead><tr><th>Timepoint</th><th className="num">Boards</th><th className="num">Alights</th></tr></thead>
+                  <tbody>{r.timepoints.map((x, i) => <tr key={i}><td>{x.timepoint}</td><td className="num">{x.boards}</td><td className="num">{x.alights}</td></tr>)}</tbody></table>
+              ) : <span className="rp-dim">No APC data for this bus.</span>}
+            </td></tr>,
+          ];
         })}</tbody>
       </table>
     </div>
@@ -675,7 +818,7 @@ function Switcher({ variant, setVariant }: { variant: Variant; setVariant: (v: V
   return (
     <div className="rp-switcher" aria-label="Prototype layout switcher">
       <button onClick={() => setVariant(prev.key)} aria-label={`Show ${prev.label}`}>←</button>
-      <span><strong>{String.fromCharCode(65 + i)}</strong> · {VARIANTS[i].label}</span>
+      <span>{i + 1}/{VARIANTS.length} · <strong>{VARIANTS[i].label}</strong> · ← → keys</span>
       <button onClick={() => setVariant(next.key)} aria-label={`Show ${next.label}`}>→</button>
     </div>
   );
