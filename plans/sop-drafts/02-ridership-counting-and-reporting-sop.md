@@ -68,12 +68,14 @@ MVTA Master Transit Glossary. **[Decide]**
 | Block | A scheduled sequence of trips assigned to a vehicle during a service day. At MVTA a block is one Operator's assignment. |
 | Block-to-Garage List | The list, kept by MVTA Planning in OnBoard, of which garage operates each block in the current service change. |
 | Count | The number of passengers who boarded on one trip. |
+| Contractor | The operations contractor MVTA engages for fixed-route service at the time. |
 | Count Sheet | The sheet for one block on one service date, printed from OnBoard, on which the Operator records the Count for each trip. |
+| Cutover Date | The first service date on which OnBoard is the only record of ridership, set by MVTA in writing. |
 | Flag | A question about a Count that OnBoard or MVTA Planning raises because the Count looks unusual. A Flag is a question, not a finding. |
 | Missed Trip | A scheduled trip that is not operated as planned. |
 | Month Close | MVTA Planning's acceptance of a month's Counts as final for reporting. |
 | Month Complete | The Contractor's declaration in OnBoard that every Count Sheet for a month is entered and every Flag answered. |
-| OnBoard | MVTA's operations console, the system of record for ridership Counts from 1 January 2027. |
+| OnBoard | MVTA's operations console, the system of record for ridership Counts from the Cutover Date. |
 | Reconstructed Count Sheet | A Count Sheet the Operator rewrites from memory after the original was lost or damaged during service. |
 | Reporting Failure | A Count Sheet that is missing, entered late, or carries a Flag unanswered at Month Close. |
 | Service Date | The operating day a trip belongs to, in Central time. A trip after midnight belongs to the service date on which its block began. |
@@ -317,20 +319,43 @@ with manual Counts, the Count Sheet remains the record on every trip.
    Sheet, once its APC Counts meet criteria MVTA sets. **[Decide]** Until MVTA
    does so, no one else may excuse a Count Sheet because APC is installed.
 
-### Transition from the Access Database (December 2026)
+### Transition from the Access Database
 
-MVTA's ridership has been entered in a Microsoft Access database. December 2026
-is run in parallel so the two can be compared before Access is retired.
+Until OnBoard takes over, the current process continues. Operators complete a
+Count Sheet with one total per trip, check-in desk staff collect the sheets,
+and Contractor OCC staff key them into MVTA's Microsoft Access ridership
+database, which is the record. MVTA moves ridership to OnBoard in three
+stages. MVTA sets the start of each stage and gives the Contractor written
+notice at least **[Decide]** days in advance.
 
-1. For service dates 1 to 31 December 2026, enter every Count Sheet in **both**
-   the Access database and OnBoard. **[Decide]** who keys December in OnBoard.
-2. The Access database remains the record for December 2026. MVTA Planning
-   compares December's totals in the two systems and resolves any difference
-   before closing January.
-3. For service dates from 1 January 2027, OnBoard is the only record. The
-   Access data-entry form is retired and no longer used.
-4. The deadlines, Flags and Reporting Failures in this SOP apply from service
-   date 1 January 2027. During December they are practised but not assessed.
+| Stage | Begins | Count Sheet | Entered in | Record |
+|---|---|---|---|---|
+| Current process | In effect now | Current sheet | Access | Access |
+| Parallel run | The first day of a calendar month MVTA sets | OnBoard sheet | Access and OnBoard | Access |
+| OnBoard only | The Cutover Date | OnBoard sheet | OnBoard | OnBoard |
+
+1. Until the parallel run begins, follow the current process. The Access
+   database is the record.
+2. During the parallel run, print and issue Count Sheets from OnBoard as set
+   out in Count Sheet Printing and Issue. Contractor OCC staff enter every
+   sheet in **both** OnBoard and the Access database, matching each OnBoard
+   trip to its Access row by block and start time. The Access database
+   remains the record.
+3. The parallel run lasts at least one full calendar month. MVTA Planning
+   compares the month's totals in the two systems and resolves any
+   difference. If MVTA accepts the result, it sets the Cutover Date as the
+   first day of a following month. If not, the parallel run continues.
+4. From the Cutover Date, OnBoard is the only record. The Access data-entry
+   form is retired and is no longer used.
+5. The entry deadline, Flags, Month Close and Reporting Failures are
+   practised during the parallel run but not assessed. They are assessed for
+   service dates from the Cutover Date.
+6. If MVTA directs in writing that OnBoard cannot be used after the Cutover
+   Date, return to the current process until MVTA sets a new Cutover Date.
+
+NOTE: A change of operations contractor does not restart or skip a stage. The
+stage in effect continues, and the incoming Contractor's staff take over its
+steps from their first day of service.
 
 ### Training and Access
 

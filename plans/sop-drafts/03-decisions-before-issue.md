@@ -16,7 +16,9 @@ marked **[Decide]** where it appears in the SOP.
 | 5 | Criteria that let APC replace the Count Sheet on a bus or route (gap C8) | Automatic Passenger Counters, step 3 | Operations + Planning | Paper on every trip until MVTA authorizes it in writing |
 | 6 | Whose staff "Contractor OCC staff" are. OPR-038 defines the OCC as MVTA's unit, but the spec has the Contractor keying sheets | Responsibilities | Operations | Contractor staff, holding the Ridership recorder role |
 | 7 | Whether ridership Reporting Failures fall under Attachment G's Incident and Data Reporting standard as written, or Attachment G needs amending (gap C4) | Reporting Failures, step 3 | MVTA contracts | Assessed under Incident and Data Reporting |
-| 8 | Who keys December 2026 in OnBoard, since Keolis starts on 1 January and December is still the current contractor's | Transition, step 1 | Operations | Not named |
+| 8 | ~~Who keys the parallel run in OnBoard~~ **Decided 2026-10-30:** the Contractor's OCC staff at the time (the current contractor if the run is before Keolis starts) | Transition, step 2 | — | Contractor OCC staff |
+| 14 | How many days' written notice MVTA gives before each transition stage | Transition | Operations | Left open |
+| 15 | What "accepts the result" means for the parallel run, e.g. monthly totals agree within an agreed % | Transition, step 3 | Planning | MVTA decides; no test written |
 | 9 | How many times a day sheets go from the check-in desk to OCC | Pull-In and Sheet Collection, step 4 | Operations | Left open (today: 2–3 times a day) |
 | 10 | How quickly the Contractor must produce a paper sheet MVTA asks for | Retention, step 2 | Compliance | Left open |
 | 11 | Whether deadheads and special events are out of scope, and where special-event counts are covered (gap C7) | Scope | Planning | Both out of scope; special events "covered separately" |
@@ -38,7 +40,9 @@ each one.
 - **The check-in desk checks the sheet** before the Operator leaves (Pull-In,
   step 2).
 - **Contractor management reviews completeness weekly** (Monitoring, step 2).
-- **December is practised but not assessed** (Transition, step 4).
+- **The parallel run is practised but not assessed** (Transition, step 5).
+- **A return to Access** if MVTA directs it after the Cutover Date (Transition, step 6).
+- **A change of contractor doesn't restart a stage** (Transition, NOTE).
 - **Refresher training each year**, and OnBoard access requested and removed
   through the IT Service Desk (Training and Access).
 - **Escalation rows** for sheets that can't print, sheets not returned,
@@ -48,8 +52,20 @@ each one.
 
 ## Changes from the spec
 
-None so far. If MVTA's answers above differ from the spec, the SOP follows
-MVTA, and the change is recorded here.
+If MVTA's answers differ from the spec, the SOP follows MVTA, and the change
+is recorded here.
+
+Decided with the user, 2026-10-30:
+
+- **No fixed dates.** The spec has December 2026 as the parallel run and
+  1 January 2027 as cutover. The SOP instead describes three stages (current
+  process, parallel run, OnBoard only), each started by MVTA's written
+  notice. The reason: the dates may not be achievable, and the SOP must stay
+  correct if they slip, including past the change of contractor.
+- **The parallel run uses the OnBoard-printed sheet**, keyed into both
+  OnBoard and Access, rather than the current sheet.
+- **The Contractor's OCC staff key both systems** during the parallel run.
+- **The OPR-038 amendments take effect with the new SOP**, not before.
 
 ## Later sections
 
