@@ -145,8 +145,48 @@ WHERE m.measurement_parameters IS NULL
 ORDER BY m.service_month DESC, m.route_id, m.stop_id;
 GO
 
--- Composable DML: the DELETE's OUTPUT is the archive's source, so there is no
--- window in which the row is gone from one table and not yet in the other.
+-- One transaction, and the DELETE's own OUTPUT decides what is archived: the
+-- archive is written from the rows that were actually removed, not from a
+-- second evaluation of the predicate.
+--
+-- Note the clause order. In a DELETE that names its target by alias, OUTPUT
+-- comes between the target and the FROM clause - DELETE m / OUTPUT ... / FROM
+-- ... / WHERE ... - and an OUTPUT written after the WHERE is a syntax error
+-- ("Incorrect syntax near 'OUTPUT'"), which is what CI reported the first time
+-- this migration ran. XACT_ABORT with the explicit transaction closes the
+-- window where a row could be deleted but not archived.
+-- XACT_ABORT is set inside this batch, not in one of its own: a batch may be
+-- run on a different pooled connection than the one before it, and a session
+-- setting left in another batch would simply not apply here.
+SET XACT_ABORT ON;
+
+DECLARE @stranded TABLE (
+  service_month CHAR(6), route_id INT, stop_id INT, day_of_week NVARCHAR(20),
+  stop_name NVARCHAR(200), route_label NVARCHAR(100),
+  pct_early FLOAT, pct_ontime FLOAT, pct_late FLOAT, pct_not_ontime FLOAT, pct_missed FLOAT,
+  early INT, ontime INT, late INT, missed INT, actual_departures INT, total INT,
+  first_seen_at DATETIME2, updated_at DATETIME2, measurement_parameters NVARCHAR(40)
+);
+
+BEGIN TRANSACTION;
+
+DELETE m
+OUTPUT deleted.service_month, deleted.route_id, deleted.stop_id, deleted.day_of_week,
+       deleted.stop_name, deleted.route_label,
+       deleted.pct_early, deleted.pct_ontime, deleted.pct_late,
+       deleted.pct_not_ontime, deleted.pct_missed,
+       deleted.early, deleted.ontime, deleted.late, deleted.missed,
+       deleted.actual_departures, deleted.total,
+       deleted.first_seen_at, deleted.updated_at, deleted.measurement_parameters
+INTO @stranded
+FROM dbo.OtpMonthlyRouteStopDay m
+WHERE m.measurement_parameters IS NULL
+  AND EXISTS (
+    SELECT 1 FROM dbo.OtpMonthlyRouteStopDay s
+    WHERE s.service_month = m.service_month
+      AND s.measurement_parameters IS NOT NULL
+  );
+
 INSERT INTO dbo.OtpMonthlyRetiredKeys (
   service_month, route_id, stop_id, day_of_week, stop_name, route_label,
   pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
@@ -159,28 +199,9 @@ SELECT service_month, route_id, stop_id, day_of_week, stop_name, route_label,
        first_seen_at, updated_at, measurement_parameters,
        N'Retired 2026-10-30 (migration 152): the month was re-polled under the declared measurement standard and Avail did not return this route/stop/day of week, so no poll can reach it and nothing can ever stamp it.',
        N'migration-152'
-FROM (
-  DELETE m
-  FROM dbo.OtpMonthlyRouteStopDay m
-  WHERE m.measurement_parameters IS NULL
-    AND EXISTS (
-      SELECT 1 FROM dbo.OtpMonthlyRouteStopDay s
-      WHERE s.service_month = m.service_month
-        AND s.measurement_parameters IS NOT NULL
-    )
-  OUTPUT deleted.service_month, deleted.route_id, deleted.stop_id, deleted.day_of_week,
-         deleted.stop_name, deleted.route_label,
-         deleted.pct_early, deleted.pct_ontime, deleted.pct_late,
-         deleted.pct_not_ontime, deleted.pct_missed,
-         deleted.early, deleted.ontime, deleted.late, deleted.missed,
-         deleted.actual_departures, deleted.total,
-         deleted.first_seen_at, deleted.updated_at, deleted.measurement_parameters
-) AS retired (
-  service_month, route_id, stop_id, day_of_week, stop_name, route_label,
-  pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
-  early, ontime, late, missed, actual_departures, total,
-  first_seen_at, updated_at, measurement_parameters
-);
+FROM @stranded;
+
+COMMIT TRANSACTION;
 GO
 
 -- ---------------------------------------------------------------------------

@@ -201,6 +201,10 @@ export async function retireVanishedMonthlyKeys(
   // caller needs the retired rows back to log and display them. OUTPUT INTO a
   // table variable gets both, and XACT_ABORT with the explicit transaction
   // closes the window where a row could be deleted but not archived.
+  //
+  // The clause order is not a style choice: in a DELETE that names its target
+  // by alias, OUTPUT belongs between the target and the FROM clause, and an
+  // OUTPUT after the WHERE is "Incorrect syntax near 'OUTPUT'".
   const gone = await pool
     .request()
     .input("service_month", sql.Char(6), input.serviceMonth)
@@ -219,6 +223,14 @@ export async function retireVanishedMonthlyKeys(
       BEGIN TRANSACTION;
 
       DELETE m
+      OUTPUT deleted.service_month, deleted.route_id, deleted.stop_id, deleted.day_of_week,
+             deleted.stop_name, deleted.route_label,
+             deleted.pct_early, deleted.pct_ontime, deleted.pct_late,
+             deleted.pct_not_ontime, deleted.pct_missed,
+             deleted.early, deleted.ontime, deleted.late, deleted.missed,
+             deleted.actual_departures, deleted.total,
+             deleted.first_seen_at, deleted.updated_at, deleted.measurement_parameters
+      INTO @gone
       FROM dbo.OtpMonthlyRouteStopDay m
       WHERE m.service_month = @service_month
         AND NOT EXISTS (
@@ -227,15 +239,7 @@ export async function retireVanishedMonthlyKeys(
             WITH (route_id INT '$.r', stop_id INT '$.s', day_of_week NVARCHAR(20) '$.d') k
           WHERE k.route_id = m.route_id AND k.stop_id = m.stop_id
             AND k.day_of_week = m.day_of_week
-        )
-      OUTPUT deleted.service_month, deleted.route_id, deleted.stop_id, deleted.day_of_week,
-             deleted.stop_name, deleted.route_label,
-             deleted.pct_early, deleted.pct_ontime, deleted.pct_late,
-             deleted.pct_not_ontime, deleted.pct_missed,
-             deleted.early, deleted.ontime, deleted.late, deleted.missed,
-             deleted.actual_departures, deleted.total,
-             deleted.first_seen_at, deleted.updated_at, deleted.measurement_parameters
-      INTO @gone;
+        );
 
       INSERT INTO dbo.OtpMonthlyRetiredKeys (
         service_month, route_id, stop_id, day_of_week, stop_name, route_label,
