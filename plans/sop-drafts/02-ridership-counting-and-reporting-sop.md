@@ -105,9 +105,11 @@ table sets out each role's link in that chain.
 ## Procedures
 
 The procedures below follow a Count Sheet from printing to Month Close. Each
-names the role that carries it out.
+opens by naming the role that carries it out.
 
 ### Block-to-Garage List
+
+**Carried out by:** MVTA Planning.
 
 OnBoard reports completeness by garage, so it must know which garage operates
 each block. MVTA Planning sets this up once for each service change.
@@ -121,6 +123,8 @@ NOTE: A block with no garage is still counted and still required. It appears
 as Unassigned so the gap is visible rather than silent.
 
 ### Count Sheet Printing and Issue
+
+**Carried out by:** check-in desk staff, under the Garage Manager.
 
 Every Operator needs the right sheet before the first trip. OnBoard prepares
 the next service date's sheets overnight from the day's scheduled trips: one
@@ -144,6 +148,8 @@ just before pull-out.
 
 ### Counting on the Trip
 
+**Carried out by:** Bus Operators.
+
 The Count is the number of passengers who boarded the trip. One total per trip
 is recorded; alightings and counts by timepoint are not.
 
@@ -152,6 +158,8 @@ is recorded; alightings and counts by timepoint are not.
    beside the first trip operated on it.
 2. Count every passenger who boards on every trip printed on the sheet,
    including passengers who board with a pass, a transfer or no fare.
+   **[Decide]** whether a passenger who stays aboard from one trip into the
+   next is counted again on the next trip.
 3. At the end of each trip, write the trip's total boardings in that trip's
    row.
 4. Record actual observations only. Do not estimate or round.
@@ -169,8 +177,11 @@ Record each trip's total at the end of the trip, when the vehicle is stopped.
 
 ### Lost or Damaged Count Sheets
 
-1. If your Count Sheet is lost or damaged during service, notify the OCC and
-   the Garage Manager at pull-in.
+**Carried out by:** Bus Operators.
+
+1. If your Count Sheet is lost or damaged during service, keep counting.
+   Write each remaining trip's total on any paper you have, at the end of the
+   trip, and notify the OCC and the Garage Manager at pull-in.
 2. Reconstruct the counts as accurately as you can on a new Count Sheet for
    the same block and service date, and write **Reconstructed** across the
    top.
@@ -182,6 +193,8 @@ OnBoard reports how often sheets are reconstructed, by garage and Operator,
 so that repeated losses can be addressed.
 
 ### Pull-In and Sheet Collection
+
+**Carried out by:** check-in desk staff, under the Garage Manager.
 
 1. At pull-in, the Operator hands the completed Count Sheet to the check-in
    desk as part of check-out (OPR-038-00, Pull-In and End-of-Shift
@@ -200,6 +213,8 @@ REQUIREMENT: A Count Sheet must not be altered after it is handed in. A
 correction is made in OnBoard, where it is recorded, never on the paper sheet.
 
 ### Entering Count Sheets in OnBoard
+
+**Carried out by:** Contractor OCC staff.
 
 Contractor OCC staff enter each sheet exactly as written. OnBoard opens on a
 worklist of the sheets still to enter, with completeness by garage at the top
@@ -227,6 +242,9 @@ service is due by 11:59 p.m. on Tuesday.
 
 ### Monitoring Completeness and Timeliness
 
+**Carried out by:** Contractor OCC staff and Contractor Operations
+Management.
+
 Completeness is a count for every trip that operated. OnBoard compares the
 Counts entered with the trips that were scheduled and lists the trips that
 still need a Count, and the sheets entered late, by garage and service date.
@@ -242,28 +260,35 @@ still need a Count, and the sheets entered late, by garage and service date.
 
 ### Answering Flags
 
+**Carried out by:** Contractor OCC staff. MVTA Planning raises Flags.
+
 MVTA checks every Count against the same trip's recent history. OnBoard raises
 a Flag on a Count that is far above the same trip's usual Count, or zero when
 the trip usually carries passengers. MVTA Planning may also flag any Count.
 
 1. OnBoard compares each trip's Count with the same trip (route, direction,
    scheduled start and day type) over the previous four weeks, and flags a
-   Count that is:
-   - more than three times the median and at least 10 above it; or
-   - zero when the median is 5 or more.
-
-   MVTA Planning sets these thresholds in OnBoard and may change them.
+   Count outside the thresholds MVTA Planning sets in OnBoard.
 2. Contractor OCC staff open each Flag under **Ridership**, **Flags**, and
    check the Count against the paper sheet.
 3. If the Count was entered wrongly, **correct** it to match the sheet.
 4. If the Count matches the sheet, **confirm** it, with a short note giving
    any reason known (for example, a school group or an event).
-5. Answer every Flag for a month by the **5th** of the following month.
+5. Answer every Flag for a month by the **5th** of the following month. A
+   Flag MVTA Planning raises after the 5th is answered within **[Decide]**
+   business days.
+
+NOTE: At issue, OnBoard flags a Count that is more than three times the
+four-week median and at least 10 above it, or zero when the median is 5 or
+more. MVTA Planning may change these thresholds and tells the Contractor when
+it does.
 
 NOTE: Confirming a Flag is not an admission of error. A Flag asks the
 Contractor to check the sheet; a confirmed Count stands.
 
 ### Month Close
+
+**Carried out by:** Contractor OCC staff, then MVTA Planning.
 
 1. By the **5th** of the following month, once every sheet is entered and
    every Flag answered, Contractor OCC staff mark the month **complete** in
@@ -277,9 +302,12 @@ Contractor to check the sheet; a confirmed Count stands.
 
 ### Reporting Failures
 
+**Carried out by:** MVTA Compliance.
+
 1. At Month Close, OnBoard proposes a Reporting Failure for each Count Sheet
    (one block on one service date) that is:
-   - **missing**: a block that operated has no sheet entered;
+   - **missing**: a block that operated still has no sheet entered at Month
+     Close;
    - **late**: entered after the end of the calendar day after the service
      date; or
    - **unanswered**: carries a Flag still unanswered at Month Close.
@@ -295,6 +323,8 @@ and corrective action under Attachment G. A Reconstructed Count Sheet entered
 on time is not a Reporting Failure.
 
 ### Count Sheet Retention and Handling
+
+**Carried out by:** Contractor Operations Management.
 
 Count Sheets are the evidence for the Counts and for any Reporting Failure, and
 they carry Operator names and IDs.
@@ -313,6 +343,8 @@ exports see Counts without names.
 
 ### Automatic Passenger Counters
 
+**Carried out by:** Bus Operators. MVTA Operations authorizes any exception.
+
 Some MVTA buses carry APC equipment. Until APC Counts have been shown to agree
 with manual Counts, the Count Sheet remains the record on every trip.
 
@@ -325,6 +357,8 @@ with manual Counts, the Count Sheet remains the record on every trip.
    does so, no one else may excuse a Count Sheet because APC is installed.
 
 ### Transition from the Access Database
+
+**Carried out by:** all roles, on MVTA Operations' written notice.
 
 Until OnBoard takes over, the current process continues. Operators complete a
 Count Sheet with one total per trip, check-in desk staff collect the sheets,
@@ -363,6 +397,9 @@ stage in effect continues, and the incoming Contractor's staff take over its
 steps from their first day of service.
 
 ### Training and Access
+
+**Carried out by:** Contractor Training and Safety staff and Contractor
+Operations Management.
 
 1. Train every Operator, check-in desk staff member and Contractor OCC staff
    member on the parts of this SOP they perform, before they perform them, and
