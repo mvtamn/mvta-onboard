@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAccess } from "../auth/AccessContext.js";
 import { DecisionMatrix } from "./modules/DecisionMatrix.js";
 import { DecisionMatrixReaderPrototype } from "./modules/DecisionMatrixReaderPrototype.js";
+import { RidershipEntryPrototype } from "./modules/RidershipEntryPrototype.js";
 import { SpeedAlerts } from "./modules/SpeedAlerts.js";
 
 const TOOLS = [
@@ -21,6 +22,14 @@ export function OccTools() {
   const [searchParams] = useSearchParams();
   const [tool, setTool] = useState<ToolKey>("decision-matrix");
   const showReaderPrototype = import.meta.env.DEV && searchParams.get("prototype") === "reader";
+  if (import.meta.env.DEV && searchParams.get("prototype") === "ridership") {
+    return (
+      <>
+        <div className="panel-header">OCC Tools · Ridership (prototype)</div>
+        <div className="panel-body"><RidershipEntryPrototype /></div>
+      </>
+    );
+  }
 
   return (
     <>
