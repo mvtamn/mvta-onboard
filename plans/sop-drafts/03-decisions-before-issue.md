@@ -57,6 +57,10 @@ each one.
   in OnBoard doesn't make the SOP wrong; the rule itself stays general.
 - **"Missing" means still not entered at Month Close**, so a sheet is missing
   or late, never both.
+- **Table additions:** escalation rows for an APC counter that isn't active,
+  Access down before cutover, and access removal when someone leaves; records
+  rows for Access-era counts, the Parallel Run acceptance, transition notices
+  and APC authorizations; a Reporting Failures metric with a target of none.
 - **An MVTA Operations role** for the transition notices and APC
   authorizations (decision 16).
 
