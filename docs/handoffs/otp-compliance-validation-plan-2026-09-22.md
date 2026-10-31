@@ -3,8 +3,8 @@
 **Purpose: decide whether OnBoard replaces the manual process as the official system of
 record for fixed-route OTP.**
 Written 2026-09-22 against dev and revised the same day for what shipped after the first
-draft. **Figures restated 2026-10-28 — see "What changed on 2026-10-28" below before
-reading any number in this document.** Current to **v1.6.39**. Read
+draft. **Figures restated 2026-10-28, and 2026-03 found short on 2026-10-30 — read "What changed
+on 2026-10-28" and "What changed on 2026-10-30" below before any number in this document.** Current to **v1.6.48**. Read
 `otp-compliance-explainer-2026-09-22.md` first.
 
 ---
@@ -53,6 +53,76 @@ alone. That is why January, February and July barely moved.
 > Confirm in SQL (`OtpMonthlyRestatements.detected_at`, or `updated_at` on
 > `OtpMonthlyRouteStopDay`) rather than believing the panel. Nothing is lost — the Missed
 > Trips reload is transactional.
+
+---
+
+## What changed on 2026-10-30 — March 2026 is short by 855 departures
+
+**Tier 1 asserts that OnBoard faithfully holds what Avail published. For 2026-03 it does
+not.** Found on dev 2026-10-30, fixed in code the same day (v1.6.48); the month itself is
+corrected only when it is re-pulled.
+
+**What happened.** Avail reports a month per route, stop and day of the week. OnBoard stored
+one row per route, stop and day of the week, on the assumption that Avail sends one record
+per key. It does not: for 2026-03 it sent **1,108 records carrying 1,081 distinct keys**. The
+27 repeated keys were each written twice, the second write overwrote the first, and the
+poll still reported `1108 reports seen, 1108 rows upserted`, because an overwrite is a
+successful upsert. No feed check, restatement or console figure could have shown it.
+
+**Why there are two records.** They partition the month — they are not duplicates:
+
+| Route | Stop | Monday, as sent | Sum | Same route's reference stop |
+| --- | --- | --- | --- | --- |
+| 425 | 30435 | 28 and 41 | 69 | 30451 (one record): **70** |
+| 442 | 30435 | 32 and 45 | 77 | 30451 (one record): 70 |
+| 497 | 31768 | 30 and 48 | 78 | 31723 (one record): **78** |
+| 497 | 31780 | 34 and 54 | 88 | 31860 (same split): 88 |
+
+Across all 27 keys the two values sum to the neighbouring stop's own total, day by day. The
+split follows the count of each weekday before and after about **18 March** — three Mondays
+and two, three Tuesdays and two, two Wednesdays and two, two Thursdays and two — which is
+what a mid-month schedule change looks like through a per-day-of-week aggregate. Routes
+affected: **425** (5 keys), **442** (7), **497** (15), at stops 30435, 31768, 31780 and
+31860.
+
+**The correction.** +855 departures and +805 on-time departures, all 27 keys:
+
+| 2026-03 | As stored | After re-pull |
+| --- | --- | --- |
+| Departures | 66,475 | **67,330** |
+| On time | 60,131 | **60,936** |
+| Raw OTP | 90.46% | **90.50%** |
+
+The discarded records were 94.2% on time, so the stored figure understates March slightly
+as well as under-counting it.
+
+**What to do.** Re-pull **03/2026** from the OTP Compliance administration page
+("Run backfill", from 03/2026 to 03/2026) once v1.6.48 is deployed. The change is recorded
+in `OtpMonthlyRestatements` like any other restatement. Until then, treat March's stored
+figure as short by roughly 1.3%.
+
+**The other nine months of 2026 are unaffected.** Every month's own re-pull delivered
+exactly as many records as it has rows (2026-01 997/997, 2026-02 1,002/1,002, 2026-04
+984/984, 2026-06 910/910, 2026-07 908/908, 2026-10 878/878), and the restatement ledger
+carries same-run pairs for 2026-03 alone. **2026-08 — the Tier 1 control month — is clean**,
+as is 2026-09, the month compared against Avail BI, so neither of those results is in
+question.
+
+**Separately found and deliberately not fixed: 11 rows across three months that Avail no
+longer reports.** 2026-05 holds 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 holds
+912 against 910; 2026-09 holds 860 against 859. The upsert never deletes, so a route/stop/day
+Avail has stopped reporting keeps its last figure indefinitely. The effect on a month's total
+is small but it is in the wrong direction (it inflates), and whether OnBoard may delete a
+figure because a feed stopped mentioning it is a decision for Ty rather than a bug fix.
+Worth raising at Tier 4.
+
+**What is now guarded.** Both the poll and the backfill count distinct keys, add records that
+share one together, and report any key that carried more than one — in the log, and in the
+backfill panel with each record's figures. `OtpDailyRouteStopHour` was checked for the same
+problem and is clean (80,326 rows, 80,326 keys; its key carries `direction`, migration 123),
+and its poll now warns if that ever stops being true.
+
+---
 
 **What this does NOT undermine.** The corrected figures are the ones that reconcile with
 Avail's own BI report (see Tier 1 below). The restatement makes OnBoard's number *more*
@@ -155,7 +225,7 @@ As of 2026-10-28, **do not freeze a baseline. Proceed and confirm by test.**
 | Gate | State |
 | --- | --- |
 | **A0 — the two manual artifacts agree with each other** | **Not done.** This is the gate. There is nothing to baseline against until it is. |
-| Tier 1 — OnBoard holds what Avail published | **Effectively passed** — see below |
+| Tier 1 — OnBoard holds what Avail published | **Passed for 2026-08 and 2026-09; failed for 2026-03** until it is re-pulled — see "What changed on 2026-10-30" |
 | Tier 2 — rule correctness | Passed 2026-09-22, except T2.4 |
 | Months measured consistently | **Yes** — all backfilled 2026-10-29 |
 | Acceptance standard still valid | **No** — needs restating against corrected figures |
@@ -187,7 +257,11 @@ Avail's month-boundary fix). Every route agrees within 0.11 points. T1.1–T1.3 
 be run formally on 2026-08, the control month, but the method is proven and the result is
 not in doubt.
 
-**What this means for the decision.** OnBoard demonstrably holds what Avail published. If
+**What this means for the decision.** OnBoard demonstrably holds what Avail published *for
+this month*. That is no longer a claim that can be made about every month on the strength of
+one: 2026-03 did not hold what Avail published, for a reason nothing in this comparison would
+have surfaced (see "What changed on 2026-10-30"). September and August are both clean, so the
+evidence behind Tier A stands. If
 the manual figure still disagrees after A0, the difference is in the *manual process*, not
 in OnBoard — and the open question becomes how MVTA's circulated 73.4% (and 51.8% on route
 465) was produced, since neither Avail product yields it.
