@@ -19,6 +19,7 @@ marked **[Decide]** where it appears in the SOP.
 | 8 | ~~Who keys the parallel run in OnBoard~~ **Decided 2026-10-30:** the Contractor's OCC staff at the time (the current contractor if the run is before Keolis starts) | Transition, step 2 | — | Contractor OCC staff |
 | 14 | How many days' written notice MVTA gives before each transition stage | Transition | Operations | Left open |
 | 15 | What "accepts the result" means for the parallel run, e.g. monthly totals agree within an agreed % | Transition, step 3 | Planning | MVTA decides; no test written |
+| 16 | Who in MVTA gives the transition notices and APC authorizations | Responsibilities, MVTA Operations | COO | MVTA Operations |
 | 9 | How many times a day sheets go from the check-in desk to OCC | Pull-In and Sheet Collection, step 4 | Operations | Left open (today: 2–3 times a day) |
 | 10 | How quickly the Contractor must produce a paper sheet MVTA asks for | Retention, step 2 | Compliance | Left open |
 | 11 | Whether deadheads and special events are out of scope, and where special-event counts are covered (gap C7) | Scope | Planning | Both out of scope; special events "covered separately" |
@@ -47,8 +48,9 @@ each one.
   through the IT Service Desk (Training and Access).
 - **Escalation rows** for sheets that can't print, sheets not returned,
   OnBoard down, Unassigned blocks and sheets at risk of missing the deadline.
-- **The Purpose names who MVTA reports ridership to** (its board, the
-  Metropolitan Council, NTD). Check this.
+- **The Purpose names NTD reporting** as a use of the counts. Check this.
+- **An MVTA Operations role** for the transition notices and APC
+  authorizations (decision 16).
 
 ## Changes from the spec
 

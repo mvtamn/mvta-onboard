@@ -23,28 +23,30 @@ until MVTA registers it.
 
 This Standard Operating Procedure sets out how ridership is counted, recorded,
 checked and reported for MVTA fixed-route bus service, from the printing of a
-Count Sheet to MVTA's close of the month's counts.
+Count Sheet to MVTA's close of the month's counts, and how ridership moves
+from MVTA's Access database to OnBoard.
 
 This SOP applies to every MVTA fixed-route revenue trip, scheduled or added,
 and to the personnel who count, collect, enter and review ridership: Bus
 Operators, check-in desk staff and Garage Managers, Contractor OCC staff,
 Contractor Operations Management, Contractor Training and Safety staff, MVTA
-Planning and MVTA Compliance.
+Planning, MVTA Operations and MVTA Compliance.
 
 The General Bus Operations SOP (OPR-038-00) summarizes the Operator's part of
 this procedure and cites this document by code. Other SOPs must cite this
 document, OPR-XXX-00, rather than restate it.
 
-This SOP does not govern MVTA Connect ridership, which is taken from the
-on-demand scheduling system and is not counted by Operators, or special-event
-counts, which are covered separately. **[Decide]** Deadhead movements are not
-counted.
+This SOP does not govern deadhead movements, which carry no passengers;
+MVTA Connect ridership, which is taken from the on-demand scheduling system and
+is not counted by Operators; or special-event counts, which are covered
+separately. **[Decide]**
 
 ## Purpose
 
-MVTA reports ridership to its board, to the Metropolitan Council and to the
-National Transit Database, and uses it to plan service and to apply for
-funding. A count that is missing, late or wrong carries into each of those.
+MVTA uses ridership counts to plan service, to report performance and to
+apply for funding, including its reporting to the National Transit Database.
+**[Decide]** A count that is missing, late or wrong carries into each of
+those.
 
 The operations contract requires Operators to conduct passenger counts on all
 trips in accordance with MVTA's procedures and standards, and to record them
@@ -53,8 +55,8 @@ training, supervising and monitoring its employees, and for ensuring that
 MVTA's ridership counting and reporting procedures are implemented and
 consistently followed. This SOP is that procedure. It gives each of the
 contract's terms a measurable standard: **all trips** means a count for every
-trip that operated; **timely** means entered in OnBoard by the end of the
-calendar day after the service date; and **accurately** means every question
+trip that operated; **timely** means entered by the end of the calendar day
+after the service date; and **accurately** means every question
 MVTA raises about a count is answered from the sheet before the month closes.
 
 ## Definitions
@@ -64,18 +66,20 @@ MVTA Master Transit Glossary. **[Decide]**
 
 | Term | Definition |
 |---|---|
+| Access Database | The Microsoft Access database in which MVTA's ridership is recorded until the Cutover Date. |
 | APC (Automatic Passenger Counter) | Onboard equipment that counts passengers boarding and alighting at each stop. |
 | Block | A scheduled sequence of trips assigned to a vehicle during a service day. At MVTA a block is one Operator's assignment. |
 | Block-to-Garage List | The list, kept by MVTA Planning in OnBoard, of which garage operates each block in the current service change. |
 | Count | The number of passengers who boarded on one trip. |
 | Contractor | The operations contractor MVTA engages for fixed-route service at the time. |
-| Count Sheet | The sheet for one block on one service date, printed from OnBoard, on which the Operator records the Count for each trip. |
+| Count Sheet | The sheet for one block on one service date on which the Operator records the Count for each trip. From the start of the Parallel Run it is printed from OnBoard. |
 | Cutover Date | The first service date on which OnBoard is the only record of ridership, set by MVTA in writing. |
 | Flag | A question about a Count that OnBoard or MVTA Planning raises because the Count looks unusual. A Flag is a question, not a finding. |
 | Missed Trip | A scheduled trip that is not operated as planned. |
 | Month Close | MVTA Planning's acceptance of a month's Counts as final for reporting. |
 | Month Complete | The Contractor's declaration in OnBoard that every Count Sheet for a month is entered and every Flag answered. |
 | OnBoard | MVTA's operations console, the system of record for ridership Counts from the Cutover Date. |
+| Parallel Run | The period, of at least one calendar month, in which every Count Sheet is entered in both the Access Database and OnBoard and the Access Database remains the record. |
 | Reconstructed Count Sheet | A Count Sheet the Operator rewrites from memory after the original was lost or damaged during service. |
 | Reporting Failure | A Count Sheet that is missing, entered late, or carries a Flag unanswered at Month Close. |
 | Service Date | The operating day a trip belongs to, in Central time. A trip after midnight belongs to the service date on which its block began. |
@@ -91,10 +95,11 @@ table sets out each role's link in that chain.
 |---|---|
 | Bus Operators | Count every boarding passenger on every trip of the assigned block, record each trip's Count on the Count Sheet, and hand the sheet in at pull-in. |
 | Check-In Desk Staff and Garage Managers | Print the next service date's Count Sheets from OnBoard, issue each Operator the sheet for the assigned block, collect completed sheets at pull-in, follow up the same day on any sheet not returned, pass sheets to Contractor OCC staff, and store sheets as this SOP requires. |
-| Contractor OCC Staff (OnBoard role: Ridership recorder) | Enter every Count Sheet in OnBoard by the deadline, add Unscheduled Trips, review completeness daily, answer every Flag, and mark each month complete. |
+| Contractor OCC Staff (OnBoard role: Ridership recorder) | Enter every Count Sheet by the deadline, in OnBoard and, until the Cutover Date, in the Access Database, add Unscheduled Trips, review completeness daily, answer every Flag, and mark each month complete. |
 | Contractor Operations Management | Supervise and monitor compliance with this SOP: review completeness and timeliness in OnBoard, correct repeated Operator or staff failures, request and remove OnBoard access for Contractor staff, and keep the paper Count Sheets for the required period. |
 | Contractor Training and Safety Staff | Train every Operator, check-in desk staff member and OCC staff member on this SOP before they perform it, and keep the training records. |
-| MVTA Planning (OnBoard role: Ridership manager) | Maintain the Block-to-Garage List and the Flag settings, review Counts, raise Flags, close each month and reopen a closed month when a correction is needed. |
+| MVTA Planning (OnBoard role: Ridership manager) | Maintain the Block-to-Garage List and the Flag settings, review Counts, raise Flags, close each month and reopen a closed month when a correction is needed. Compare the Parallel Run's totals in the two systems and recommend whether OnBoard is ready. |
+| MVTA Operations | Give the Contractor written notice of each transition stage and the Cutover Date, and issue any written authorization that lets APC replace the Count Sheet. **[Decide]** |
 | MVTA Compliance | Review each Reporting Failure OnBoard proposes at Month Close and confirm or dismiss it before it is assessed. |
 
 ## Procedures
@@ -331,24 +336,24 @@ notice at least **[Decide]** days in advance.
 | Stage | Begins | Count Sheet | Entered in | Record |
 |---|---|---|---|---|
 | Current process | In effect now | Current sheet | Access | Access |
-| Parallel run | The first day of a calendar month MVTA sets | OnBoard sheet | Access and OnBoard | Access |
+| Parallel Run | The first day of a calendar month MVTA sets | OnBoard sheet | Access and OnBoard | Access |
 | OnBoard only | The Cutover Date | OnBoard sheet | OnBoard | OnBoard |
 
-1. Until the parallel run begins, follow the current process. The Access
+1. Until the Parallel Run begins, follow the current process. The Access
    database is the record.
-2. During the parallel run, print and issue Count Sheets from OnBoard as set
+2. During the Parallel Run, print and issue Count Sheets from OnBoard as set
    out in Count Sheet Printing and Issue. Contractor OCC staff enter every
    sheet in **both** OnBoard and the Access database, matching each OnBoard
    trip to its Access row by block and start time. The Access database
    remains the record.
-3. The parallel run lasts at least one full calendar month. MVTA Planning
+3. The Parallel Run lasts at least one full calendar month. MVTA Planning
    compares the month's totals in the two systems and resolves any
    difference. If MVTA accepts the result, it sets the Cutover Date as the
-   first day of a following month. If not, the parallel run continues.
+   first day of a following month. If not, the Parallel Run continues.
 4. From the Cutover Date, OnBoard is the only record. The Access data-entry
    form is retired and is no longer used.
 5. The entry deadline, Flags, Month Close and Reporting Failures are
-   practised during the parallel run but not assessed. They are assessed for
+   practised during the Parallel Run but not assessed. They are assessed for
    service dates from the Cutover Date.
 6. If MVTA directs in writing that OnBoard cannot be used after the Cutover
    Date, return to the current process until MVTA sets a new Cutover Date.
