@@ -791,6 +791,10 @@ _Avoid_: OTP settings, measurement tuning, threshold (that is the Early/Late Bia
 The parameter set a stored OTP figure was polled under, recorded on the row itself as the segment string that was sent. It answers which stored figures are comparable with each other — the question that cannot be answered once a standard changes and nothing restates automatically. A row with no stamp is **not recorded**, never "measured under the current standard": the stamp is a property of a poll, and claiming otherwise would invent provenance. The sibling of recording it when Avail restates a closed month (ADR 0039), applied to OnBoard's own parameter changes.
 _Avoid_: version, revision, audit field
 
+**Retired Key**:
+A route, stop and day of week that an OTP month once held and Avail has stopped returning. It is archived whole — figures, dates and Measurement Provenance — and removed from the live month, because a figure the feed no longer publishes should neither count towards a contractual number nor hold its month on the re-pull list forever (ADR 0043). Retiring is not a correction of the figure and not a judgement about the stop: it says only that the source stopped mentioning it. Absence in one response is never enough — a response has to account for nearly the whole month before anything is retired, since a truncated delivery and a shrunken month look identical. If the key comes back, it is stored again as a new row and the archive keeps the earlier life.
+_Avoid_: deleted row, purge, cleanup
+
 **Early/Late Bias Threshold**:
 The share of departures, above which a stop's early or late running makes it a Flagged Stop. It is an operational review setting an administrator can change, not a contractual figure: moving it changes who gets looked at, never what a month scored.
 _Avoid_: OTP threshold, tolerance
