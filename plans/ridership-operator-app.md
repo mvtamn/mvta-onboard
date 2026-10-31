@@ -54,8 +54,10 @@ simpler reporting, and removing OCC's re-keying of paper.
    the desk, which the operator changes. 5 wrong tries locks the PIN until the
    desk resets it. The desk can set or reset PINs only for logon IDs in
    Avail's operator data.
-9. **Sessions:** a kiosk session ends after each submission or 2 minutes of
-   inactivity; a phone session lasts one service day.
+9. **Sessions:** on the kiosk, after a submission the operator sees
+   "anything else?" for 15 seconds and is then signed out; any 2 minutes of
+   inactivity also signs out. A phone session lasts one service day.
+   (Changed 2026-10-31, see `plans/operator-kiosk-module-shell.md`.)
 
 ### Entering counts
 
