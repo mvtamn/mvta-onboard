@@ -226,36 +226,84 @@ direction.
   OTP and missed-trip endpoints' MM-DD-YYYY), optional comma-separated
   `ServiceLevelFilter`, `BlockFilter`, `RouteFilter`, `TripFilter`
   (**Farebox IDs**), `PropertyNameFilter`.
-- Auth: `Ocp-Apim-Subscription-Key` header, the same scheme as the other
-  Avail360 endpoints; whether MVTA's existing key covers this API is to
-  confirm.
-- **The response schema is empty in the definition.** Field names, one row
-  per timepoint or per trip, and whether a vehicle or counter-health field is
-  present all need a sample response.
+- Auth: `Ocp-Apim-Subscription-Key` header. **MVTA's existing Avail360 key
+  works** (HTTP 200 on 2026-10-30).
+- Production URL used for the sample:
+  `https://avail360-api.myavail.cloud/ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1/MVTA`.
+
+**What one day returns** (sample pulled 2026-10-30 for service date
+2026-10-28, a weekday; 3.9 MB, 15,171 rows, kept outside the repo):
+
+- Envelope `{ "errors": [], "result": { "ApcRidershipBySvcLvlBlockRouteTripTimepoint": [...] } }`,
+  the same shape as the other Avail360 reports.
+- **One row per stop per trip**, not per timepoint. Fields: `CalendarDate`,
+  `ServiceLevelDesc` ("Weekday"), `Block` (int, e.g. `1` = Block `001`),
+  `RouteID` (int) / `RouteName`, `Trip` (int), `TripName` (`542-S`),
+  `Direction` (North/South/East/West/Deadhead), `StopName`
+  (`"30513 - Yankee Doodle Rd at …"`, stop ID then a truncated name),
+  `Timepoint` (0/1 flag; 4,299 of the rows are timepoints), `Boards`, `Alights`.
+- **`Trip` is the scheduled start time as HHMM** (542 = 05:42; every value is a
+  valid time, max 2302). The Access table's TripID `143620542` for Route 436,
+  Block 001 at 05:42 S carries the same number, so the two systems already
+  share this key.
+- **No vehicle, no operator, no actual time, no counter-health field.**
+- Each trip can have **one row with `StopName` null**: 242 of 1,029 trips, 480
+  boards in total. These are boardings APC counted but could not place at a stop.
+  They belong in the trip's total.
+- **Pseudo-routes** are in the same feed: `999` Deadhead (418 legs, 371
+  boards; noise or garage boardings), `1121` MN United (33 boards, a special
+  event), `4444` MVTA Connect, `1010` Flex, `5555` Training, `6666`
+  Maintenance. These have `Trip` 0, `TripName` "(X) Undefined" and no direction.
+- **Revenue only (routes 420–499):** 606 trips, **6,263 boards**, 6,050 alights.
+  43 trips (7%) are all zeros; 2 of 144 blocks are zero throughout, which most
+  likely means no working counter on that bus.
+- One route, trip and direction appears on two blocks (460 07:50 N, blocks 23
+  and 41), which looks like a double-out or tripper. This is the "unscheduled
+  trip" case in §4, and APC sees it.
+
+**First comparison with manual counts** (one APC day against September 2026's
+average manual weekday by route, from `FixedTotals`; indicative only):
+
+- **Trip counts match exactly** on 13 of 19 routes (e.g. 420: 30 = 30). The
+  others are express routes where APC has 1–5 more trips (460: 30 vs 27,
+  465: 51 vs 46), which are likely trippers that the manual roster doesn't
+  carry.
+- **APC boardings are 16% higher overall** (6,263 vs 5,396 per weekday) and
+  higher on **every** route: from 1.05× (475) to 1.76× (499), and 1.4–1.5×
+  on the local routes 436, 440 and 497. A gap that is systematic in one
+  direction points to manual undercounting or APC over-counting, not to
+  random error. This needs a same-day comparison: one October day of Access
+  trip-level counts against this sample.
 
 How it fits OnBoard:
 
-- It would be a seventh endpoint on `lib/availClient.ts` (`apc_ridership`),
-  polled nightly for the previous service date.
-- **Matching keys.** `RouteFareboxID` in the OTP feed is the plain route number
-  (446), so Block and Route Farebox IDs should line up with the Dispatch Log's
-  Block and route. **Whether a Trip Farebox ID maps to the GTFS `trip_id` the
-  Dispatch Log uses is the main open question**; if not, the match falls back
-  to block + route + direction + scheduled start.
-- **Per trip,** APC boards = the sum of the trip's timepoint boards; that is the
-  figure compared with the manual count. Timepoint boards/alights are kept for
-  drill-down and are the per-stop detail OPR-038's original wording asked
-  for.
-- **Service level** (e.g. Weekday) should correspond to the Day type in §9.
-- The prototype's APC tab is shaped on this report, with assumed field names.
+- A seventh endpoint on `lib/availClient.ts` (`apc_ridership`), polled nightly
+  for the previous service date, with dates in YYYY-MM-DD (the OTP feeds use
+  MM-DD-YYYY).
+- **Matching to the Dispatch Log:** Block (int → `001`) + route + direction +
+  scheduled start (`Trip` HHMM) on the service date. There's no GTFS
+  `trip_id`, and none is needed. APC trips that match no Dispatch Log trip are
+  candidates for unscheduled trips.
+- **APC per trip** = the sum of all its rows' `Boards`, including the null-stop
+  row. Stop and timepoint rows are kept for drill-down.
+- **Bus** comes from Avail's pull-out report (`FixedRouteDepartures`, by block),
+  not from this feed. That makes the "by bus" view a join, and it can be wrong
+  when a block changes bus mid-day.
+- **Excluded from fixed-route totals:** routes 999, 1010, 4444, 5555, 6666.
+  Route 1121 (MN United) is a possible source for special-event counts (C7).
+- **A trip whose rows are all zero** is treated as "no APC" rather than "0
+  riders" until Avail says how a faulty counter shows up.
+- **Service level** ("Weekday") corresponds to the Day type in §9.
 
 **Questions still for Avail:**
 
 - Which MVTA vehicles have APC, and is the APC module licensed for MVTA?
-- A sample response for one day, and the field list.
-- Trip Farebox ID vs GTFS `trip_id`.
-- How soon after a trip the data is available, and how a faulty counter
-  shows up (missing rows, zeros, or a flag).
+- How a faulty or absent counter appears: all zeros, missing rows, or
+  something else. Can the report carry the vehicle and a health flag?
+- What the null-`StopName` row is: boardings between stops, or unmatched GPS?
+- Why deadheads record boardings.
+- How soon after the service day the data is complete, and whether it is
+  restated later (compare ADR 0039 for OTP).
 - Whether MVTA's APC data is certified for NTD reporting.
 
 **Decisions for later,** once the answers are in: the tolerance and number of
