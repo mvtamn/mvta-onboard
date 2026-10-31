@@ -40,11 +40,8 @@ const READINGS_SHOWN = 4;
 const OWNER_ORDER: PredictionRiskOwner[] = ["scheduling", "avail", "operations", "structural"];
 
 function detailError(error: unknown, routeLabel: string): string {
-  if (error instanceof ApiError && error.status === 503) {
-    return "The database is missing migration 145, so the evidence behind the schedule review is not kept. Run sql/migration-145-schedule-review-route-detail.sql.";
-  }
   if (error instanceof ApiError && error.status === 404) {
-    return `The latest schedule review has no detail for route ${routeLabel}. Either the route is not in the published feed, or the review predates migration 145 and the next static GTFS import will keep it.`;
+    return `The latest schedule review has no detail for route ${routeLabel}. The route is not in the published feed.`;
   }
   if (error instanceof ApiError && error.status === 401) return "Sign in again to see the schedule review.";
   return "The schedule review could not be loaded.";
