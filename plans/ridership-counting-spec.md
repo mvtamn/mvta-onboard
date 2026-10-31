@@ -55,6 +55,10 @@ each of those words a measurable rule:
   and bus are left blank** for the operator to write in. When operators are
   pre-assigned in future, the name prints on the sheet.
 - Sheets are printed by the contractor at each garage from OnBoard.
+- **Decided 2026-10-30** (`plans/ridership-build-plan.md`):
+  - The QR code is printed from Dec 1.
+  - Each trip row takes a total or **DNO** (did not operate).
+  - Three blank rows take unscheduled trips.
 
 ## 4. Entry
 
@@ -74,6 +78,11 @@ each of those words a measurable rule:
 - **Lost or damaged sheets:** counts reconstructed per OPR-038 are entered
   marked **reconstructed**. Not an occurrence if on time; the reconstructed rate
   is reported by garage and operator.
+- **Each trip** is keyed as a number, **Not counted** or **Did not operate**
+  (decided 2026-10-30). Not counted is a visible gap, never a 0. Did not
+  operate excuses the trip, pending the Dispatch Log and missed-trip cases.
+- **Relief:** one operator per sheet. The first run is pre-filled, and other
+  runs on the block are shown as a hint for an override.
 - Every entry and change records who and when (P6).
 
 **Layout (decided 2026-10-30, from the prototype's three options).** OCC lands

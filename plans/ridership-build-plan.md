@@ -99,11 +99,47 @@ are backend merges, which restart the REST app, so merge them outside
 - Candidates are raised when a month is closed: a sheet that is missing, late or has a flag still open.
 - The compliance manager confirms them in the existing Compliance review, which feeds `INCIDENT_REPORTING`.
 
-## Decisions needed before PR 1
+## Decisions (agreed 2026-10-30)
 
-1. **A trip the operator didn't count.** The prototype refuses to save a sheet with a blank. Choose: allow "Not counted" per trip (it shows as a gap and counts toward completeness), or require a number.
-2. **QR code on the sheet.** The spec has it (§3), but nothing reads it until operator self-entry (v2). Choose: add a QR library now, or print the block and date in large type and add QR later.
-3. **Dec 1 target environment.** Contractor staff enter on **prod** from Dec 1? Prod exists, but its timers are mostly off. `tripStartLogMaterialize` and `tripStartActualsPoll` are already enabled early there, and `fixedRouteDeparturesPoll` would also need enabling.
-4. **Relief on a block.** When a block has several runs, the sheet header pre-fills the first run's operator. Choose: show every run's operator, or keep one operator per sheet and treat relief as an override.
-5. **"Did not operate" and blank rows for unscheduled trips** on the printed sheet. Both are in the procedure draft but not formally decided.
-6. **Trip ID in exports.** OnBoard keys on the GTFS `trip_id`; Access used its own TripID. Choose whether the export carries both for December's comparison.
+1. **Trips that weren't counted can be marked "Not counted".** Each trip on
+   the form takes a number, **Not counted** (key `N`) or **Did not operate**
+   (key `D`, see 5). A sheet with every trip filled in one of these ways can
+   be saved.
+   - A Not counted trip shows as a gap in completeness, by garage and by
+     operator, and is never treated as 0 in totals.
+   - In January it raises a flag the contractor answers.
+   - Schema: `RidershipCounts.count_status` (`counted` | `not_counted` |
+     `did_not_operate`), with `boardings` NULL unless counted.
+2. **The QR code is printed from Dec 1.**
+   - Add a QR library to `functions-restapi` that renders server-side SVG
+     into the print HTML (PR 4). Payload `MVTA-RIDERSHIP:<YYYYMMDD>:<block>`.
+   - The worklist's "Scan or type block" box accepts that payload (a USB
+     scanner types it), so OCC can work through a physical stack in any order.
+3. **Entry goes live on prod on Dec 1.** Extra steps outside the code:
+   - Add `fixedRouteDeparturesPoll` to prod's early-enabled timers
+     (`restApiTimersEnabledEarly`); the Dispatch Log timers are already on.
+   - Apply migration 153 to prod as well as dev.
+   - Create the Keolis guest accounts and role grants on prod.
+   - Hold the OCC rehearsal on prod with a test service date. Dev is for
+     building only.
+4. **Relief: one operator per sheet, with an override.**
+   - The header pre-fills the first run's operator and bus
+     (`RidershipSheets.prefill_run`). The block's other runs are listed
+     beside it as a hint.
+   - When the sheet names someone else, OCC overrides it and the override is
+     recorded (§4).
+5. **The printed sheet carries "Did not operate" and blank unscheduled rows.**
+   - The footer tells the operator to write DNO in the total for a trip that
+     did not run. OCC keys it as `did_not_operate`, which excuses the trip
+     from needing a count.
+   - Increment 2 compares DNO with the Dispatch Log status and missed-trip
+     cases; a mismatch is a question for OCC, not an automatic correction.
+   - Three blank rows (route, direction, start, total) take trippers and
+     extras; OCC enters them as unscheduled trips.
+6. **Exports carry both trip IDs** during December: the GTFS `trip_id` and the
+   Access-style TripID.
+   - The Access TripID rule must be confirmed against the Access table before
+     PR 5. The one known example is `143620542` for Route 436, Block 001,
+     05:42 southbound, which looks like 1 · 436 · 2 (direction) · 0542, but
+     that reading is a guess.
+   - From January the Access ID is dropped.
