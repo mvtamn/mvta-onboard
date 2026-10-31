@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operator Count Prototype</title>
+<!--
+  PROTOTYPE — throwaway. Answers the questions in plans/operator-app-ops-discussion.md
+  for Operations to try by hand. Not production code. The <script id="logic"> block is
+  the only part meant to outlive it.
+-->
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --dim: #6b6a65; --line: #e2e0da;
+    --accent: #1f5fbf; --accent-ink: #ffffff; --accent-soft: #e6eefb;
+    --ok: #2f7d4a; --ok-soft: #e5f3ea; --warn: #9a5b00; --warn-soft: #fbf0dc;
+    --bad: #b3261e; --bad-soft: #fbe7e5; --phone: #121212; --screen: #fdfdfc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161614; --panel: #201f1d; --ink: #ecebe6; --dim: #a09e97; --line: #34332f;
+      --accent: #6d9ff0; --accent-ink: #0d1626; --accent-soft: #1d2a40;
+      --ok: #6cc28a; --ok-soft: #1b2e22; --warn: #e3a64a; --warn-soft: #33270f;
+      --bad: #f08a80; --bad-soft: #3a1c19; --phone: #000; --screen: #1a1a18;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161614; --panel: #201f1d; --ink: #ecebe6; --dim: #a09e97; --line: #34332f;
+    --accent: #6d9ff0; --accent-ink: #0d1626; --accent-soft: #1d2a40;
+    --ok: #6cc28a; --ok-soft: #1b2e22; --warn: #e3a64a; --warn-soft: #33270f;
+    --bad: #f08a80; --bad-soft: #3a1c19; --phone: #000; --screen: #1a1a18;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
+  p { margin: 0 0 8px; }
+  .intro { max-width: 820px; margin-bottom: 20px; }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px;
+    background: var(--warn-soft); color: var(--warn); font-weight: 600; margin-bottom: 8px; }
+  .grid { display: grid; grid-template-columns: 300px 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .phone { margin: 0 auto; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--panel);
+    color: var(--ink); border-radius: 8px; padding: 7px 11px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .btn-label { font-size: 12px; color: var(--dim); margin: 10px 0 4px; }
+
+  /* phone */
+  .phone { width: 300px; background: var(--phone); border-radius: 36px; padding: 14px; }
+  .screen { background: var(--screen); border-radius: 24px; min-height: 560px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .status { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
+  .ph-head { font-weight: 600; }
+  .ph-sub { font-size: 13px; color: var(--dim); }
+  .banner { border-radius: 10px; padding: 10px; font-size: 13px; }
+  .banner.info { background: var(--accent-soft); }
+  .banner.warn { background: var(--warn-soft); }
+  .banner .btns { margin: 8px 0 0; }
+  .counter { text-align: center; padding: 8px 0; }
+  .count { font-size: 64px; font-weight: 700; line-height: 1; }
+  .plus { font-size: 30px; font-weight: 700; width: 100%; height: 96px; border-radius: 16px; margin-top: 10px; }
+  .minus { width: 100%; margin-top: 6px; }
+  .locked { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; background: var(--bad-soft); color: var(--bad); border-radius: 16px; padding: 20px; font-weight: 600; min-height: 220px; }
+  .locked small { display: block; font-weight: 400; margin-top: 6px; color: var(--ink); }
+  .trips { display: flex; gap: 4px; }
+  .trips button { flex: 1; padding: 6px 2px; font-size: 12px; line-height: 1.2; }
+  .trips button.on { border-color: var(--accent); background: var(--accent-soft); }
+  .trips b { display: block; font-size: 15px; }
+
+  /* state panels */
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px; }
+  dt { color: var(--dim); }
+  dd { margin: 0; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 13px; font-weight: 600; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .compare > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 13px; }
+  .compare .big { font-size: 16px; margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.n, th.n { text-align: right; }
+  .changed { background: var(--warn-soft); }
+  .log { font-size: 12.5px; max-height: 220px; overflow: auto; border-top: 1px solid var(--line); padding-top: 6px; }
+  .log div { padding: 2px 0; }
+  .log .t { color: var(--dim); margin-right: 6px; }
+  .last { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); margin-bottom: 12px; }
+
+  /* walkthroughs */
+  .walk { margin-top: 20px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; counter-reset: s; }
+  .steps button { counter-increment: s; }
+  .steps button::before { content: counter(s) ". "; color: var(--dim); }
+  .steps button.next { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .steps button.done { opacity: .55; }
+  .watch { background: var(--warn-soft); border-radius: 8px; padding: 8px 10px; margin: 8px 0 12px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="intro">
+    <span class="tag">PROTOTYPE — demo data, not a real block</span>
+    <h1>Operator counting during service</h1>
+    <p>Try the three features Operations needs to decide on: an operator counting on an MVTA phone during service (<b>phone mode</b>), the screen locking while the bus moves (<b>moving-bus lock</b>), and the app working out which trip the operator is on (<b>trip suggestion</b>).</p>
+    <p>Drive the bus with the buttons in the middle, count on the phone on the left, and see on the right what OnBoard would record. The guided scenarios at the bottom run the awkward cases. The rules being tried: the phone locks above 5 mph and unlocks below 3 mph, each after 2 seconds at that speed; with no GPS it locks; a trip change is suggested and the operator confirms it.</p>
+  </div>
+
+  <div class="grid">
+    <div class="phone"><div class="screen" id="phone"></div></div>
+
+    <div class="card">
+      <h2>The bus</h2>
+      <div id="bus"></div>
+      <div class="btn-label">Drive</div>
+      <div class="btns">
+        <button data-a="depart">Pull away (25 mph)</button>
+        <button data-a="speed" data-v="4">Creep (4 mph)</button>
+        <button data-a="speed" data-v="2">Roll slowly (2 mph)</button>
+        <button data-a="arrive">Stop at the next stop</button>
+      </div>
+      <div class="btn-label">Let time pass</div>
+      <div class="btns">
+        <button data-a="tick" data-v="1">1 second</button>
+        <button data-a="tick" data-v="5">5 seconds</button>
+        <button data-a="tick" data-v="20">20 seconds</button>
+        <button data-a="tick" data-v="60">1 minute</button>
+      </div>
+      <div class="btn-label">Things that happen to the bus</div>
+      <div class="btns">
+        <button data-a="gpsLost">GPS signal lost</button>
+        <button data-a="gpsBack">GPS signal back</button>
+        <button data-a="availNext">Avail reports the next trip</button>
+        <button data-a="availOtherBlock">Avail shows another block</button>
+      </div>
+      <div class="btn-label">Start again</div>
+      <div class="btns"><button data-a="reset">Reset the demo</button></div>
+    </div>
+
+    <div class="card">
+      <h2>What OnBoard records</h2>
+      <div id="records"></div>
+    </div>
+  </div>
+
+  <div class="card walk">
+    <h2>Guided scenarios</h2>
+    <div class="tabs" id="tabs"></div>
+    <div id="scenario"></div>
+  </div>
+</main>
+
+<script id="logic">
+// Pure model of the operator count screen on a moving bus. No DOM in here.
+const RULES = { lockAboveMph: 5, unlockBelowMph: 3, settleSeconds: 2, serverPollSeconds: 30, serverLagSeconds: 12 };
+const CLOCK_START = 7 * 3600 + 8 * 60; // 07:08:00
+
+const NORTH = ["Burnsville Transit Station", "Heart of the City", "Cedar Av & 147th St", "Apple Valley Transit Station"];
+const SOUTH = [...NORTH].reverse();
+const DEMO = {
+  block: "024", otherBlock: "031", bus: "4xxx",
+  trips: [
+    { route: "442", dir: "N", start: "07:10", stops: NORTH },
+    { route: "442", dir: "S", start: "07:45", stops: SOUTH },
+    { route: "442", dir: "N", start: "08:20", stops: NORTH },
+  ],
+};
+
+function initialState(setup = {}) {
+  const s = {
+    t: 0, speed: 0, gps: true,
+    bus: { tripIdx: 0, stopIdx: 0, atStop: true },      // where the bus really is
+    speedLog: [{ t: 0, mph: 0 }],
+    locked: false, lockPendingSince: null,
+    tripIdx: 0,                                       // the trip the phone is counting
+    suggestion: null, dismissed: [], lastTerminalAt: null,
+    availTripIdx: 0, availBlock: DEMO.block, blockFlag: null,
+    taps: [], blocked: 0, reviewAdds: {}, submitted: false,
+    log: [], last: "The bus is at its first stop, ready to board.",
+  };
+  Object.assign(s.bus, setup.bus || {});
+  if (setup.tripIdx != null) { s.tripIdx = setup.tripIdx; s.availTripIdx = setup.tripIdx; }
+  if (setup.speed != null) { s.speed = setup.speed; s.locked = setup.speed >= RULES.lockAboveMph; s.speedLog = [{ t: 0, mph: setup.speed }]; }
+  return s;
+}
+
+const clock = (t) => {
+  const x = CLOCK_START + t, h = Math.floor(x / 3600), m = Math.floor(x / 60) % 60, sec = x % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+};
+const tripName = (i) => { const tr = DEMO.trips[i]; return `${tr.route} ${tr.dir} ${tr.start}`; };
+const stopName = (s) => s.bus.atStop ? DEMO.trips[s.bus.tripIdx].stops[s.bus.stopIdx] : null;
+const atTerminal = (s) => s.bus.atStop && s.bus.stopIdx === DEMO.trips[s.bus.tripIdx].stops.length - 1;
+
+function note(s, text) { s.log = [{ t: s.t, text }, ...s.log]; s.last = text; }
+
+// The lock: hysteresis plus a short settle time, and locked whenever GPS is lost.
+function settleLock(s) {
+  if (!s.gps) { if (!s.locked) note(s, "No GPS: screen locked."); s.locked = true; s.lockPendingSince = null; return; }
+  const want = s.speed >= RULES.lockAboveMph ? true : s.speed <= RULES.unlockBelowMph ? false : s.locked;
+  if (want === s.locked) { s.lockPendingSince = null; return; }
+  if (s.lockPendingSince == null) s.lockPendingSince = s.t;
+  if (s.t - s.lockPendingSince >= RULES.settleSeconds) {
+    s.locked = want; s.lockPendingSince = null;
+    note(s, want ? `Moving at ${s.speed} mph: screen locked.` : `Stopped or slow (${s.speed} mph): screen unlocked.`);
+  }
+}
+
+// What a lock driven by OnBoard's server would show instead: it sees the speed
+// as it was at the last poll, minus the feed's delay, and has no settle logic.
+function serverView(s) {
+  const lastPoll = Math.floor(s.t / RULES.serverPollSeconds) * RULES.serverPollSeconds;
+  const seenAt = lastPoll - RULES.serverLagSeconds;
+  if (seenAt < 0) return { locked: s.speedLog[0].mph > RULES.unlockBelowMph, mph: s.speedLog[0].mph, ageSeconds: s.t };
+  const reading = [...s.speedLog].reverse().find((e) => e.t <= seenAt) || s.speedLog[0];
+  return { locked: reading.mph > RULES.unlockBelowMph, mph: reading.mph, ageSeconds: s.t - seenAt };
+}
+
+function suggest(s, tripIdx, reason) {
+  if (tripIdx === s.tripIdx || tripIdx >= DEMO.trips.length || s.dismissed.includes(`${tripIdx}|${reason}`)) return;
+  s.suggestion = { tripIdx, reason, since: s.lastTerminalAt ?? s.t };
+}
+
+function setSpeed(s, mph) {
+  s.speed = mph;
+  s.speedLog = [...s.speedLog, { t: s.t, mph }];
+}
+
+function reduce(prev, action) {
+  const s = structuredClone(prev);
+  const [type, v] = action;
+  switch (type) {
+    case "reset": return initialState(v);
+    case "tick": {
+      const before = s.log.length;
+      for (let i = 0; i < v; i++) { s.t += 1; settleLock(s); }
+      s.last = `${v} second${v > 1 ? "s" : ""} passed.` + (s.log.length > before ? " " + s.log[0].text : "");
+      break;
+    }
+    case "depart": {
+      if (atTerminal(s)) { s.bus = { tripIdx: s.bus.tripIdx + 1, stopIdx: 0, atStop: false }; }
+      else s.bus.atStop = false;
+      setSpeed(s, 25); note(s, "Bus pulls away at 25 mph."); settleLock(s); break;
+    }
+    case "speed": s.bus.atStop = false; setSpeed(s, v); note(s, `Bus at ${v} mph.`); settleLock(s); break;
+    case "arrive": {
+      const tr = DEMO.trips[s.bus.tripIdx];
+      if (s.bus.atStop && s.bus.stopIdx === tr.stops.length - 1) { note(s, "Already at the end of the line. Pull away first."); break; }
+      s.bus = { ...s.bus, stopIdx: Math.min(s.bus.stopIdx + 1, tr.stops.length - 1), atStop: true };
+      setSpeed(s, 0); note(s, `Bus stops at ${stopName(s)}.`); settleLock(s);
+      if (atTerminal(s)) {
+        s.lastTerminalAt = s.t;
+        const next = s.bus.tripIdx + 1;
+        if (next < DEMO.trips.length) suggest(s, next, `End of the line. Next trip departs ${DEMO.trips[next].start}.`);
+      }
+      break;
+    }
+    case "gpsLost": s.gps = false; settleLock(s); s.last = "GPS signal lost. " + s.last; break;
+    case "gpsBack": s.gps = true; note(s, "GPS signal back."); settleLock(s); break;
+    case "availNext": {
+      const next = Math.min(s.availTripIdx + 1, DEMO.trips.length - 1);
+      s.availTripIdx = next; note(s, `Avail now shows this bus on ${tripName(next)}.`);
+      suggest(s, next, `Avail shows this bus on ${tripName(next)}.`); break;
+    }
+    case "availOtherBlock":
+      s.availBlock = DEMO.otherBlock; s.blockFlag = "asked";
+      note(s, `Avail shows this bus on Block ${DEMO.otherBlock}, but the operator signed in to Block ${DEMO.block}.`); break;
+    case "keepBlock":
+      s.blockFlag = "flagged"; note(s, `Operator kept Block ${DEMO.block}. OnBoard flags the block for OCC to check.`); break;
+    case "tap": {
+      if (s.submitted) break;
+      if (s.locked) { s.blocked += 1; note(s, `Tap refused: screen locked (${!s.gps ? "no GPS" : s.speed <= RULES.unlockBelowMph ? "just stopped, unlocks after 2 s" : "bus moving"}).`); break; }
+      const onTrip = s.taps.filter((x) => x.tripIdx === s.tripIdx).reduce((n, x) => n + x.delta, 0);
+      if (v < 0 && onTrip <= 0) break;
+      s.taps = [...s.taps, { t: s.t, tripIdx: s.tripIdx, stop: stopName(s) || "Between stops", delta: v }];
+      note(s, `${v > 0 ? "+1" : "−1"} on ${tripName(s.tripIdx)} at ${stopName(s) || "between stops"}.`); break;
+    }
+    case "confirm": {
+      if (!s.suggestion) break;
+      const from = s.tripIdx, to = s.suggestion.tripIdx, since = s.suggestion.since;
+      let moved = 0;
+      s.taps = s.taps.map((x) => (x.tripIdx === from && x.t >= since ? (moved += x.delta, { ...x, tripIdx: to, moved: true }) : x));
+      s.tripIdx = to; s.suggestion = null;
+      note(s, `Operator confirmed ${tripName(to)}.` + (moved ? ` ${moved} boarding${moved > 1 ? "s" : ""} counted since the end of the line moved to it.` : ""));
+      break;
+    }
+    case "dismiss":
+      if (!s.suggestion) break;
+      s.dismissed = [...s.dismissed, `${s.suggestion.tripIdx}|${s.suggestion.reason}`];
+      note(s, `Operator said "Not yet" to ${tripName(s.suggestion.tripIdx)}.`); s.suggestion = null; break;
+    case "pick": s.tripIdx = v; s.suggestion = null; note(s, `Operator picked ${tripName(v)} by hand.`); break;
+    case "reviewAdd":
+      s.reviewAdds = { ...s.reviewAdds, [s.tripIdx]: (s.reviewAdds[s.tripIdx] || 0) + v };
+      note(s, `At review, operator added ${v} boarding${v > 1 ? "s" : ""} they couldn't tap on ${tripName(s.tripIdx)} (no time or stop).`); break;
+    case "submit":
+      if (s.locked) { s.blocked += 1; note(s, "Submit refused: screen locked."); break; }
+      s.submitted = true; note(s, `Block ${DEMO.block} submitted.`); break;
+  }
+  return s;
+}
+
+// What OnBoard would store, derived from the taps.
+function records(s) {
+  return DEMO.trips.map((tr, i) => {
+    const taps = s.taps.filter((x) => x.tripIdx === i);
+    const byStop = {};
+    for (const x of taps) byStop[x.stop] = (byStop[x.stop] || 0) + x.delta;
+    const tapped = taps.reduce((n, x) => n + x.delta, 0);
+    const added = s.reviewAdds[i] || 0;
+    return { trip: tripName(i), byStop, tapped, added, total: tapped + added, moved: taps.some((x) => x.moved) };
+  });
+}
+</script>
+
+<script>
+// Page shell — throwaway.
+let state = initialState();
+let lastScenarioStep = null;
+
+const SCENARIOS = [
+  { name: "A normal stop",
+    text: "Passengers board at the first stop, the bus drives to the next stop and more board there.",
+    watch: "Tapping while the bus moves is refused and counted as a refused tap. After stopping, the screen unlocks 2 seconds later, not instantly.",
+    steps: [["+1", ["tap", 1]], ["+1", ["tap", 1]], ["+1", ["tap", 1]], ["Pull away", ["depart"]], ["Wait 5 s", ["tick", 5]],
+            ["Try +1 while moving", ["tap", 1]], ["Stop at next stop", ["arrive"]], ["Try +1 at once", ["tap", 1]], ["Wait 1 s", ["tick", 1]], ["Wait 1 s", ["tick", 1]], ["+1", ["tap", 1]], ["+1", ["tap", 1]]] },
+  { name: "Short stop, slow server",
+    text: "A quick stop where two people board in under 20 seconds. The middle column shows what a lock run from OnBoard's server would have done, using Avail positions every 30 seconds that arrive about 12 seconds late.",
+    watch: "The phone's own GPS unlocks 2 seconds after the stop. The server-driven lock shows Unlocked while the bus is already driving, then Locked through the whole stop, so both taps would have been refused.",
+    steps: [["Pull away", ["depart"]], ["Wait 20 s", ["tick", 20]], ["Stop at next stop", ["arrive"]], ["Wait 5 s", ["tick", 5]], ["+1", ["tap", 1]], ["+1", ["tap", 1]],
+            ["Wait 5 s", ["tick", 5]], ["Pull away", ["depart"]], ["Wait 5 s", ["tick", 5]], ["Wait 20 s", ["tick", 20]], ["Wait 20 s", ["tick", 20]]] },
+  { name: "Creeping to the curb",
+    text: "The bus slows into a stop, creeps forward and stops in a queue. Speeds between 3 and 5 mph keep whatever state the screen is in.",
+    watch: "Creeping at 4 mph doesn't unlock a locked screen, and doesn't lock an unlocked one, so the screen doesn't flicker on and off.",
+    steps: [["Pull away", ["depart"]], ["Wait 5 s", ["tick", 5]], ["Creep at 4 mph", ["speed", 4]], ["Wait 5 s", ["tick", 5]], ["Roll at 2 mph", ["speed", 2]],
+            ["Wait 1 s", ["tick", 1]], ["Wait 1 s", ["tick", 1]], ["Creep at 4 mph", ["speed", 4]], ["Wait 5 s", ["tick", 5]], ["Pull away", ["depart"]], ["Wait 1 s", ["tick", 1]], ["Wait 1 s", ["tick", 1]]] },
+  { name: "End of the line",
+    text: "The bus reaches the terminal. Passengers for the next trip board during the layover, before the operator has confirmed the next trip.",
+    watch: "The phone suggests the next trip at the terminal. Boardings tapped after arriving move to the next trip when the operator confirms (decision O10 in the brief).",
+    setup: { bus: { tripIdx: 0, stopIdx: 2, atStop: false }, speed: 25 },
+    steps: [["Stop at the terminal", ["arrive"]], ["Wait 2 s", ["tick", 2]], ["+1 (before confirming)", ["tap", 1]], ["+1", ["tap", 1]], ["Confirm next trip", ["confirm"]], ["+1", ["tap", 1]], ["Pull away", ["depart"]]] },
+  { name: "Operator says “Not yet”",
+    text: "At the terminal the operator dismisses the suggestion and forgets about it. Later Avail reports the bus is on the next trip.",
+    watch: "A second suggestion comes from Avail. Confirming it moves every boarding since the terminal, including those at the first stop of the new trip.",
+    setup: { bus: { tripIdx: 0, stopIdx: 2, atStop: false }, speed: 25 },
+    steps: [["Stop at the terminal", ["arrive"]], ["Wait 2 s", ["tick", 2]], ["Not yet", ["dismiss"]], ["+1", ["tap", 1]], ["Pull away", ["depart"]], ["Wait 20 s", ["tick", 20]],
+            ["Stop at next stop", ["arrive"]], ["Wait 2 s", ["tick", 2]], ["+1", ["tap", 1]], ["Avail reports next trip", ["availNext"]], ["Confirm", ["confirm"]]] },
+  { name: "GPS drops out",
+    text: "The bus is stopped but the phone loses its GPS fix (for example under a canopy).",
+    watch: "With no GPS the phone locks even though the bus is stopped. The operator adds the missed boardings at review; OnBoard keeps them in the trip total but can't place them at a stop.",
+    steps: [["+1", ["tap", 1]], ["GPS lost", ["gpsLost"]], ["Try +1", ["tap", 1]], ["Try +1", ["tap", 1]], ["GPS back", ["gpsBack"]], ["Wait 2 s", ["tick", 2]], ["Add 2 at review", ["reviewAdd", 2]]] },
+  { name: "Signed in to the wrong block",
+    text: "Avail shows the bus on a different block from the one the operator signed in to.",
+    watch: "The phone doesn't switch silently. The operator keeps their block, and OnBoard flags it for OCC to check (decision O12).",
+    steps: [["Avail shows another block", ["availOtherBlock"]], ["Keep my block", ["keepBlock"]], ["+1", ["tap", 1]]] },
+];
+
+function dispatch(action) { state = reduce(state, action); render(); }
+
+function esc(x) { return String(x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function renderPhone() {
+  const s = state, tr = DEMO.trips[s.tripIdx];
+  const count = records(s)[s.tripIdx].tapped;
+  let h = `<div class="status"><span class="mono">${clock(s.t).slice(0, 5)}</span><span>MVTA device · GPS ${s.gps ? "on" : "none"}</span></div>
+    <div><div class="ph-head">Block ${DEMO.block} · Bus ${DEMO.bus}</div><div class="ph-sub">Counting ${esc(tripName(s.tripIdx))}</div></div>`;
+  if (s.blockFlag === "asked") h += `<div class="banner warn">Avail shows this bus on <b>Block ${DEMO.otherBlock}</b>. You signed in to Block ${DEMO.block}.
+      <div class="btns"><button data-a="keepBlock">Keep Block ${DEMO.block}</button></div></div>`;
+  if (s.suggestion) h += `<div class="banner info">${esc(s.suggestion.reason)}<br><b>Count ${esc(tripName(s.suggestion.tripIdx))} now?</b>
+      <div class="btns"><button class="primary" data-a="confirm" ${s.locked ? "disabled" : ""}>Yes</button><button data-a="dismiss" ${s.locked ? "disabled" : ""}>Not yet</button></div></div>`;
+  if (s.submitted) h += `<div class="banner info"><b>Submitted.</b> No paper sheet needed for this block.</div>`;
+  else if (s.locked) h += `<div class="locked">${s.gps ? "Bus moving" : "No GPS signal"} — counting locked<small>${s.gps ? "Count at the stop." : "Add any boardings you miss at review."}</small></div>`;
+  else h += `<div class="counter"><div class="ph-sub">${esc(stopName(s) || "Between stops")}</div><div class="count mono">${count}</div>
+      <button class="primary plus" data-a="tap" data-v="1">+1</button><button class="minus" data-a="tap" data-v="-1">−1</button></div>`;
+  h += `<div class="trips">${DEMO.trips.map((t, i) => `<button class="${i === s.tripIdx ? "on" : ""}" data-a="pick" data-v="${i}" ${s.locked ? "disabled" : ""}>${t.dir} ${t.start}<b class="mono">${records(s)[i].total}</b></button>`).join("")}</div>`;
+  if (!s.submitted) h += `<div class="btns" style="margin-top:auto"><button data-a="reviewAdd" data-v="1" ${s.locked ? "disabled" : ""}>Review: add 1 I missed</button><button data-a="submit">Submit at pull-in</button></div>`;
+  document.getElementById("phone").innerHTML = h;
+}
+
+function renderBus() {
+  const s = state, sv = serverView(s);
+  const where = s.bus.atStop ? `At ${esc(stopName(s))}${atTerminal(s) ? " (end of the line)" : ""}` : `On the road, ${esc(tripName(s.bus.tripIdx))}`;
+  const pending = s.lockPendingSince != null ? ` <span class="pill warn">changing in ${RULES.settleSeconds - (s.t - s.lockPendingSince)} s</span>` : "";
+  document.getElementById("bus").innerHTML = `
+    <div class="last">${esc(s.last)}</div>
+    <dl>
+      <dt>Time</dt><dd class="mono">${clock(s.t)}</dd>
+      <dt>Speed</dt><dd class="mono">${s.speed} mph</dd>
+      <dt>Where</dt><dd>${where}</dd>
+      <dt>Phone GPS</dt><dd>${s.gps ? "Fix" : '<span class="pill bad">No fix</span>'}</dd>
+      <dt>Avail says</dt><dd>Block ${s.availBlock}, ${esc(tripName(s.availTripIdx))}</dd>
+    </dl>
+    <div class="compare">
+      <div><div>Lock from the phone's GPS</div><div class="big">${s.locked ? '<span class="pill bad">Locked</span>' : '<span class="pill ok">Unlocked</span>'}${pending}</div><div class="ph-sub">Reads speed every second.</div></div>
+      <div><div>If OnBoard's server drove it</div><div class="big">${sv.locked ? '<span class="pill bad">Locked</span>' : '<span class="pill ok">Unlocked</span>'}</div><div class="ph-sub">Last saw ${sv.mph} mph, ${sv.ageSeconds} s ago.</div></div>
+    </div>`;
+}
+
+function renderRecords() {
+  const s = state;
+  const rows = records(s).map((r) => {
+    const stops = Object.entries(r.byStop).filter(([, n]) => n).map(([k, n]) => `${esc(k)}: <b>${n}</b>`).join("<br>") || '<span class="ph-sub">—</span>';
+    return `<tr class="${r.moved ? "changed" : ""}"><td>${esc(r.trip)}</td><td>${stops}${r.added ? `<br>No stop (added at review): <b>${r.added}</b>` : ""}</td><td class="n mono"><b>${r.total}</b></td></tr>`;
+  }).join("");
+  document.getElementById("records").innerHTML = `
+    <table><thead><tr><th>Trip</th><th>Boardings by stop (from tap times)</th><th class="n">Total</th></tr></thead><tbody>${rows}</tbody></table>
+    <dl>
+      <dt>Refused taps</dt><dd class="mono">${s.blocked}</dd>
+      <dt>Block check</dt><dd>${s.blockFlag === "flagged" ? `<span class="pill warn">Flagged for OCC: Avail says Block ${DEMO.otherBlock}</span>` : s.blockFlag === "asked" ? "Waiting for operator" : "Matches Avail"}</dd>
+      <dt>Submitted</dt><dd>${s.submitted ? "Yes, " + clock(s.t) : "Not yet"}</dd>
+    </dl>
+    <div class="ph-sub">Highlighted rows hold boardings that moved trip when the operator confirmed a trip change.</div>
+    <div class="log">${s.log.map((e) => `<div><span class="t mono">${clock(e.t)}</span>${esc(e.text)}</div>`).join("")}</div>`;
+}
+
+let activeScenario = 0, stepDone = 0;
+function renderScenario() {
+  document.getElementById("tabs").innerHTML = SCENARIOS.map((sc, i) => `<button class="${i === activeScenario ? "on" : ""}" data-tab="${i}">${esc(sc.name)}</button>`).join("");
+  const sc = SCENARIOS[activeScenario];
+  document.getElementById("scenario").innerHTML = `<p>${esc(sc.text)}</p><div class="watch"><b>Watch for:</b> ${esc(sc.watch)}</div>
+    <div class="steps">${sc.steps.map(([label], i) => `<button data-step="${i}" class="${i < stepDone ? "done" : i === stepDone ? "next" : ""}">${esc(label)}</button>`).join("")}</div>
+    <p class="ph-sub" style="margin-top:10px">Choosing a scenario resets the demo. Press the steps in order; free-play buttons still work in between.</p>`;
+}
+
+function startScenario(i) { activeScenario = i; stepDone = 0; state = initialState(SCENARIOS[i].setup); render(); }
+
+function render() { renderPhone(); renderBus(); renderRecords(); renderScenario(); }
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b || b.disabled) return;
+  if (b.dataset.tab != null) return startScenario(Number(b.dataset.tab));
+  if (b.dataset.step != null) {
+    const i = Number(b.dataset.step); dispatch(SCENARIOS[activeScenario].steps[i][1]); stepDone = i + 1; renderScenario(); return;
+  }
+  if (b.dataset.a) {
+    const a = b.dataset.a, v = b.dataset.v;
+    if (a === "reset") { stepDone = 0; return dispatch(["reset", SCENARIOS[activeScenario].setup]); }
+    dispatch([a, v == null ? undefined : Number(v)]);
+  }
+});
+
+startScenario(0);
+</script>
+</body>
+</html>
