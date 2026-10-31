@@ -76,6 +76,23 @@ each of those words a measurable rule:
   is reported by garage and operator.
 - Every entry and change records who and when (P6).
 
+**Layout (decided 2026-10-30, from the prototype's three options).** OCC lands
+on a **worklist** of sheets still to enter: completeness by garage at the top,
+then one row per sheet, late first, then due today. Choosing a row opens the
+**sheet form**, laid out like the paper Count Sheet: Avail's operator, ID and bus with
+an override, the block's trips in order with the Dispatch Log status, one total
+per trip, add unscheduled trip, and Reconstructed. The form is keyboard-first:
+Enter moves down the trips, and Save goes straight to the next sheet on the
+worklist.
+
+Why: a weekday is about 144 blocks (the APC sample day), so keying speed
+matters. But each sheet also carries checks that belong to the sheet, not the
+trip (operator/bus override, reconstructed, unscheduled trips, marking it
+entered), and a single grid for the whole day (the prototype's Datasheet)
+handled those worst. The paper-shaped form is the closest to Access, so it
+needs the least retraining. The worklist puts §5's completeness and deadline
+in front of OCC instead of on a separate page.
+
 ## 5. Completeness and timeliness
 
 - **A count is required** for every scheduled revenue trip, **unless** a
