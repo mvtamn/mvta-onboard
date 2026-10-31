@@ -4,7 +4,8 @@ Handoff explainer for Rob's validation against raw Avail reporting and existing 
 Written 2026-09-22 against dev, and **revised the same day** for four changes that shipped
 after the first draft: weather days now subtract (ADR 0038), they can be approved from the
 console, a restatement of a closed month is recorded (ADR 0039), and the reporting view's
-contract changed with the first of those. Current to **v1.5.295**.
+contract changed with the first of those. **Figures restated 2026-10-28** — see section 8.
+Current to **v1.6.39**.
 
 Companion document: `otp-compliance-validation-plan-2026-09-22.md`, which carries the test
 plan and the Tier 1/Tier 2 results.
@@ -219,25 +220,77 @@ expression and the application's rule ever drift apart, so the two cannot silent
 
 ---
 
-## 8. Dev state as of 2026-09-22 (Rob's starting picture)
+## 8. Dev state as of 2026-10-28 (Rob's starting picture)
 
-| Service month | Raw departures | Raw OTP % | Assessable OTP % | Δ |
-| --- | --- | --- | --- | --- |
-| 2026-01 | 62,214 | 88.33 | 88.33 | — |
-| 2026-02 | 59,348 | 88.61 | 88.61 | — |
-| 2026-03 | 69,196 | 88.14 | 88.14 | — |
-| 2026-04 | 71,317 | 86.93 | 86.93 | — |
-| 2026-05 | 70,069 | 85.80 | 85.80 | — |
-| 2026-06 | 67,888 | 84.42 | 84.42 | — |
-| 2026-07 | 65,458 | 83.28 | 83.32 | +0.04 |
-| 2026-08 | 65,278 | 83.62 | 83.62 | — |
-| 2026-09 | 39,811 | 80.19 | 80.27 | +0.08 (month in progress) |
+**Restated 2026-10-28.** Two measurement defects were found and fixed — OnBoard was sending
+Avail an early threshold of 1 minute against MVTA's configured 2, and Avail's monthly
+endpoint was returning a 31-day span for a 30-day month. Both are now corrected at source.
+The validation plan's "What changed on 2026-10-28" section has the full account.
+
+**Every month has now been corrected** — 2026-01 through 2026-07 were backfilled on
+2026-10-29, the rest by the daily poller.
+
+| Service month | Raw departures | Raw OTP % | Assessable OTP % | Δ | Was (raw) |
+| --- | --- | --- | --- | --- | --- |
+| 2026-01 | 61,203 | **90.63** | 90.63 | — | 88.33 |
+| 2026-02 | 58,328 | **90.96** | 90.96 | — | 88.61 |
+| 2026-03 | 66,475 | **90.46** | 90.46 | — | 88.14 |
+| 2026-04 | 68,582 | **89.13** | 89.13 | — | 86.93 |
+| 2026-05 | 67,532 | **87.56** | 87.56 | — | 85.80 |
+| 2026-06 | 65,284 | **85.92** | 85.92 | — | 84.42 |
+| 2026-07 | 64,411 | **84.86** | 84.91 | +0.05 | 83.28 |
+| 2026-08 | 62,748 | **85.30** | 85.30 | — | 83.62 |
+| 2026-09 | 62,538 | **81.20** | 85.27 *(test data — see below)* | +4.07 | 80.18 |
+| 2026-10 | 58,008 | **83.91** | 83.91 | — | month in progress |
+
+**The whole year reads 1.6–2.4 points better than it did**, and the decline across the year
+is real rather than an artefact — it was present in the old figures too, and survives the
+correction intact.
+
+### Independent confirmation of Avail's month-boundary defect
+
+The size of each month's correction is explained entirely by **what day of the week the
+following month's 1st fell on** — the surplus day the API was wrongly including:
+
+| Surplus day | Months | Departures removed |
+| --- | --- | --- |
+| Weekday | Mar, Apr, May, Jun, Aug, Sep | 3.6 – 4.0% |
+| Weekend | Jan (Sun), Feb (Sun), Jul (Sat) | 1.6 – 1.7% |
+
+Nine months out of nine. A weekend surplus day carries far less service than a weekday, so
+the split falls exactly where the calendar says it should. No other explanation produces
+that pattern, and it was derived from MVTA's own stored data rather than from anything Avail
+supplied. It is why January, February and July barely moved while the rest dropped ~4%.
+
+September is the outlier in a different way: its assessable figure is **4.07 points above**
+its raw figure. **This is test data, not review** — see the note below. Use September's
+**raw** figure (81.20%) and ignore its assessable figure.
 
 Also present: 6 approved and 3 rejected stop exclusions (July and September only), 0 date
 exclusions, threshold 0.15, target 0.85, two assessment periods (202601, 202608) both in
 `stale` status.
 
-The small deltas are the point: with 9 approved exclusions across 9 months, the official
-figure moves by hundredths of a point. If Rob's process expects exclusions to move OTP by
+The small deltas were the point: with 9 approved exclusions across 9 months, the official
+figure moved by hundredths of a point. If Rob's process expects exclusions to move OTP by
 whole points, either the review volume or the expectation needs revisiting — that is a
 process conversation, not a defect.
+
+**September's assessable figure is not a real figure. Do not quote it.** It reads 85.27%
+against a raw 81.20%, with 14,813 of 62,538 departures removed — all via stop exclusions,
+none weather. The cause is visible in the decision log: **178 approved and 183 rejected stop
+exclusions, all by a single reviewer, all recorded inside a 3½-minute window on 2026-10-15**
+(approvals 16:58:06 to 17:01:35 — roughly 1.2 seconds per decision). That is the reset-button
+test session, not an OCC review.
+
+For comparison, July — the only other month with decisions — carries 3 approved and 3
+rejected, removing 175 departures.
+
+Two consequences. September should be cleared back before it is used in any comparison, or
+its exclusions re-reviewed properly. And this is the first live demonstration of something
+Tier 3 only asserted: **there is no control preventing a bulk approval from moving the
+official figure by four points in three minutes.** Whether that needs a guard — a volume
+threshold, a second approver, a confirmation on bulk action — is a T4.4 question and now has
+evidence behind it.
+
+The small deltas elsewhere remain the point: across every other month, 9 approved exclusions
+move the official figure by hundredths of a point.

@@ -125,6 +125,36 @@ describe("OTP compliance administration", () => {
     expect(api.runOtpHistoricalBackfill).toHaveBeenCalledWith({ month: "202605" });
   });
 
+  // A month Avail sends two records for on one key used to lose one of them
+  // without a word (2026-03, 855 departures). The panel that re-pulls months is
+  // where that has to show up.
+  it("says when a month came back with two records on one key", async () => {
+    const { api } = (await import("../config.js")) as unknown as {
+      api: { runOtpHistoricalBackfill: ReturnType<typeof vi.fn> };
+    };
+    api.runOtpHistoricalBackfill.mockResolvedValueOnce({
+      service_month: "202603",
+      otp_monthly: {
+        reports_seen: 1108,
+        upserted: 1081,
+        duplicate_keys: 27,
+        duplicate_key_detail: [
+          "202603 route 497 stop 31780 Mon: 2 records on one key (total=34/ontime=29 vs total=54/ontime=51), summed; differing fields: Total=34|54",
+        ],
+      },
+      missed_trips: { reports_seen: 0, rows_inserted: 0 },
+    });
+    render(<OtpComplianceAdmin />);
+
+    expect(await screen.findByText("Historical data backfill")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-03" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-03" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run backfill" }));
+
+    expect(await screen.findByText(/27 keys carried more than one record/)).toBeInTheDocument();
+    expect(screen.getByText(/route 497 stop 31780 Mon/)).toBeInTheDocument();
+  });
+
   // The hazard the ADR is answering: an admin control that silently restates
   // years of contractual performance. Declaring takes a stated source and a
   // confirmation that spells the consequence out first.
