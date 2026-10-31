@@ -15,7 +15,7 @@ until MVTA registers it.
 | Author | |
 | Author role | |
 | Distribution | External |
-| Existing document ID | OPR-XXX-00 (to be registered; this is its first issue, Revision 00) |
+| Existing document ID | OPR-RID-00 (to be registered; this is its first issue, Revision 00) |
 | Related documents | OPR-038-00, OPR-061-00, OPR-123-00 |
 | Figures | None |
 
@@ -34,7 +34,7 @@ Planning, MVTA Operations and MVTA Compliance.
 
 The General Bus Operations SOP (OPR-038-00) summarizes the Operator's part of
 this procedure and cites this document by code. Other SOPs must cite this
-document, OPR-XXX-00, rather than restate it.
+document, OPR-RID-00, rather than restate it.
 
 This SOP does not govern deadhead movements, which carry no passengers;
 MVTA Connect ridership, which is taken from the on-demand scheduling system and

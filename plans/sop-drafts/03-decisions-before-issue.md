@@ -9,7 +9,7 @@ marked **[Decide]** where it appears in the SOP.
 
 | # | Decision | Where | Owner | Draft says now |
 |---|---|---|---|---|
-| 1 | SOP code for Ridership Counting and Reporting | Header, OPR-038 citations | Document registry | OPR-XXX-00 |
+| 1 | SOP code for Ridership Counting and Reporting | Header, OPR-038 citations | Document registry | OPR-RID-00 (OPR-XXX-00 is taken by the Surveillance Video SOP in OPR-038) |
 | 2 | Whether the printed sheet has blank rows for Unscheduled Trips and a place for "Did not operate" | Counting on the Trip, steps 5–6 | Planning | Both are on the sheet |
 | 3 | When the overnight print runs, set against when each garage's check-in desk is staffed | Count Sheet Printing, step 1 | Operations | "Before the first pull-out" |
 | 4 | What the garage does if OnBoard can't print | Count Sheet Printing, step 4 | Operations | Blank sheets written up by hand |

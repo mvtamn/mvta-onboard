@@ -3,8 +3,14 @@
 **Status:** draft for MVTA Planning and Operations, 2026-10-30. Amends
 OPR-038-00 so it agrees with the agreed ridership design (one boardings total
 per trip) and hands the detail to the new Ridership Counting and Reporting SOP,
-cited here as **OPR-XXX-00** until MVTA registers its code. These amendments
-are issued together with OPR-XXX-00 and take effect on the same date.
+cited here as **OPR-RID-00** until MVTA registers its code. These amendments
+are issued together with OPR-RID-00 and take effect on the same date.
+
+The placeholder is OPR-RID-00, not OPR-XXX-00, because OPR-038 already uses
+OPR-XXX-00 for the Surveillance Video Access and Handling SOP. A Word copy of
+OPR-038 with these changes as tracked changes is kept outside git, next to the
+source in the main checkout's `ridership/` folder, because this repository is
+public.
 
 Each change below names the place in OPR-038 it replaces. Text not listed is
 unchanged.
@@ -19,7 +25,7 @@ unchanged.
 
 **With:**
 
-> OPR-119-00, OPR-057-00, OPR-061-00, OPR-123-00, OCC-081-00, SR-020, SR-024, SR-150-00, OPR-XXX-00
+> OPR-119-00, OPR-057-00, OPR-061-00, OPR-123-00, OCC-081-00, SR-020, SR-024, SR-150-00, OPR-RID-00
 
 ## 2. Definitions — add two terms
 
@@ -36,7 +42,7 @@ unchanged.
 
 **Garage Managers — replace** "Collect Count Sheets at pull-in."
 
-**With:** "Issue each Operator the Count Sheet for the assigned block at check-in, and collect completed Count Sheets at pull-in, as set out in OPR-XXX-00."
+**With:** "Issue each Operator the Count Sheet for the assigned block at check-in, and collect completed Count Sheets at pull-in, as set out in OPR-RID-00."
 
 ## 4. Procedures — Ridership Counting and Count Sheet Submission
 
@@ -59,7 +65,7 @@ unchanged.
 > procedure, including the deadlines, Count Sheet printing, entry, month
 > close, reporting failures, sheet retention and the move from the Access
 > database to OnBoard, is the Ridership Counting and Reporting SOP
-> (OPR-XXX-00). This section does not repeat it.
+> (OPR-RID-00). This section does not repeat it.
 >
 > 1. Count every passenger who boards on every trip of your assigned block,
 >    and record the trip's **total boardings** on the Count Sheet. Do not
@@ -68,12 +74,12 @@ unchanged.
 >    observations.
 > 3. Complete the Count Sheet on every trip, including on a bus with APC
 >    equipment, unless MVTA has authorized otherwise in writing under
->    OPR-XXX-00.
+>    OPR-RID-00.
 > 4. Submit the completed Count Sheet at pull-in. If it is lost or damaged,
 >    notify the OCC and the Garage Manager at pull-in and reconstruct the
->    counts as set out in OPR-XXX-00.
+>    counts as set out in OPR-RID-00.
 > 5. For everything else about completing and submitting the Count Sheet,
->    follow OPR-XXX-00.
+>    follow OPR-RID-00.
 
 ## 5. Operator Check-In and Check-Out — step 3
 
@@ -93,8 +99,8 @@ unchanged.
 
 > Submit the completed Count Sheet to the Garage Manager or the designated
 > collection point at pull-in. Count Sheets must reflect actual observed counts
-> and must not be altered after submission. Any correction is made in OnBoard
-> as set out in OPR-XXX-00, not on the paper sheet.
+> and must not be altered after submission. Any correction is made in MVTA's ridership system
+> as set out in OPR-RID-00, not on the paper sheet.
 
 ## 7. Escalation Matrix
 
@@ -110,14 +116,14 @@ unchanged.
 
 | Record | System of Record | Owner | Retention | Disposal |
 |---|---|---|---|---|
-| Count Sheet (paper, per block per service date) | Contractor, at the garage | Contractor management | Until the month's performance assessment is final and its dispute window has passed (OPR-XXX-00) | Secure destruction once MVTA confirms the month |
+| Count Sheet (paper, per block per service date) | Contractor, at the garage | Contractor management | Until the month's performance assessment is final and its dispute window has passed (OPR-RID-00) | Secure destruction once MVTA confirms the month |
 | Ridership counts as entered | OnBoard | MVTA Planning | Per MVTA records retention schedule | Per MVTA records retention schedule |
 
 ## 9. References — add
 
 | Document | Document Code |
 |---|---|
-| Ridership Counting and Reporting (to be developed) | OPR-XXX-00 (Not registered) |
+| Ridership Counting and Reporting (to be developed) | OPR-RID-00 (Not registered) |
 
 ---
 
