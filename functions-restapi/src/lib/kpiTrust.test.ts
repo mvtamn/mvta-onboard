@@ -1,6 +1,8 @@
 import assert from "node:assert";
 import { test } from "node:test";
+import { FEED_STALE_AFTER_MINUTES } from "./feedFreshness";
 import {
+  feedDependency,
   missedTripFeedDependencies,
   resolveKpiTrust,
   underwayEvidenceCoverage,
@@ -221,4 +223,23 @@ test("underway evidence is not proven when the vehicle-position feed has never d
 
   assert.strictEqual(missing.state, "unavailable");
   assert.strictEqual(missing.last_success_at, null);
+});
+
+test("every KPI dependency takes its deadline from the feed's own freshness contract", () => {
+  // Contracts list feed names only; the limit belongs to the feed, so a KPI
+  // cannot give a feed a different deadline from the rest of the console.
+  const limits = FEED_STALE_AFTER_MINUTES as Partial<Record<KpiFeedHealth["feed_name"], number>>;
+  const trust = resolveKpiTrust([], now);
+  for (const [name, stream] of Object.entries(trust)) {
+    for (const item of stream.dependencies) {
+      assert.equal(item.stale_after_minutes, limits[item.feed_name] ?? null, `${name}: ${item.feed_name}`);
+      assert.deepEqual(item, feedDependency(item.feed_name, undefined, now, item.required));
+    }
+    // Pending exactly when a required feed has no deadline in the table.
+    const pending = stream.dependencies.some((item) => item.required && limits[item.feed_name] === undefined);
+    assert.equal(stream.contract_pending, pending, name);
+  }
+  assert.equal(trust.otp.contract_pending, true);
+  assert.equal(trust.fixed_route_delay.contract_pending, true);
+  assert.equal(trust.on_demand.contract_pending, false);
 });

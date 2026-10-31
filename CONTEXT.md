@@ -1588,9 +1588,11 @@ or permits an automatic action.
 _Avoid_: freshness override, automatic exception
 
 **Freshness contract**:
-The expected update cadence and allowed lateness for one KPI feed dependency.
-It is evaluated according to that source's real-time, daily, or monthly
-operating cycle rather than a universal elapsed-time threshold.
+The expected update cadence and allowed lateness for one feed. Every place that
+judges the feed (KPI trust, the feed connection checks) reads the same contract;
+a feed with no KPI still has one. It is evaluated according to that source's
+real-time, daily, or monthly operating cycle rather than a universal
+elapsed-time threshold.
 _Avoid_: one-hour rule, source connection test
 
 **KPI trust view**:

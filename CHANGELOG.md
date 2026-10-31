@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.49] - 2026-10-30
+
+- **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
+- **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
+- `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+
 ## [1.6.48] - 2026-10-30
 
 - **The OTP monthly feed silently discarded a record whenever Avail sent two for one key.** `upsertOtpMonthlyReport` MERGEs on (service_month, route_id, stop_id, day_of_week), and Avail does not guarantee one record per key: for 2026-03 it sent 1,108 records carrying 1,081 distinct keys. Each of the 27 repeated keys was written twice and whichever write landed second won, so the first record's departures were gone — and the poll still logged "1108 reports seen, 1108 rows upserted", because every overwrite is a successful upsert. Nothing in feed health, the restatement ledger or the console could have said otherwise.
