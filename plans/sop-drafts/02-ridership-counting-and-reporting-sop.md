@@ -413,28 +413,47 @@ Operations Management.
 
 ## Escalation Matrix
 
+Most problems in this SOP threaten the entry deadline, so they are raised the
+same day to whoever can fix them. The table collects every escalation this
+SOP requires in one place.
+
 | Event | Escalation Level | Notify | Method | Response Time |
 |---|---|---|---|---|
 | No Count Sheet issued for the assigned block | Garage | Garage Manager | In person | Before pull-out |
 | Count Sheets cannot be printed from OnBoard | Contractor management and IT | Contractor Operations Management and IT Service Desk | Phone and Service Desk ticket | Before the first pull-out |
 | Count Sheet lost or damaged during service | OCC and garage | OCC and Garage Manager | In person or MDT | At pull-in |
 | Count Sheet not returned at pull-in | Garage | Garage Manager | In person or phone | Same day |
-| OnBoard unavailable for entry | IT | IT Service Desk | Service Desk ticket | Promptly |
+| APC equipment not active at pull-out | IT Service Desk and OCC | IT Service Desk | Ticket; OCC by MDT or radio | Before pull-out |
+| OnBoard unavailable for entry | IT and Contractor management | IT Service Desk and Contractor Operations Management | Service Desk ticket and email | Promptly |
+| Access Database unavailable (before the Cutover Date) | IT and MVTA Planning | IT Service Desk and MVTA Planning | Service Desk ticket and email | Promptly |
 | Block shown as Unassigned in OnBoard | MVTA Planning | MVTA Planning | Email | Within one business day |
 | A Count Sheet will miss the entry deadline | Contractor management | Contractor Operations Management | Email | Before the deadline |
+| A person leaves a role that holds OnBoard ridership access | IT | IT Service Desk | Service Desk ticket | The day the person leaves the role |
 
 ## Required Records
 
+Every step that changes a Count leaves a record, so that a Count, a Flag
+answer or a Reporting Failure can be traced back to the sheet. The table names
+each record and where it is kept.
+
 | Record | System of Record | Owner | Retention | Disposal |
 |---|---|---|---|---|
-| Count Sheet (paper, per block per service date) | Contractor, at the garage | Contractor Operations Management | Until MVTA confirms the month's assessment is final and its dispute period has passed | Secure destruction |
+| Count Sheet (paper, per block per service date, including Reconstructed sheets and damaged originals) | Contractor, at the garage | Contractor Operations Management | Until MVTA confirms the month's assessment is final and its dispute period has passed | Secure destruction |
+| Counts before the Cutover Date | Access Database | MVTA Planning | Per MVTA records retention schedule | Per MVTA records retention schedule |
 | Counts as entered, with who and when | OnBoard | MVTA Planning | Per MVTA records retention schedule | Per MVTA records retention schedule |
 | Flag answers (correction or confirmation, with note) | OnBoard | MVTA Planning | Per MVTA records retention schedule | Per MVTA records retention schedule |
 | Month Complete and Month Close, and changes to closed months | OnBoard | MVTA Planning | Per MVTA records retention schedule | Per MVTA records retention schedule |
+| Parallel Run comparison and MVTA's acceptance | MVTA Planning records | MVTA Planning | Per MVTA records retention schedule | Per MVTA records retention schedule |
+| Written notices of each transition stage and the Cutover Date | MVTA Operations records | MVTA Operations | Per MVTA records retention schedule | Per MVTA records retention schedule |
+| Written APC authorizations | MVTA Operations records | MVTA Operations | Per MVTA records retention schedule | Per MVTA records retention schedule |
 | Confirmed Reporting Failures | OnBoard | MVTA Compliance | Per MVTA records retention schedule | Per MVTA records retention schedule |
 | Training on this SOP | Contractor training records | Contractor Training and Safety | At least 3 years after the Contract expires | Per MVTA records retention schedule |
 
 ## Performance Metrics
+
+The contract's three terms (all trips, accurately and timely) are each
+measured, in OnBoard, for service dates from the Cutover Date. During the
+Parallel Run the same measures are reported but not assessed.
 
 | Metric | Target | Measurement Method | Frequency | Owner |
 |---|---|---|---|---|
@@ -443,9 +462,13 @@ Operations Management.
 | Accuracy | Every Flag answered by the 5th of the following month | OnBoard Flags | Monthly | Contractor OCC staff |
 | Month Complete | Marked by the 5th of the following month | OnBoard | Monthly | Contractor OCC staff |
 | Month Close | Closed by the 10th of the following month | OnBoard | Monthly | MVTA Planning |
+| Reporting Failures | None | Reporting Failures confirmed by MVTA Compliance | Monthly | MVTA Compliance |
 | Reconstructed sheets | Reported, no target | OnBoard, by garage and Operator | Monthly | Contractor Operations Management |
 
 ## References
+
+The documents below are the ones this SOP relies on. A document marked Not
+registered has no code in the MVTA document registry yet.
 
 | Document | Document Code |
 |---|---|
@@ -455,6 +478,8 @@ Operations Management.
 | Contract C-10235 — Operations and Maintenance Services | Not registered |
 | Attachment G — Performance Standards and Penalties | Not registered |
 | MVTA Records Retention Schedule | Not registered |
+| MVTA Master Transit Glossary | Not registered |
+| MVTA Technology SOPs (ITMS and IT Service Desk) | Not registered |
 
 ## Sign-Off Approval Workflow
 
