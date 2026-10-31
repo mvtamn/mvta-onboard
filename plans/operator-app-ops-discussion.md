@@ -13,6 +13,12 @@ first operator version the operator signs in with their Avail logon ID and PIN,
 picks their run from a list, and types each trip's total from their paper
 tally after the trip.
 
+**Try it:** a clickable prototype of all three features (one HTML file, open
+it in a browser) is on branch `prototype/operator-app-ops-features` at
+`plans/operator-app-ops-prototype.html`. Its guided scenarios cover a normal
+stop, a short stop under a server-driven lock, creeping to the curb, end-of-line
+boardings, a dismissed trip suggestion, GPS loss and a wrong block sign-in.
+
 Three features were deliberately left out of that first version because each
 needs a decision from Operations:
 
