@@ -179,6 +179,54 @@ two. From January 2027 OnBoard is the only record and Access is frozen.
 6. Review and issue the contractor procedure
    (`plans/ridership-counting-procedure-draft.md`). [Planning + Operations]
 
+## 12. Future — comparison with Avail passenger counting (APC)
+
+Added 2026-10-30 at the user's request. Not decided; the comparison screen is
+mocked in the prototype (`?prototype=ridership`, "Compare with Avail APC").
+
+**What exists today.** No passenger-count data reaches OnBoard. The Avail360
+endpoints OnBoard calls (`lib/availClient.ts`: AVL, pull-out, OTP daily and
+monthly, missed trips, detours) carry no boardings or alightings. The only
+related signal is GTFS-RT VehiclePosition `occupancy_status`, a live load band
+overwritten each poll, not a count.
+
+**What the comparison would do,** once per-trip APC boardings arrive:
+
+- Match each manual count to the APC figure for the same trip (trip ID,
+  block, service date) on buses whose counter is reporting healthy; exclude
+  trips where the counter faulted.
+- Show **agreement** (share of trips within ±N %) and the day's manual vs APC
+  totals on comparable trips.
+- Show the **APC ÷ manual ratio by bus**, and later by operator: a steady gap
+  on one bus points at the counter; a gap that follows one operator across
+  buses points at the sheets.
+
+**What it is for:**
+
+1. **Accuracy evidence.** An APC figure beside a flagged count lets the
+   contractor and Planning settle a flag on evidence rather than judgement
+   (§6).
+2. **Retiring paper (C8).** OPR-038 lets APC replace the sheet when the Garage
+   Manager confirms it is sufficient. The comparison gives "sufficient" a
+   test, e.g. a bus or route whose APC agrees within an agreed tolerance for
+   an agreed number of weeks.
+3. **NTD.** Using APC for NTD ridership requires validating it against
+   manual counts; the manual counts collected here are that sample.
+
+**Questions for Avail** (same contact as the OTP thread):
+
+- Does MVTA's fleet have APC hardware, on which vehicles, and is the Avail
+  APC module licensed?
+- Is there an Avail360 report of per-trip boardings and alightings (and per
+  stop), and how is the trip identified — GTFS `trip_id`, block, run?
+- How soon after a trip is it available, and does it carry a counter-health
+  flag?
+- Is MVTA's APC data certified for NTD reporting?
+
+**Decisions for later,** once the answers are in: the tolerance and number of
+weeks that let a bus or route drop the paper sheet; and which figure is the
+record for a trip that has both.
+
 ## Open
 
 - **ServiceType (Q15).** Each trip carries a code (L, MX, RC, SX, DX) that
@@ -187,7 +235,7 @@ two. From January 2027 OnBoard is the only record and Access is frozen.
   code means, is unsettled. Until then the totals export cannot fill the
   `ServiceType` column.
 - **Connect (v2).** Not designed; depends on the Spare export being reachable.
-- **APC (C8).** Unknown which vehicles have working APC; no APC data reaches
+- **APC (C8).** See §12. Unknown which vehicles have working APC; no APC data reaches
   OnBoard today.
 - **Terms for `CONTEXT.md`.** Count Sheet, Ridership count, Day type, Month
   close, and ServiceType once settled, before code is written.
