@@ -20,6 +20,8 @@ marked **[Decide]** where it appears in the SOP.
 | 14 | How many days' written notice MVTA gives before each transition stage | Transition | Operations | Left open |
 | 15 | What "accepts the result" means for the parallel run, e.g. monthly totals agree within an agreed % | Transition, step 3 | Planning | MVTA decides; no test written |
 | 16 | Who in MVTA gives the transition notices and APC authorizations | Responsibilities, MVTA Operations | COO | MVTA Operations |
+| 17 | Whether a passenger who stays aboard from one trip into the next (interlined trips) is counted again | Counting on the Trip, step 2 | Planning | Left open |
+| 18 | How long the Contractor has to answer a Flag MVTA Planning raises after the 5th | Answering Flags, step 5 | Planning | Left open |
 | 9 | How many times a day sheets go from the check-in desk to OCC | Pull-In and Sheet Collection, step 4 | Operations | Left open (today: 2–3 times a day) |
 | 10 | How quickly the Contractor must produce a paper sheet MVTA asks for | Retention, step 2 | Compliance | Left open |
 | 11 | Whether deadheads and special events are out of scope, and where special-event counts are covered (gap C7) | Scope | Planning | Both out of scope; special events "covered separately" |
@@ -49,6 +51,12 @@ each one.
 - **Escalation rows** for sheets that can't print, sheets not returned,
   OnBoard down, Unassigned blocks and sheets at risk of missing the deadline.
 - **The Purpose names NTD reporting** as a use of the counts. Check this.
+- **Keep counting on any paper** if the sheet is lost mid-block (Lost or
+  Damaged, step 1).
+- **Flag thresholds moved to a NOTE "at issue"**, so a change Planning makes
+  in OnBoard doesn't make the SOP wrong; the rule itself stays general.
+- **"Missing" means still not entered at Month Close**, so a sheet is missing
+  or late, never both.
 - **An MVTA Operations role** for the transition notices and APC
   authorizations (decision 16).
 
