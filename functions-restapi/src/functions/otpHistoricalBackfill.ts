@@ -45,11 +45,14 @@ import { requireAccess } from "../lib/access/require";
 import { validateOtpHistoricalBackfill } from "../lib/validation";
 import { availConfig, fetchAvail } from "../lib/availClient";
 import {
+  collapseOtpMonthlyReports,
+  describeOtpMonthlyCollision,
   mapOtpMonthlyReport,
   measurementStampReady,
   restatementLedgerReady,
   serviceMonthOf,
   upsertOtpMonthlyReport,
+  type OtpMonthlyCandidate,
 } from "../lib/otpMonthlyFeed";
 import { readParametersInForce } from "../lib/otpMeasurementParameters";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
@@ -106,7 +109,14 @@ app.http("otpHistoricalBackfill", {
 
     const pool = await getPool();
 
-    let otpResult: { reports_seen: number; upserted: number; measurement_parameters?: string; error?: string } | undefined;
+    let otpResult: {
+      reports_seen: number;
+      upserted: number;
+      duplicate_keys?: number;
+      duplicate_key_detail?: string[];
+      measurement_parameters?: string;
+      error?: string;
+    } | undefined;
     if (runOtp) {
       // Read only by the phase that needs it: a Missed Trips request has no
       // business reading the measurement register.
@@ -120,13 +130,24 @@ app.http("otpHistoricalBackfill", {
       const parameters = await readParametersInForce(pool);
       try {
         const reports = await fetchAvail("otp_monthly", { month: monthToDate(month), parameters: parameters.segments }, otp.config!);
-        let upserted = 0;
+        const candidates: OtpMonthlyCandidate[] = [];
         for (const report of reports) {
           const mapped = mapOtpMonthlyReport(report, month);
           if (!mapped) continue;
+          candidates.push({ mapped, source: report });
+        }
+        // A month that holds two schedule patterns comes back as two records on
+        // one key. Summing them before the upsert is the only way the backfill
+        // stores the month Avail published rather than whichever half of it the
+        // MERGE happened to write last - 2026-03 lost 855 departures this way.
+        const { rows, collisions } = collapseOtpMonthlyReports(candidates);
+        const duplicateKeyDetail = collisions.map((collision) => describeOtpMonthlyCollision(collision));
+        for (const line of duplicateKeyDetail) context.warn(`OTP Monthly backfill: ${line}`);
+        let upserted = 0;
+        for (const { row } of rows) {
           // A backfill that changes an already-ingested past month is a
           // restatement like any other, and is recorded as one.
-          await upsertOtpMonthlyReport(pool, mapped, {
+          await upsertOtpMonthlyReport(pool, row, {
             ledgerReady,
             currentServiceMonth,
             measurementParameters: parameters.segments,
@@ -134,8 +155,20 @@ app.http("otpHistoricalBackfill", {
           });
           upserted++;
         }
-        otpResult = { reports_seen: reports.length, upserted, measurement_parameters: parameters.segments };
-        context.log(`OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}.`);
+        otpResult = {
+          reports_seen: reports.length,
+          upserted,
+          duplicate_keys: collisions.length,
+          // Returned, not only logged: the console's backfill panel is where an
+          // admin watches a month come back, and "1,108 records became 1,081
+          // rows" is a fact about that month worth seeing there.
+          duplicate_key_detail: duplicateKeyDetail,
+          measurement_parameters: parameters.segments,
+        };
+        context.log(
+          `OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}` +
+            `${collisions.length > 0 ? ` (${collisions.length} keys carried more than one record)` : ""}.`,
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         otpResult = { reports_seen: 0, upserted: 0, error: message };

@@ -239,6 +239,10 @@ function OtpHistoricalBackfillPanel() {
   const totalUpserted = results.reduce((sum, r) => sum + (r?.otp_monthly?.upserted ?? 0), 0);
   const totalMissedRows = results.reduce((sum, r) => sum + (r?.missed_trips?.rows_inserted ?? 0), 0);
   const errored = results.filter((r) => r?.otp_monthly?.error || r?.missed_trips?.error);
+  // A month Avail sent two records for on one key. Worth saying out loud on the
+  // page that re-pulls months: it is the difference between the figure the
+  // month has and the figure it published.
+  const collided = results.filter((r) => (r?.otp_monthly?.duplicate_keys ?? 0) > 0);
   const done = !running && results.length > 0;
 
   return (
@@ -271,6 +275,30 @@ function OtpHistoricalBackfillPanel() {
             {done ? "" : "…"}: {totalUpserted} OTP Monthly rows upserted, {totalMissedRows} Missed
             Trips rows reloaded so far.
           </p>
+          {collided.length > 0 ? (
+            <ul>
+              {collided.map((r) => (
+                <li key={`dup-${r!.service_month}`}>
+                  {r!.service_month}: {r!.otp_monthly?.reports_seen} records on{" "}
+                  {r!.otp_monthly?.upserted} keys - {r!.otp_monthly?.duplicate_keys} key
+                  {r!.otp_monthly?.duplicate_keys === 1 ? "" : "s"} carried more than one record
+                  (summed, not overwritten).
+                  {r!.otp_monthly?.duplicate_key_detail?.length ? (
+                    <details>
+                      <summary>Which</summary>
+                      <ul>
+                        {r!.otp_monthly.duplicate_key_detail.map((line) => (
+                          <li key={line} style={{ fontSize: 12 }}>
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {errored.length > 0 ? (
             <ul>
               {errored.map((r) => (

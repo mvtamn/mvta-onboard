@@ -2002,7 +2002,18 @@ export interface OtpHistoricalBackfillInput {
 // is the bug this shape exists to make unrepresentable.
 export interface OtpHistoricalBackfillResponse {
   service_month: string;
-  otp_monthly?: { reports_seen: number; upserted: number; error?: string };
+  otp_monthly?: {
+    reports_seen: number;
+    upserted: number;
+    // Keys Avail sent more than one record for. A month holding two schedule
+    // patterns comes back as two records on one (route, stop, day of week),
+    // which the server sums; before 1.6.48 the second silently overwrote the
+    // first. reports_seen stays the records delivered, so reports_seen minus
+    // duplicate_keys is the rows the month has.
+    duplicate_keys?: number;
+    duplicate_key_detail?: string[];
+    error?: string;
+  };
   missed_trips?: { reports_seen: number; rows_inserted: number; error?: string };
 }
 
