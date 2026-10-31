@@ -11,7 +11,8 @@ import { archiveRole, createRole, restoreRole, roleHistory, updateRole } from ".
 // catalog, the seeds and the pre-migration path; this file covers what only the
 // database can show:
 //
-//   the nine seeded roles landing exactly as seeds.ts describes them;
+//   the seeded roles (migrations 129 and 154) landing exactly as seeds.ts
+//   describes them;
 //   a grant deciding access, and a revoked, expired or suspended one not;
 //   a re-run leaving an Access Administrator's edits alone;
 //   an app role in the token still working beside an OnBoard grant.
@@ -20,7 +21,7 @@ import { archiveRole, createRole, restoreRole, roleHistory, updateRole } from ".
 // assessmentLifecycle.db.contract.test.ts).
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_access_roles_contract";
-const MIGRATIONS = ["129-app-owned-roles", "130-access-role-history"];
+const MIGRATIONS = ["129-app-owned-roles", "130-access-role-history", "154-ridership-roles"];
 
 const OID = "11111111-1111-4111-8111-111111111111";
 const OTHER_OID = "22222222-2222-4222-8222-222222222222";

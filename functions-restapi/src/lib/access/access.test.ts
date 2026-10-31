@@ -103,6 +103,19 @@ test("the seeded roles", async (t) => {
     }
   });
 
+  await t.test("Ridership Manager can do everything the Recorder can, and keep the garage list", () => {
+    const recorder = seededRole("ridership-recorder")!;
+    const manager = seededRole("ridership-manager")!;
+    for (const action of recorder.actions) assert.ok(manager.actions.includes(action), action);
+    assert.ok(!recorder.actions.includes("ridership.configure"));
+    assert.ok(manager.actions.includes("ridership.configure"));
+    // Only the two ridership roles hold Ridership; System Administrator gets it through its wildcard.
+    assert.deepEqual(
+      SEEDED_ROLES.filter((r) => r.actions.some((a) => a.startsWith("ridership."))).map((r) => r.key),
+      ["ridership-recorder", "ridership-manager"],
+    );
+  });
+
   await t.test("exactly two roles are locked, and only one holds the wildcard", () => {
     assert.deepEqual(
       SEEDED_ROLES.filter((r) => r.locked).map((r) => r.key),
