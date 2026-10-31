@@ -7,10 +7,10 @@ cited here as **OPR-RID-00** until MVTA registers its code. These amendments
 are issued together with OPR-RID-00 and take effect on the same date.
 
 The placeholder is OPR-RID-00, not OPR-XXX-00, because OPR-038 already uses
-OPR-XXX-00 for the Surveillance Video Access and Handling SOP. A Word copy of
-OPR-038 with these changes as tracked changes is kept outside git, next to the
-source in the main checkout's `ridership/` folder, because this repository is
-public.
+OPR-XXX-00 for the Surveillance Video Access and Handling SOP. The Word files are
+kept outside git (the repository ignores `*.docx` and is public), next to the
+OPR-038 source in the main checkout's `ridership/` folder: OPR-038 with these
+changes as tracked changes, and the new SOP built from the OPR-038 template.
 
 Each change below names the place in OPR-038 it replaces. Text not listed is
 unchanged.
