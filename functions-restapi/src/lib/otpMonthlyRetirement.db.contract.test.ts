@@ -17,9 +17,14 @@ import { retireVanishedMonthlyKeys, retirementArchiveReady } from "./otpMonthlyR
 // second WHEN MATCHED clause in CI.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_otp_retirement_contract";
+// 021 is not optional scenery: migration 014 declares day_of_week NVARCHAR(3),
+// and Avail really sends "Thur" - which is why 021 widened it to 20. Without it
+// the stranded-row fixture dies on "String or binary data would be truncated",
+// and the schema under test is not the one in production.
 const MIGRATIONS = [
   "014-otp-monthly",
   "020-otp-daily",
+  "021-otp-monthly-day-of-week-width",
   "151-otp-measurement-parameters",
   "152-retire-vanished-otp-monthly-keys",
 ];
