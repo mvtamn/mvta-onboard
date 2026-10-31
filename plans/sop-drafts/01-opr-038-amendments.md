@@ -26,7 +26,7 @@ unchanged.
 | Term | Definition |
 |---|---|
 | APC (Automatic Passenger Counter) | Onboard equipment that counts passengers boarding and alighting at each stop. |
-| Count Sheet | The sheet for one block on one service date, printed from OnBoard, on which the Operator records the number of passengers boarding each trip. |
+| Count Sheet | The sheet for one block on one service date on which the Operator records the number of passengers boarding each trip. |
 
 ## 3. Responsibilities table
 
@@ -52,14 +52,14 @@ unchanged.
 > that those procedures are followed.
 >
 > In summary, each Operator receives a Count Sheet for the assigned block at
-> check-in, records the total number of passengers boarding each trip, and
-> hands the sheet in at pull-in. Contractor staff enter every sheet in OnBoard
-> by the end of the next calendar day and answer any questions MVTA raises
-> about unusual counts by the 5th of the following month, and MVTA Planning
-> closes the month by the 10th. The full procedure, including Count Sheet
-> printing, entry, flags, month close, reporting failures and sheet
-> retention, is the Ridership Counting and Reporting SOP (OPR-XXX-00). This
-> section does not repeat it.
+> check-in, records the number of passengers who board each trip, and hands
+> the sheet in at pull-in. Contractor staff enter every sheet in MVTA's
+> ridership system within the deadline MVTA sets, and answer any question MVTA
+> raises about an unusual count before MVTA closes the month. The full
+> procedure, including the deadlines, Count Sheet printing, entry, month
+> close, reporting failures, sheet retention and the move from the Access
+> database to OnBoard, is the Ridership Counting and Reporting SOP
+> (OPR-XXX-00). This section does not repeat it.
 >
 > 1. Count every passenger who boards on every trip of your assigned block,
 >    and record the trip's **total boardings** on the Count Sheet. Do not
