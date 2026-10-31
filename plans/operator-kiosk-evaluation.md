@@ -46,12 +46,16 @@ Decision numbers (D7, D18 …) refer to that design. Plain section numbers
 - **One kiosk per garage covers the ridership peak. Buy two per garage
   anyway**, so that one failure does not send a garage back to paper, and
   because later modules add load.
-- **Hardware:** a rugged 10–11" Android tablet with glove mode, NFC and a rear
-  camera, in a locked wall enclosure with wired power. It is managed in Intune
-  as an Android Enterprise dedicated device that runs the operator site in
-  managed Chrome. **About $1,100–1,900 per kiosk, $2,200–3,800 per garage**,
-  plus about $2–6 per device per month for management. Existing garage PCs
-  are the fallback, not the kiosk.
+- **Hardware** is in its own document, `plans/operator-kiosk-hardware.md`
+  (PR #462), with the models, the enclosure, Intune enrolment and the costs.
+  The kiosk runs the operator site in managed Chrome.
+- **Sign in first, then a Home built for the operator** (user, 2026-10-31):
+  - their messages;
+  - their own detours, plus all detours;
+  - the module tiles.
+
+  What Home shows can be customized. The software design is
+  `plans/operator-kiosk-module-shell.md`.
 - **Sign-in:** the first release uses the **Avail logon ID + PIN**. The
   sign-in is built to also accept a **badge, key fob or tag tapped on the
   tablet's NFC reader**, in place of typing the logon ID. Each badge is
@@ -162,59 +166,20 @@ Kiosk heartbeat on the health page. Paper keyed by OCC is the only fallback.
 
 ## 2. Hardware
 
-### Options
+Moved to its own document at the user's request (2026-10-31):
+`plans/operator-kiosk-hardware.md`, PR #462. In short:
 
-| | Rugged tablet in a wall enclosure | All-in-one touchscreen PC | Reuse garage PCs |
-|---|---|---|---|
-| Example class | 10–11" rugged Android tablet with glove mode and a user-replaceable battery, or an iPad in a commercial enclosure | 15–22" commercial Windows all-in-one with a projected-capacitive touchscreen | The check-in desk or dispatch PC, perhaps with an added touch monitor |
-| Durability | Rated for drops, dust and water (IP65/68, MIL-STD-810 on the rugged models); the enclosure takes knocks | Built for retail and hospitality kiosks; a larger glass face to protect | Office-grade, keyboard and mouse; not built for walk-up use |
-| Gloves | Glove mode on rugged models; consumer iPads need touch gloves | Most projected-capacitive screens have a glove setting | Mouse and keyboard work with gloves; touch only with an added monitor |
-| Mounting | Wall or pedestal enclosure, locked, with cable routing | VESA wall arm or floor stand | Already on a desk |
-| Power | Wired USB-C through the enclosure; the battery covers short power cuts | Mains; a small UPS is advisable | Existing |
-| Network | Garage Wi-Fi; no cellular needed | Wired Ethernet (preferred) or Wi-Fi | Existing, but probably the contractor's network |
-| Kiosk lock-down | Intune Android Enterprise **dedicated device**: Managed Home Screen pinned to one managed browser, allow-listed to the operator site | Intune **Assigned Access**: Edge kiosk mode, one site | Not lockable without taking the PC away from its current job |
-| Cost per kiosk (market estimate, to confirm with IT) | Tablet $600–1,000, enclosure $300–600, install and cabling $200–300: **$1,100–1,900** | Unit $1,500–2,800, mount $150–400, install $200–300, UPS $100: **$1,950–3,600** | $0–500 for a touch monitor |
-| Ongoing | Device management $2–6 a month; battery swap in 3–4 years | Same management; longer life | None new |
+- **Android is decided** (user, 2026-10-31). That document compares models
+  and recommends one.
+- The tablet must have glove mode, NFC (§3.6), a rear camera and an 11"
+  screen if the price gap is small. The later modules depend on these
+  (`plans/operator-kiosk-module-shell.md`).
+- **Two kiosks per garage plus one spare for the fleet** (§1).
+- Locked wall enclosure, wired power, garage Wi-Fi.
+- Existing garage PCs are the desk's fallback, not the kiosk.
 
-### How many
-
-At least **two kiosks per garage**, for the reason in §1. A third is worth it
-only where one garage takes most of the evening wave. That can be read off the
-block-to-garage list once Planning has entered it (spec §5). With G garages:
-
-- **Rugged tablets:** about $2,200–3,800 × G up front, and $50–150 × G a year.
-- **All-in-one PCs:** about $3,900–7,200 × G up front.
-
-If MVTA has two garages, a tablet fleet is **about $4,400–7,600** up front,
-plus a spare unit (about $1,000).
-
-### Why not reuse garage PCs
-
-They are the right **fallback** for desk staff, who key PINs and can open
-drafts in the console (§4.4). They are wrong as the kiosk:
-
-- Operators would queue at the desk PC that the desk itself needs at the same
-  moment.
-- A PC that also does dispatch work cannot be locked to one site.
-- The desk PC may belong to the contractor and sit on their network, and
-  that network changes on 2027-01-01.
-
-**Decided: Android** (user, 2026-10-31). That rules out the all-in-one
-Windows column above. It stays in the table only to record the comparison.
-
-**Recommendation:** rugged Android tablets in locked wall enclosures, two per
-garage plus one spare, on wired power and garage Wi-Fi.
-
-What to require of the model, because later modules (§8) depend on it:
-
-- **NFC (13.56 MHz)**, for badge sign-in (§3.6);
-- **a rear camera with an enclosure cut-out**, for photos on vehicle
-  condition reports;
-- **11" rather than 10"** if the price gap is small, because detour maps read
-  better larger;
-- **Android Enterprise Recommended** status and at least **4 years of
-  security updates** from the maker, because the device outlives one
-  contractor.
+Costs, the enclosure, mounting, network and the bill of materials are in
+PR #462, not here.
 
 ## 3. Device management and security
 
@@ -359,15 +324,9 @@ operator roster endpoint (Q4).
 
 ### 3.5 Device management and who owns it
 
-**Enrolment and management:**
-
-- Intune in MVTA's tenant: Android Enterprise dedicated devices.
-- A compliance policy: OS patch level, encryption, no developer mode.
-- Conditional Access on the kiosk accounts (§3.2).
-- Remote wipe or retire.
-- OS and browser updates are installed automatically outside the pull-in
-  waves, for example at 02:00. Overnight is outside fixed-route service
-  hours, so it never collides with use.
+**Enrolment and management** (Intune Android Enterprise dedicated device,
+compliance policy, update window, remote wipe) are in
+`plans/operator-kiosk-hardware.md` (PR #462).
 
 **Ownership:**
 
@@ -444,8 +403,8 @@ copied. So the choice is what the tap replaces:
   after the pilot. Check the contractor's badges only if the contractor wants
   one card for everything (Q9).
 - Do not use option 3 (tap alone) for any module where the operator submits
-  or attests something. A tap with no PIN is acceptable only for read-only
-  information (§8), and that needs no sign-in at all.
+  or attests something. Every module sits behind sign-in (the user decided
+  sign-in first, 2026-10-31), so tap-alone has no use.
 
 ## 4. OnBoard integration
 
@@ -701,8 +660,9 @@ kiosk.
 |---|---|---|---|
 | **Ridership** (first) | Enter the run's counts (§1, §4) | Logon ID or badge + PIN | This evaluation |
 | **Vehicle condition report** | Report a defect on the bus they drove: bus number, category, a note, optional photo, "safe to operate?" | Badge or ID + PIN (an attestation) | Who receives it and what system holds fleet defects today is unknown (Q10). OnBoard has no work-order system (spec §14), so this may be a report that is forwarded, not a work order. The APC health worklist (spec §14) is Fleet's other OnBoard view, and a per-bus defect list fits beside it |
-| **Detour information** | Read the active detours and stop closures on the garage's routes before pulling out | **None**: shown on the kiosk's idle screen | OnBoard's Detour module already holds them (Detour Register, Detours & Closures). Operators need only the active ones with directions and a map. Rider-facing detour text is already public, so the idle screen needs no sign-in |
-| Others later | Read garage notices; acknowledge a bulletin or SOP change; see one's own runs for the day | Read: none. Acknowledge: ID + PIN | Acknowledgement is a record against an operator, so it needs the PIN |
+| **Detour information** | Read all detours, and *your detours* on the routes they drive today | ID or badge + PIN (sign-in first, user 2026-10-31) | OnBoard's Detour module already holds them (Detour Register, Detours & Closures). Design: `plans/operator-kiosk-module-shell.md` §3 |
+| **Operator messages** | Read messages addressed to them, their garage, their routes or their run, and acknowledge important ones | ID or badge + PIN | New. Design: module shell §4 |
+| Others later | Acknowledge a bulletin or SOP change; see one's own runs for the day | ID or badge + PIN | Acknowledgement is a record against an operator |
 
 ### What the first release must get right
 
@@ -722,11 +682,12 @@ kiosk.
 - **Modules switched on per garage.** Each kiosk grant's garage (§3.2) has a
   list of enabled modules, a setting edited by an access administrator, so a
   module can pilot at one garage the way ridership does.
-- **The idle screen is a module surface.** It shows the active detours for the
-  garage's routes and a "Tap to sign in" bar. It is read-only, needs no
-  operator session, and is served under the kiosk account alone
-  (`operator-kiosk.use`).
-- **Hardware already chosen for it** (§2): a rear camera for defect photos,
+- **Sign in first** (user, 2026-10-31). The idle screen is the sign-in
+  screen. After sign-in, **Home** is built for that operator: their messages,
+  their detours and all detours, then the module tiles. Home's content can be
+  customized per garage and, for language and text size, per operator. Full
+  design: `plans/operator-kiosk-module-shell.md`.
+- **Hardware already chosen for it** (§2, PR #462): a rear camera for defect photos,
   an 11" screen for detour maps, and NFC for badges.
 - **The device identity is not ridership's.** It is the `operator-kiosk` role
   and the `operator-kiosk.use` action, and the PIN admin role is
@@ -738,16 +699,14 @@ kiosk.
 Ridership alone uses each kiosk about half of the peak 15 minutes (§1).
 Vehicle reports would be filed at the same moment, at pull-in, but only by
 operators with a defect. Detour reading happens at pull-out, the other end of
-the shift, and mostly on the idle screen without a sign-in. Two kiosks per
+the shift, after sign-in. Two kiosks per
 garage still cover it. Re-measure in the pilot before a second module goes
 live.
 
 **Recommendation:** build the operator site as a module shell from the first
 release, with the generic session, the per-garage module switch and the
-detour idle screen. The idle screen is cheap, uses data OnBoard already has,
-and gives operators a reason to look at the kiosk before they need it. Design
-vehicle condition reports separately, once Fleet says where defects go today
-(Q10).
+personalized Home (`plans/operator-kiosk-module-shell.md`). Design vehicle
+condition reports separately, once Fleet says where defects go today (Q10).
 
 ## Open questions
 
@@ -786,7 +745,7 @@ vehicle condition reports separately, once Fleet says where defects go today
 
 **From MVTA IT:**
 
-- The tablet model, with Android decided (§2), and Q3.
+- The tablet model, with Android decided (PR #462), and Q3.
 - The kiosk accounts, Conditional Access and Intune enrolment (steps 6, 7
   and 10).
 - Patching ownership and Q7.
