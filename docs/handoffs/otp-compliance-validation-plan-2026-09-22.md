@@ -220,12 +220,16 @@ month to compare.
 
 ## Can the system be baselined today? No — and the blocker is not OnBoard
 
+*The closeout — every open question, who answers it, and the order — is in
+`otp-system-of-record-closeout-2026-10-31.md`. This section states the gate; that
+document states the path.*
+
 As of 2026-10-28, **do not freeze a baseline. Proceed and confirm by test.**
 
 | Gate | State |
 | --- | --- |
 | **A0 — the two manual artifacts agree with each other** | **Not done.** This is the gate. There is nothing to baseline against until it is. |
-| Tier 1 — OnBoard holds what Avail published | **Passed for 2026-08 and 2026-09; failed for 2026-03** until it is re-pulled — see "What changed on 2026-10-30" |
+| Tier 1 — OnBoard holds what Avail published | **Passed** for 2026-08 and 2026-09; 2026-03 failed and was **repaired by the 2026-10-30 re-pull** (90.46% → 90.50%, 67,330 departures) |
 | Tier 2 — rule correctness | Passed 2026-09-22, except T2.4 |
 | Months measured consistently | **Yes** — all backfilled 2026-10-29 |
 | Acceptance standard still valid | **No** — needs restating against corrected figures |
