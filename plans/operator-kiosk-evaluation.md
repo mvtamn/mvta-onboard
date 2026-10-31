@@ -305,7 +305,10 @@ operator roster endpoint (Q4).
 
 **Sign-out** (D9):
 
-- The kiosk signs out after **Submit**.
+- After **Submit**, the kiosk shows "Submitted ✓ — anything else?" for 15
+  seconds, then signs out. This replaces D9's sign-out at each submission, so
+  the operator can use another module without signing in again (module shell
+  P1, decided 2026-10-31).
 - It also signs out after **2 minutes** of no touch. A 20-second "Still
   there?" warning comes at 1:40.
 - The draft is saved on the server as the operator works (D17), so signing

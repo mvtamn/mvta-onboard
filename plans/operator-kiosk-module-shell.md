@@ -18,8 +18,9 @@ kiosk as a platform of operator functions, which
 
   What appears there **can be customized**. §5 sets out how.
 
-Everything else here is **proposed** and marked so. §9 lists what needs a
-decision.
+The six follow-on decisions in §9 (P1–P6) were **accepted by the user on
+2026-10-31**. The rest of the detail is the design's own and can change in
+review.
 
 ## 1. Flow
 
@@ -43,10 +44,10 @@ decision.
    full screen with a **Home** button. Modules never sign the operator out by
    themselves.
 5. **Sign-out:** on **Sign out**, or after 2 minutes with no touch (a warning
-   at 1:40, D9). After a submission in any module, **proposed:** show
-   "Submitted ✓ — anything else?" with the tiles and a large Sign out button
-   for 15 seconds, then sign out. D9 says sign out after each submission, so
-   this changes D9 (§9, P1).
+   at 1:40, D9). After a submission in any module, show "Submitted ✓ —
+   anything else?" with the tiles and a large Sign out button for 15 seconds,
+   then sign out (P1, decided). This **replaces D9's "a kiosk session ends
+   after each submission"**. The 2-minute inactivity rule stands.
 
 ## 2. Home screen
 
@@ -129,7 +130,7 @@ Avail shows someone else): *Your detours* says "We couldn't find your run in
 Avail" and lists all detours. When the operator opens a run in Ridership,
 *Your detours* uses that run.
 
-**Acknowledgement**, proposed and optional per detour. OCC can mark a detour
+**Acknowledgement**, optional per detour (P4, decided). OCC can mark a detour
 *operators must acknowledge*. It then sits in *For you* with an **OK** button
 until the operator taps it, and OnBoard records who acknowledged it and when.
 This is evidence that operators were told, which paper notices cannot give.
@@ -143,7 +144,8 @@ detour entries whose number is the text "Operator Message" (migration 017,
 none on dev today). Neither reaches an operator at the garage, and neither
 records who read it.
 
-**Proposed: a new `OperatorMessages` module in OnBoard.**
+**A new `OperatorMessages` module in OnBoard.** Messages to one named
+operator are allowed, for operational content only (P6, decided).
 
 | Field | Meaning |
 |---|---|
@@ -166,7 +168,7 @@ records who read it.
     kiosk.
 - **The console shows read and acknowledged counts** per message, and who has
   not acknowledged an Important one, so OCC knows whom to call.
-- **Content rule, proposed for the procedure:** operational messages only.
+- **Content rule, for the procedure:** operational messages only.
   No discipline, pay or HR matters, which stay with Keolis's own channels,
   and no medical or personal details. Messages to one operator are visible
   only in that operator's session. They are personal data, kept for 13
@@ -182,7 +184,7 @@ The home screen is customized at three levels.
 | Level | What changes | Who | How |
 |---|---|---|---|
 | **Per operator, automatic** | Their run, their detours, their messages, their Ridership status | Nobody: computed at sign-in | §3, §4 |
-| **Per garage** | Which modules are on, tile order, and whether *For you* shows detours, messages or both | **Proposed:** an access administrator, in a *Kiosks* page beside the kiosk grants in Access & Identity (§9, P3) | A setting per garage; changes apply at each kiosk's next refresh |
+| **Per garage** | Which modules are on, tile order, and whether *For you* shows detours, messages or both | An access administrator, in a *Kiosks* page beside the kiosk grants in Access & Identity (P3, decided) | A setting per garage; changes apply at each kiosk's next refresh |
 | **Per operator, chosen** | **Language** (once a translation exists) and **text size** (normal or large) | The operator, from a button on Home | Stored against the logon ID, so it follows them to any kiosk |
 
 **Not proposed:** operators rearranging their own tiles. On a shared device
@@ -191,7 +193,7 @@ and support.
 
 ## 6. The module contract
 
-Proposed. It follows the console's pattern: one list that every surface reads
+It follows the console's pattern: one list that every surface reads
 (`adminNav.ts`), and a server catalog that is the only place access is defined
 (`lib/access/catalog.ts`, ADR 0032).
 
@@ -202,7 +204,7 @@ Proposed. It follows the console's pattern: one list that every surface reads
 interface OperatorModule {
   key: "ridership" | "detours" | "messages" | "vehicle-report";
   label: string;
-  channels: Array<"kiosk" | "phone">;      // proposed: declared now (§9, P2)
+  channels: Array<"kiosk" | "phone">;      // declared now (P2, decided)
   homeCard?: (ctx: OperatorContext) => Promise<HomeCard>; // status line + "For you" rows
 }
 ```
@@ -268,18 +270,20 @@ Every operator call needs the kiosk account's `operator-kiosk.use` action
 1. **Shell, sign-in and Home** with the Ridership tile only. Goes into the
    ridership kiosk pilot (D24).
 2. **Detours: all and yours.** This reads data OnBoard already has, plus the
-   route normaliser. **Proposed option:** ship it to the pilot garage
-   **before** Ridership, as a soft launch. Operators then learn to sign in
-   and get PINs sorted while nothing depends on it yet (§9, P5).
+   route normaliser. **Ships to the pilot garage before Ridership**, as a
+   soft launch (P5, decided). Operators then learn to sign in
+   and get PINs sorted while nothing depends on it yet. The increments'
+   build order is therefore 1 → 2 for the pilot garage, with Ridership's tile
+   switched on there only when the ridership pilot starts.
 3. **Operator messages:** console authoring, kiosk reading, read and
    acknowledgement.
 4. **Preferences:** text size at once, language once a translation exists.
 5. **Vehicle condition report:** its own design, once Fleet says where
    defects go (evaluation Q10).
 
-## 9. Decisions still open (proposed answers)
+## 9. Follow-on decisions (all accepted by the user, 2026-10-31)
 
-| # | Question | Proposed |
+| # | Question | Decided |
 |---|---|---|
 | P1 | After a submission, sign out at once (D9) or show "Anything else?" for 15 s? | 15 s, then sign out. This changes D9 |
 | P2 | Declare kiosk and phone channels per module now? | Yes, so phone mode later is a switch |
