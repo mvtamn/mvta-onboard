@@ -213,19 +213,80 @@ overwritten each poll, not a count.
 3. **NTD.** Using APC for NTD ridership requires validating it against
    manual counts; the manual counts collected here are that sample.
 
-**Questions for Avail** (same contact as the OTP thread):
+**The Avail360 report (data definition received 2026-10-30).** Avail has an
+APC report: *APC Ridership By Service Level, Block, Route, Trip, Timepoint*,
+boards and alights by service level, block, route, trip, timepoint and
+direction.
 
-- Does MVTA's fleet have APC hardware, on which vehicles, and is the Avail
-  APC module licensed?
-- Is there an Avail360 report of per-trip boardings and alightings (and per
-  stop), and how is the trip identified — GTFS `trip_id`, block, run?
-- How soon after a trip is it available, and does it carry a counter-health
-  flag?
-- Is MVTA's APC data certified for NTD reporting?
+- `GET {base}/ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1/{Property}`
+  (the definition shows the test host `avail360-test.myavail.cloud` and
+  property `ACME`; MVTA's is `MVTA` in `lib/availClient.ts`). The production
+  endpoint is coming from the user.
+- Query: `ReportStartDate`, `ReportEndDate` (both **YYYY-MM-DD**, unlike the
+  OTP and missed-trip endpoints' MM-DD-YYYY), optional comma-separated
+  `ServiceLevelFilter`, `BlockFilter`, `RouteFilter`, `TripFilter`
+  (**Farebox IDs**), `PropertyNameFilter`.
+- Auth: `Ocp-Apim-Subscription-Key` header, the same scheme as the other
+  Avail360 endpoints; whether MVTA's existing key covers this API is to
+  confirm.
+- **The response schema is empty in the definition.** Field names, one row
+  per timepoint or per trip, and whether a vehicle or counter-health field is
+  present all need a sample response.
+
+How it fits OnBoard:
+
+- It would be a seventh endpoint on `lib/availClient.ts` (`apc_ridership`),
+  polled nightly for the previous service date.
+- **Matching keys.** `RouteFareboxID` in the OTP feed is the plain route number
+  (446), so Block and Route Farebox IDs should line up with the Dispatch Log's
+  Block and route. **Whether a Trip Farebox ID maps to the GTFS `trip_id` the
+  Dispatch Log uses is the main open question**; if not, the match falls back
+  to block + route + direction + scheduled start.
+- **Per trip,** APC boards = the sum of the trip's timepoint boards; that is the
+  figure compared with the manual count. Timepoint boards/alights are kept for
+  drill-down and are the per-stop detail OPR-038's original wording asked
+  for.
+- **Service level** (e.g. Weekday) should correspond to the Day type in §9.
+- The prototype's APC tab is shaped on this report, with assumed field names.
+
+**Questions still for Avail:**
+
+- Which MVTA vehicles have APC, and is the APC module licensed for MVTA?
+- A sample response for one day, and the field list.
+- Trip Farebox ID vs GTFS `trip_id`.
+- How soon after a trip the data is available, and how a faulty counter
+  shows up (missing rows, zeros, or a flag).
+- Whether MVTA's APC data is certified for NTD reporting.
 
 **Decisions for later,** once the answers are in: the tolerance and number of
 weeks that let a bus or route drop the paper sheet; and which figure is the
 record for a trip that has both.
+
+## 13. Future — operator mobile app
+
+Added 2026-10-30 at the user's request; the later stage of Q1 ("operators enter
+their own counts once v1 is proven"). Mocked in the prototype as "Operator
+mobile". Not decided.
+
+- **No scanning.** The app knows the operator's block from their Avail login
+  (`FixedRouteDepartures`), the same source the OCC screen pre-fills from;
+  the sheet QR is the fallback.
+- **One trip at a time:** a large +1 tally per trip, a did-not-operate switch,
+  unscheduled trips, a review screen, and **Submit at pull-in**. Submitting
+  replaces the paper sheet for that block, and the submit time is the
+  timeliness proof.
+- **Counting locks while the bus is moving** (AVL speed), because OPR-038 bans
+  device use while operating.
+- **Offline:** counts are kept on the device through dead zones and sent later.
+
+Decisions this needs:
+
+1. **Device.** OPR-038 bans personal electronic devices on duty, so this must
+   be an MVTA-issued phone or tablet, or the MDT. Which?
+2. **Mounting:** handheld, or mounted at the farebox.
+3. **Buses with working APC:** skip manual counting, or count both during
+   validation (§12).
+4. **Rollout:** a pilot garage or route first, with paper as backup.
 
 ## Open
 
