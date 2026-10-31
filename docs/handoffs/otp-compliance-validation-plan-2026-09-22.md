@@ -108,13 +108,21 @@ carries same-run pairs for 2026-03 alone. **2026-08 — the Tier 1 control month
 as is 2026-09, the month compared against Avail BI, so neither of those results is in
 question.
 
-**Separately found and deliberately not fixed: 11 rows across three months that Avail no
-longer reports.** 2026-05 holds 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 holds
-912 against 910; 2026-09 holds 860 against 859. The upsert never deletes, so a route/stop/day
-Avail has stopped reporting keeps its last figure indefinitely. The effect on a month's total
-is small but it is in the wrong direction (it inflates), and whether OnBoard may delete a
-figure because a feed stopped mentioning it is a decision for Ty rather than a bug fix.
-Worth raising at Tier 4.
+**11 rows across three months that Avail no longer reports — decided and fixed 2026-10-30
+(1.6.49, ADR 0043).** 2026-05 held 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 held
+912 against 910; 2026-09 held 860 against 859. The upsert never deleted, so a route/stop/day
+Avail has stopped reporting kept its last figure indefinitely — and, after 1.6.43, a figure
+nothing could ever stamp, which would have held all three months on the re-pull list for good.
+Such a key is now archived to `OtpMonthlyRetiredKeys` and removed from the month, but only by a
+response that accounted for at least 90% of what the month already held; a shorter response is
+reported and removes nothing. Migration 152 retires the 11 already stranded.
+
+**What that does to these figures: less than the comparison can resolve, and not all one
+way.** 2026-05 rises from 87.560% to 87.574%, because its eight retired rows sat below the
+month's average; 2026-08 falls by 0.001 and 2026-09 by 0.005. The direction depends on the
+rows, which is why the archive exists — `vw_OtpMonthlyRetiredKeys` is where a figure that
+moved for this reason is explained. Record each month's figure before and after applying
+migration 152, as part of Tier 1 rather than Tier 4.
 
 **What is now guarded.** Both the poll and the backfill count distinct keys, add records that
 share one together, and report any key that carried more than one — in the log, and in the

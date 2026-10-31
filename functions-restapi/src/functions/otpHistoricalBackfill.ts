@@ -41,6 +41,11 @@ import {
   type OtpMonthlyCandidate,
 } from "../lib/otpMonthlyFeed";
 import { readParametersInForce } from "../lib/otpMeasurementParameters";
+import {
+  describeRetiredKey,
+  retireVanishedMonthlyKeys,
+  retirementArchiveReady,
+} from "../lib/otpMonthlyRetirement";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
@@ -87,6 +92,7 @@ app.http("otpHistoricalBackfill", {
     const pool = await getPool();
     const ledgerReady = await restatementLedgerReady(pool);
     const stampReady = await measurementStampReady(pool);
+    const archiveReady = await retirementArchiveReady(pool);
     const currentServiceMonth = serviceMonthOf(new Date());
     // This is the one action that restates a closed month on purpose, which is
     // why ADR 0042 leaves re-pulling to a human rather than doing it on a
@@ -100,6 +106,9 @@ app.http("otpHistoricalBackfill", {
       duplicate_keys?: number;
       duplicate_key_detail?: string[];
       measurement_parameters?: string;
+      retired_keys?: number;
+      retired_key_detail?: string[];
+      retirement_note?: string;
       error?: string;
     };
     try {
@@ -129,6 +138,28 @@ app.http("otpHistoricalBackfill", {
         });
         upserted++;
       }
+      // This is the button ADR 0042 points a re-pull at, so it is where a key
+      // Avail has stopped returning has to go: without this, re-pulling a month
+      // leaves the dead key unstamped and the month on the list the re-pull was
+      // meant to clear. Same gate as the nightly poll - near-total coverage,
+      // and every upsert landed.
+      const retirement =
+        upserted === rows.length
+          ? await retireVanishedMonthlyKeys(pool, {
+              serviceMonth: month,
+              returned: rows.map(({ row }) => row),
+              retiredBy: `otpHistoricalBackfill (${authResult.principal.userDetails || "system"})`,
+              archiveReady,
+            })
+          : null;
+      if (retirement && retirement.absent > 0) {
+        const line = `OTP Monthly backfill: ${month} - ${retirement.reason}.`;
+        if (retirement.retire) context.log(line);
+        else context.warn(line);
+      }
+      const retiredKeyDetail = (retirement?.retired ?? []).map((key) => describeRetiredKey(month, key));
+      for (const line of retiredKeyDetail) context.log(`OTP Monthly backfill: ${line}`);
+
       otpResult = {
         reports_seen: reports.length,
         upserted,
@@ -138,10 +169,18 @@ app.http("otpHistoricalBackfill", {
         // rows" is a fact about that month worth seeing there.
         duplicate_key_detail: duplicateKeyDetail,
         measurement_parameters: parameters.segments,
+        retired_keys: retirement?.retired.length ?? 0,
+        retired_key_detail: retiredKeyDetail,
+        // Returned when a month lost keys and they were NOT retired, which is
+        // the case somebody has to look at: the admin watching this panel is
+        // the only person who will know the re-pull did not finish the job.
+        retirement_note:
+          retirement && retirement.absent > 0 && !retirement.retire ? retirement.reason : undefined,
       };
       context.log(
         `OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}` +
-          `${collisions.length > 0 ? ` (${collisions.length} keys carried more than one record)` : ""}.`,
+          `${collisions.length > 0 ? ` (${collisions.length} keys carried more than one record)` : ""}` +
+          `${retiredKeyDetail.length > 0 ? `, ${retiredKeyDetail.length} keys retired` : ""}.`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

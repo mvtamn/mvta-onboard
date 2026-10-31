@@ -1997,6 +1997,16 @@ export interface OtpHistoricalBackfillResponse {
     // duplicate_keys is the rows the month has.
     duplicate_keys?: number;
     duplicate_key_detail?: string[];
+    // Keys the month held that Avail did not return, archived to
+    // OtpMonthlyRetiredKeys and removed from the figure (ADR 0043). Before
+    // 1.6.49 they stayed, unreachable by any poll and - since the measurement
+    // stamp - unstampable, which kept their month on the re-pull list for good.
+    retired_keys?: number;
+    retired_key_detail?: string[];
+    // Set only when the month lost keys and they were NOT retired, because the
+    // payload was too short to tell a shrunken month from a bad delivery. The
+    // one case an admin has to look at rather than read.
+    retirement_note?: string;
     error?: string;
   };
   missed_trips: { reports_seen: number; rows_inserted: number; error?: string };

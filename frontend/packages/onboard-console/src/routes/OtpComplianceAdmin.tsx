@@ -221,6 +221,11 @@ function OtpHistoricalBackfillPanel() {
   // page that re-pulls months: it is the difference between the figure the
   // month has and the figure it published.
   const collided = results.filter((r) => (r?.otp_monthly.duplicate_keys ?? 0) > 0);
+  // A key Avail stopped returning, taken out of the month's figure and kept in
+  // the archive. Said on this page because a figure that moved for a reason
+  // other than the re-pull is the thing somebody will come back and ask about.
+  const retired = results.filter((r) => (r?.otp_monthly.retired_keys ?? 0) > 0);
+  const notRetired = results.filter((r) => r?.otp_monthly.retirement_note);
   const done = !running && results.length > 0;
 
   return (
@@ -273,6 +278,40 @@ function OtpHistoricalBackfillPanel() {
                       </ul>
                     </details>
                   ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {retired.length > 0 ? (
+            <ul>
+              {retired.map((r) => (
+                <li key={`retired-${r!.service_month}`}>
+                  {r!.service_month}: {r!.otp_monthly.retired_keys} key
+                  {r!.otp_monthly.retired_keys === 1 ? "" : "s"} Avail no longer returns{" "}
+                  {r!.otp_monthly.retired_keys === 1 ? "was" : "were"} retired - out of the month&apos;s
+                  figure, kept in the archive.
+                  {r!.otp_monthly.retired_key_detail?.length ? (
+                    <details>
+                      <summary>Which</summary>
+                      <ul>
+                        {r!.otp_monthly.retired_key_detail.map((line) => (
+                          <li key={line} style={{ fontSize: 12 }}>
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {notRetired.length > 0 ? (
+            <ul>
+              {notRetired.map((r) => (
+                <li key={`kept-${r!.service_month}`}>
+                  {r!.service_month}: {r!.otp_monthly.retirement_note}. Worth checking with Avail before
+                  trusting this month.
                 </li>
               ))}
             </ul>
