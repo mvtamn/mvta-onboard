@@ -48,6 +48,62 @@ This matches your own finding of a sub-1% rounding difference. At our end the
 largest per-route gap is 0.11 points and the agency gap is 0.10, which is well
 inside what we need. We are not looking for anything further on that.
 
+**A second question, found since: the monthly feed sends two records for one
+route/stop/day-of-week.** Not for September — for March 2026. The
+*Monthly By Route/Stop/Day of Week* call for March returned **1,108 records
+carrying only 1,081 distinct** route/stop/day-of-week combinations. Twenty-seven
+combinations arrived twice, each time with different counts.
+
+They are confined to four stops:
+
+| Route | Stop | Stop name |
+| --- | --- | --- |
+| 425 (Orange LINK) | 30435 | Nicollet Blvd at Fairview Ridges Hosp. S |
+| 442 | 30435 | Nicollet Blvd at Fairview Ridges Hosp. S |
+| 497 | 31768 | Marschall Rd at 4th Av NE corner |
+| 497 | 31780 | Marschall Rd at 4 Av NW corner |
+| 497 | 31860 | Scott County Government Center at Atwood |
+
+**We think we know what they are, and we would like you to confirm it.** The two
+values appear to partition the month at a schedule change effective **Wednesday
+18 March 2026**. Taking route 425 at stop 30435:
+
+| Day | The two records | Sum | Occurrences before / from 18 Mar | Expected split |
+| --- | --- | --- | --- | --- |
+| Mon | 41 + 28 | 69 | 3 / 2 | 41.4 / 27.6 |
+| Tue | 42 + 28 | 70 | 3 / 2 | 42.0 / 28.0 |
+| Wed | 28 + 28 | 56 | 2 / 2 | 28.0 / 28.0 |
+| Thu | 28 + 28 | 56 | 2 / 2 | 28.0 / 28.0 |
+| Fri | 28 + 28 | 56 | 2 / 2 | 28.0 / 28.0 |
+
+Mondays and Tuesdays are the only weekdays March 2026 has five of, and they are
+the only ones that split unevenly — in the exact 3:2 ratio of how many fell
+before and from the 18th. That holds for all 27 combinations. It reads as one
+record per service pattern, surfacing in an aggregate that has no field to tell
+them apart.
+
+So, three things:
+
+1. **Is that right** — was there a pattern or schedule change effective 18 March
+   2026 affecting routes 425, 442 and 497 at those stops?
+2. **Is one record per pattern the intended behaviour** of this operation, or is
+   the intent one record per route/stop/day-of-week?
+3. If it is intended, **is there a field that distinguishes them** that the
+   operation does not currently return? The response shape we see carries
+   `DayOfWeek`, `StopID`, `StopInternetName`, `RouteID`, `RouteReportLabel`, the
+   five percentages, `Early`/`Ontime`/`Late`/`Missed`, `ActualDepartures` and
+   `Total` — nothing identifying a pattern, direction or effective date. Your
+   *Daily By Route/Stop/Hour* operation does return `Direction`, which is why we
+   key that one differently.
+
+For context on why we care rather than just handling it: our loader was keyed on
+route/stop/day-of-week, so for three years the second record silently replaced
+the first. March 2026 was short **855 departures** — 90.46% against a true
+90.50%, so immaterial here, but it was invisible, and we only found it because
+the figures were otherwise completely stable. We now add the pair together,
+which reproduces the correct total. We would still rather key on a real
+discriminator than infer one, hence question 3.
+
 **One small thing worth confirming.** Your examples use `2026-09-01`; we send
 `09-01-2026` (MM-DD-YYYY), which is what your API specification's examples
 showed us. Both appear to parse correctly — September requests return September
@@ -75,16 +131,24 @@ Tyre
 
 ## Notes for us, not for Charlie
 
-**All three questions we were holding are now closed:**
+**The three questions we were holding are closed; one new one is open (March duplicates, below):**
 
 1. Month boundary — fixed, and confirmed independently from our own data.
 2. `Include Outliers` — he confirms BI runs it True, which is what we send. This
    was our hypothesis for the denominator gap; it was never the cause.
 3. Default thresholds when unspecified — moot, we send all seven explicitly.
 
-**Nothing left with Avail is blocking.** The residual is a sub-0.11-point
-rounding difference that needs no action, plus the date-format confirmation,
-which is a belt-and-braces question rather than a suspected fault.
+**One new question is open, and it is not blocking either.** The March
+duplicate-record behaviour is handled at our end as of 1.6.48 - we sum the pair,
+and the re-pull on 2026-10-31 took March to 67,330 departures / 90.50%, which is
+the figure the fix predicted. We are asking Avail to confirm the cause and say
+whether a discriminator field exists, so that we can key on it rather than infer
+the sum. If the answer is "one record per pattern, by design, and there is no
+such field," summing stays the right answer and nothing further is needed.
+
+**The residual with Avail otherwise needs no action:** a sub-0.11-point rounding
+difference, plus the date-format confirmation, which is belt-and-braces rather
+than a suspected fault.
 
 **What remains is entirely ours:** restating the Tier A acceptance standard, and
 completing A0 — reconciling the weekly CSV against the canned monthly report.
