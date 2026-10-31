@@ -752,6 +752,17 @@ function apcTripRows(block: number, route: string, dir: keyof typeof DIR_WORD, s
 // APC ÷ true ridership by bus, to make the by-bus view say something.
 const BUS_RATIO: Record<string, number> = { "4421": 1.12, "4388": 1.45, "4502": 1.08, "4513": 0, "4610": 0.7, "4702": 1.04 };
 
+// Manual counts keyed for 2026-10-28: the 4-week median give or take one, except four
+// trips that trip the §6 outlier rule, each set up to show a different APC reading.
+const MANUAL_OVERRIDE: Record<string, number> = {
+  "1436311": 0,   // 436 N, median 14 — sheet blank, APC saw riders
+  "1436420": 140, // 460 N, median 38 — keyed 140 for 40, APC sides with the median
+  "1436861": 31,  // 420 W, median 6 — a real surge, APC sides with the count
+  "1436641": 0,   // 446 S, median 5 — bus 4513 has no working counter, no evidence
+};
+const APC_OVERRIDE: Record<string, number> = { "1436861": 33 };
+const manualFor = (t: Trip) => MANUAL_OVERRIDE[t.tripId] ?? (t.median4wk === null ? null : Math.max(0, t.median4wk + (Number(t.tripId.slice(-1)) % 3) - 1));
+
 function apcSampleRows(): ApcRow[] {
   const out: ApcRow[] = [];
   for (const b of blocksFor(SAMPLE_DATE)) {
@@ -760,7 +771,7 @@ function apcSampleRows(): ApcRow[] {
       if (!needsCount(t)) continue;
       if (t.tripId === "1436863") continue; // scheduled, ran, but no APC rows at all
       const zero = ratio === 0 || t.tripId === "1436421"; // whole bus, or one trip, reads zero everywhere
-      const boards = zero ? 0 : Math.round((t.median4wk ?? 0) * ratio);
+      const boards = zero ? 0 : APC_OVERRIDE[t.tripId] ?? Math.round((t.median4wk ?? 0) * ratio);
       out.push(...apcTripRows(blockNum(b.block), t.route, t.dir, hhmm(t.start), boards, zero ? 0 : Number(t.tripId.slice(-1)) % 3));
     }
   }
@@ -775,7 +786,7 @@ function apcSampleRows(): ApcRow[] {
 type ApcStatus = "compared" | "all_zero" | "no_rows" | "apc_only" | "no_manual";
 interface ApcTripView {
   key: string; block: string; route: string; dir: string; start: string; tripName: string; bus: string | null;
-  manual: number | null; apc: number | null; unplaced: number; rows: ApcRow[]; status: ApcStatus;
+  manual: number | null; median: number | null; flag: string | null; apc: number | null; unplaced: number; rows: ApcRow[]; status: ApcStatus;
 }
 
 // Match: Block (int → 001) + route + direction + scheduled start (Trip HHMM) on the service date.
@@ -797,16 +808,26 @@ function buildApcView(rows: ApcRow[]) {
     apcByKey.delete(k);
     const apc = mine.reduce((s, r) => s + r.Boards, 0);
     const allZero = mine.length > 0 && mine.every((r) => r.Boards === 0 && r.Alights === 0);
-    const manual = t.median4wk;
+    const manual = manualFor(t);
+    const flag = manual === null ? null : outlier(t, String(manual));
     const status: ApcStatus = mine.length === 0 ? "no_rows" : allZero ? "all_zero" : manual === null ? "no_manual" : "compared";
-    trips.push({ key: k, block: b.block, route: t.route, dir: t.dir, start: t.start, tripName: mine[0]?.TripName ?? `${hhmm(t.start)}-${t.dir}`, bus: b.avail?.bus ?? null, manual, apc: status === "compared" || status === "no_manual" ? apc : null, unplaced: mine.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0), rows: mine, status });
+    trips.push({ key: k, block: b.block, route: t.route, dir: t.dir, start: t.start, tripName: mine[0]?.TripName ?? `${hhmm(t.start)}-${t.dir}`, bus: b.avail?.bus ?? null, manual, median: t.median4wk, flag, apc: status === "compared" || status === "no_manual" ? apc : null, unplaced: mine.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0), rows: mine, status });
   }
   for (const [k, mine] of apcByKey) {
     const [block, route, dir, start] = k.split("|");
-    trips.push({ key: k, block, route, dir, start: fromHhmm(Number(start)), tripName: mine[0].TripName, bus: blocks.find((b) => b.block === block)?.avail?.bus ?? null, manual: null, apc: mine.reduce((s, r) => s + r.Boards, 0), unplaced: mine.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0), rows: mine, status: "apc_only" });
+    trips.push({ key: k, block, route, dir, start: fromHhmm(Number(start)), tripName: mine[0].TripName, bus: blocks.find((b) => b.block === block)?.avail?.bus ?? null, manual: null, median: null, flag: null, apc: mine.reduce((s, r) => s + r.Boards, 0), unplaced: mine.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0), rows: mine, status: "apc_only" });
   }
   trips.sort((a, b) => a.block.localeCompare(b.block) || a.start.localeCompare(b.start));
   return { revenue, pseudo, trips };
+}
+
+// What APC says about a flagged count (§6 flag, §12 "accuracy evidence"): whichever of the
+// keyed count and the 4-week median the APC figure sits closer to.
+function apcReading(r: ApcTripView): { pill: string; reading: string; answer: string } {
+  if (r.apc === null) return { pill: "rp-pill-muted", reading: r.status === "no_rows" ? "No APC rows" : "No working counter", answer: "No evidence — answer from the sheet and the operator" };
+  if (Math.abs(r.apc - r.manual!) <= Math.abs(r.apc - (r.median ?? 0)))
+    return { pill: "rp-pill-ok", reading: `APC ${r.apc} backs the count`, answer: "Likely real — confirm with a note" };
+  return { pill: "rp-pill-bad", reading: `APC ${r.apc} backs the usual ${r.median}`, answer: r.manual === 0 ? "Riders were aboard — find the sheet or re-key" : "Likely a keying error — correct it" };
 }
 
 const STATUS_PILL: Record<ApcStatus, [string, string]> = {
@@ -833,12 +854,16 @@ function ratioTable(label: string, groups: { name: string; trips: ApcTripView[] 
 function ApcComparison() {
   const [tolerance, setTolerance] = useState(15);
   const [open, setOpen] = useState<string | null>(null);
-  const [show, setShow] = useState<"all" | "compared" | "not">("all");
+  const [show, setShow] = useState<"all" | "flagged" | "compared" | "not">("all");
   const [tpOnly, setTpOnly] = useState(false);
   const [byWhat, setByWhat] = useState<"route" | "bus">("route");
   const { revenue, pseudo, trips } = useMemo(() => buildApcView(apcSampleRows()), []);
 
-  const compared = trips.filter((r) => r.status === "compared");
+  const flagged = trips.filter((r) => r.flag);
+  // Flagged counts stay out of the totals and ratios until answered, so one keying error
+  // doesn't paint a whole bus or route.
+  const comparedAll = trips.filter((r) => r.status === "compared");
+  const compared = comparedAll.filter((r) => !r.flag);
   const diffPct = (r: ApcTripView) => (r.manual === 0 ? (r.apc === 0 ? 0 : 100) : Math.round((100 * (r.apc! - r.manual!)) / r.manual!));
   const within = compared.filter((r) => Math.abs(diffPct(r)) <= tolerance).length;
   const sumManual = compared.reduce((s, r) => s + r.manual!, 0);
@@ -848,7 +873,7 @@ function ApcComparison() {
   const apcOnly = trips.filter((r) => r.status === "apc_only");
   const unplacedBoards = revenue.filter((r) => r.StopName === null).reduce((s, r) => s + r.Boards, 0);
   const groupBy = (f: (r: ApcTripView) => string) => [...new Set(compared.map(f))].sort().map((name) => ({ name, trips: compared.filter((r) => f(r) === name) }));
-  const visible = trips.filter((r) => show === "all" || (show === "compared" ? r.status === "compared" : r.status !== "compared"));
+  const visible = trips.filter((r) => show === "all" || (show === "flagged" ? !!r.flag : show === "compared" ? r.status === "compared" : r.status !== "compared"));
 
   return (
     <div className="rp-apc">
@@ -868,9 +893,24 @@ function ApcComparison() {
         <div className="rp-b-garage">
           <div className="rp-eyebrow">3 · Manual vs APC</div>
           <div className="rp-big">{sumManual} vs {sumApc}</div>
-          <div className="rp-dim">{compared.length} compared trips · {compared.length ? Math.round((100 * within) / compared.length) : 0}% within ±<input className="rp-tol" aria-label="Tolerance percent" value={tolerance} onChange={(e) => setTolerance(Number(e.target.value.replace(/\D/g, "")) || 0)} />%</div>
+          <div className="rp-dim">{compared.length} compared trips ({comparedAll.length - compared.length} flagged left out) · {compared.length ? Math.round((100 * within) / compared.length) : 0}% within ±<input className="rp-tol" aria-label="Tolerance percent" value={tolerance} onChange={(e) => setTolerance(Number(e.target.value.replace(/\D/g, "")) || 0)} />%</div>
         </div>
       </div>
+
+      <h3 className="rp-b-title">Flagged counts — what APC says <span className="rp-pill rp-pill-warn">{flagged.length}</span></h3>
+      <p className="rp-dim rp-apc-note">Flag rule (§6): more than 3× the 4-week median and at least 10 above it, or 0 when the median is 5 or more. APC is evidence for the contractor's answer, not the answer.</p>
+      <table className="rp-b-list rp-apc-flags">
+        <thead><tr><th>Block</th><th>Trip</th><th>Bus</th><th className="num">Keyed</th><th className="num">4-wk median</th><th>Flag</th><th>APC reading</th><th>Suggested answer</th></tr></thead>
+        <tbody>{flagged.map((r) => {
+          const e = apcReading(r);
+          return <tr key={r.key} onClick={() => { setShow("flagged"); setOpen(r.key); }}>
+            <td className="mono">{r.block}</td><td>{r.route} {r.dir} <span className="mono">{r.start}</span></td><td className="mono">{r.bus ?? "—"}</td>
+            <td className="num"><strong>{r.manual}</strong></td><td className="num">{r.median}</td>
+            <td><span className="rp-pill rp-pill-warn">{r.flag}</span></td>
+            <td><span className={`rp-pill ${e.pill}`}>{e.reading}</span></td><td>{e.answer}</td>
+          </tr>;
+        })}</tbody>
+      </table>
 
       <div className="rp-apc-head">
         <h3 className="rp-b-title">Where does the gap sit?</h3>
@@ -889,13 +929,13 @@ function ApcComparison() {
       <div className="rp-apc-head">
         <h3 className="rp-b-title">By trip — click a row for Avail's stop rows</h3>
         <div className="rp-aux" role="tablist">
-          {([["all", `All ${trips.length}`], ["compared", `Compared ${compared.length}`], ["not", `Not compared ${trips.length - compared.length}`]] as const).map(([k, l]) => (
+          {([["all", `All ${trips.length}`], ["flagged", `Flagged ${flagged.length}`], ["compared", `Compared ${comparedAll.length}`], ["not", `Not compared ${trips.length - comparedAll.length}`]] as const).map(([k, l]) => (
             <button key={k} className={show === k ? "active" : ""} onClick={() => setShow(k)}>{l}</button>
           ))}
         </div>
       </div>
       <table className="rp-b-list">
-        <thead><tr><th>Block</th><th>Route</th><th>Start</th><th>TripName</th><th>Bus</th><th className="num">Manual</th><th className="num">APC boards</th><th className="num">Unplaced</th><th className="num">Diff</th><th>Status</th></tr></thead>
+        <thead><tr><th>Block</th><th>Route</th><th>Start</th><th>TripName</th><th>Bus</th><th className="num">Manual</th><th className="num">APC boards</th><th className="num">Unplaced</th><th className="num">Diff</th><th>Flag</th><th>Status</th></tr></thead>
         <tbody>{visible.flatMap((r) => {
           const d = r.status === "compared" ? diffPct(r) : null;
           const [pill, label] = STATUS_PILL[r.status];
@@ -905,9 +945,10 @@ function ApcComparison() {
               <td className="mono">{r.block}</td><td>{r.route} {r.dir}</td><td className="mono">{r.start}</td><td className="mono">{r.tripName}</td><td className="mono">{r.bus ?? "—"}</td>
               <td className="num">{r.manual ?? "—"}</td><td className="num">{r.apc ?? "—"}</td><td className="num">{r.rows.length ? r.unplaced : "—"}</td>
               <td className="num">{d === null ? "—" : <span className={Math.abs(d) > tolerance ? "rp-bad" : ""}>{d > 0 ? "+" : ""}{d}%</span>}</td>
+              <td>{r.flag && <span className="rp-pill rp-pill-warn">{r.flag.startsWith("Zero") ? "Zero" : "High"}</span>}</td>
               <td><span className={`rp-pill ${pill}`}>{label}</span></td>
             </tr>,
-            open === r.key && <tr key={`${r.key}-stops`} className="rp-b-drawer"><td colSpan={10}>
+            open === r.key && <tr key={`${r.key}-stops`} className="rp-b-drawer"><td colSpan={11}>
               {r.rows.length ? (<>
                 <label className="rp-dim rp-apc-tp"><input type="checkbox" checked={tpOnly} onChange={(e) => setTpOnly(e.target.checked)} /> Timepoints only</label>
                 <table className="rp-trips rp-tp"><thead><tr><th>StopName</th><th>TP</th><th className="num">Boards</th><th className="num">Alights</th></tr></thead>

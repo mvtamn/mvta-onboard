@@ -149,3 +149,5 @@
 .rp label.rp-apc-tp { display: flex; flex-direction: row; width: fit-content; gap: 6px; align-items: center; margin-bottom: 6px; }
 .rp-apc-tp input { width: auto; margin: 0; }
 @media (max-width: 720px) { .rp-apc-cards { grid-template-columns: 1fr; } }
+.rp-apc-note { margin: 0; }
+.rp-apc-flags td { vertical-align: middle; }
