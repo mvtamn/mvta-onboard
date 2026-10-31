@@ -167,6 +167,34 @@ Two new app-owned roles (ADR 0032):
 `ridership-manager` and the compliance roles; other viewers and their exports
 see totals without names.
 
+**Where it lives in the console (decided 2026-10-30).** Several roles use
+ridership, so it is not a tab of OCC Tools (that would make every recorder
+need `decision-matrix.view`, and Planning would not look for it there).
+
+- A **Ridership** entry in the sidebar under **Specialist Operations**, next
+  to Detours and Schedule Review, shown to anyone with `ridership.view`.
+- Inside it, tabs gated by action, so each role sees only its own:
+
+  | Tab | Who |
+  |---|---|
+  | Enter sheets (worklist opening the sheet form, §4) | recorder, manager |
+  | Print sheets | recorder, manager |
+  | Flags | recorder answers; manager also raises |
+  | Month close | recorder marks complete; manager closes and reopens |
+  | Totals & export | anyone with `ridership.view`; operator names hidden unless the role may see them |
+  | APC comparison (future, §12) | manager |
+
+- **Planning's setup** (the block-to-garage list and the flag thresholds) is an
+  **Administration** page beside Service Configuration, listed once in
+  `adminNav.ts` and gated by a `ridership.configure` action that only
+  `ridership-manager` holds. A manager with no other admin action sees
+  Administration with just this page.
+- **Candidate occurrences** (§8) are confirmed in the existing **Compliance**
+  area, not in Ridership.
+- Creating the two roles and **assigning them to named people** (contractor
+  OCC staff, Planning) in Access & Identity is an explicit step of the Dec 1
+  delivery, not something left implied.
+
 ## 11. Delivery
 
 | By | Increment |
