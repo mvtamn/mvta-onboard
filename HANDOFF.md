@@ -430,6 +430,25 @@ lesson 7 above.
   available", manual Mark published still works). To turn it on: create the
   secret with the channel's incoming-webhook URL and restart the REST app.
   Do not chase this as an open defect.
+- TO DO TO TURN ON TEAMS POSTS FOR ANNOUNCEMENTS (1.6.49): the dispatch app
+  posts "Notify Teams" announcements per audience, but until these exist every
+  post is recorded as `skipped`. Portal/CLI steps, not code, in this order:
+  1. Apply migration 144 (`TeamsDeliveryLog`) to the dev database.
+  2. In each Teams channel (Operations, Customer Service), add a Workflow from
+     the template "Post to a channel when a webhook request is received" and
+     copy its URL. Own the flow with a shared or service account: posts read
+     "<owner> via Workflows" and the flow stops if that person leaves.
+     The old Office 365 Incoming Webhook connector was retired by Microsoft in
+     May 2026; a `webhook.office.com` URL will not work.
+  3. Create Key Vault secrets `teams-operations-webhook-url` and
+     `teams-customer-service-webhook-url` with those URLs. Do not set the app
+     settings by hand: functionapp.bicep already declares them as Key Vault
+     references, and an imperative set is erased by the next infra deploy.
+  4. Restart the dispatch app so the references resolve.
+  5. Post a test announcement with Notify Teams on and check both channels and
+     `SELECT * FROM TeamsDeliveryLog ORDER BY attempted_at DESC`.
+  A 202 from Workflows means Teams accepted the request, not that the post
+  appeared; a flow that fails afterwards shows only in the flow's run history.
 - DONE 2026-09-05 03:09 UTC: Event Grid subscription `detour-email-receipts`
   on acs-mvta-onboard-dev for EmailDeliveryReportReceived -> the dispatch
   app's /api/acs-email-events (function key in the URL); validation handshake

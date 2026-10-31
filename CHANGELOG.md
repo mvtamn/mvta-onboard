@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.49] - 2026-10-30
+
+- **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
+- **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
+- **Teams goes first and never throws.** A throw would redeliver the Service Bus message and resend every rider's SMS and email to retry one channel post, so a failed post is recorded as failed and left. An audience with no secret yet is recorded as skipped, and the announcement still reaches riders.
+- **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
+- **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
+- **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
 ## [1.6.48] - 2026-10-30
 
 - **The OTP monthly feed silently discarded a record whenever Avail sent two for one key.** `upsertOtpMonthlyReport` MERGEs on (service_month, route_id, stop_id, day_of_week), and Avail does not guarantee one record per key: for 2026-03 it sent 1,108 records carrying 1,081 distinct keys. Each of the 27 repeated keys was written twice and whichever write landed second won, so the first record's departures were gone — and the poll still logged "1108 reports seen, 1108 rows upserted", because every overwrite is a successful upsert. Nothing in feed health, the restatement ledger or the console could have said otherwise.
