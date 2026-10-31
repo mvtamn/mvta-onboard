@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.50] - 2026-10-30
+
+- **Ridership counting's schema, roles and access (ADR 0043, migrations 153 and 154).** This is the first of five PRs in Increment 1 of `plans/ridership-build-plan.md`, which replaces the paper Count Sheet's Access entry by 2026-12-01. Nothing reads the new tables yet; the API (PR 2) and console (PR 3) follow.
+- **Migration 153** adds `RidershipSheets` (one per block per service date: pre-filled operator and bus, the run they came from, override and reconstructed flags, and `entered_at`, which lateness is judged on), `RidershipCounts` (one per Dispatch Log trip, `counted | not_counted | did_not_operate`, with a number only when counted, enforced by a CHECK), `RidershipAddedTrips` (unscheduled trips from the sheet's blank rows, soft-removed), `RidershipCountHistory` (append-only, who and when for every change), and `RidershipBlockGarages` (Planning's list, dated by service change). It also adds `TripStartLog.scheduled_end_seconds`, backfilled for logged trips still in the imported schedule.
+- **Keys follow the Dispatch Log (ADR 0043).** A count is `(service_date, trip_id)` on the GTFS trip, and a sheet is `(service_date, block)` with the block in the printed `001` form that `workbookBlock()` already reads. Ridership keeps no roster of its own, so the Optibus → Excel → `Riders_FINAL` build goes away.
+- **`tripStartLogMaterialize` writes the scheduled end** from `GtfsScheduledTrips.last_arrival_seconds` when both columns exist, and the log is written exactly as before when they don't, so this can deploy ahead of the migration.
+- **A `ridership` module in the access catalog** (`view`, `enter`, `print`, `configure`), and **migration 154** seeds `ridership-recorder` (view, enter, print) and `ridership-manager` (plus configure) in the same insert-if-missing way as migration 129. Seeding grants them to nobody: assigning the named Planning staff and the Keolis OCC guests is a separate step. `seeds.ts` and the console's dev `mockAccess.ts` carry the same roles, and `access.db.contract.test.ts` now applies 154 as well.
+- **Schema-drift entries for the new tables wait for PR 2**, because nothing in the merged code reads them yet (see the rule in `lib/schemaDrift.ts`).
+- **Apply migrations 153 and 154 after this deploys**, on dev and then on prod. Both are re-runnable. This is a REST API merge, so it restarts the REST app: merge it outside 04:00–24:00 Central.
+
 ## [1.6.48] - 2026-10-30
 
 - **The OTP monthly feed silently discarded a record whenever Avail sent two for one key.** `upsertOtpMonthlyReport` MERGEs on (service_month, route_id, stop_id, day_of_week), and Avail does not guarantee one record per key: for 2026-03 it sent 1,108 records carrying 1,081 distinct keys. Each of the 27 repeated keys was written twice and whichever write landed second won, so the first record's departures were gone — and the poll still logged "1108 reports seen, 1108 rows upserted", because every overwrite is a successful upsert. Nothing in feed health, the restatement ledger or the console could have said otherwise.

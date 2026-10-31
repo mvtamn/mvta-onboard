@@ -1,4 +1,4 @@
-// The nine roles OnBoard starts with, and the Entra app roles they replace.
+// The roles OnBoard ships with, and the Entra app roles the first nine replace.
 //
 // Each one is written from what the role is for, not copied from the role sets
 // it replaces, because those had drifted: Compliance Manager could open the
@@ -7,9 +7,9 @@
 // be granted from the console at all. Seeding from intent fixes all of that in
 // one place.
 //
-// Migration 129 inserts the same nine rows and only when they are missing, so
-// an Access Administrator's later edits survive a re-run. The contract test
-// fails if the SQL and this file disagree.
+// Migration 129 inserts the first nine rows and migration 154 the two ridership
+// roles, each only when missing, so an Access Administrator's later edits
+// survive a re-run. The contract test fails if the SQL and this file disagree.
 import { ACCESS_MODULE, actionKey, MODULES, VIEW } from "./catalog";
 
 export interface SeededRole {
@@ -45,6 +45,12 @@ const COMPLIANCE_ANALYST_ACTIONS = [
   ...view("compliance-review", "performance-assessment", "detours", "dispatch-log"),
   actionKey("compliance-review", "review"),
   actionKey("performance-assessment", "work"),
+];
+
+const RIDERSHIP_RECORDER_ACTIONS = [
+  ...view("ridership"),
+  actionKey("ridership", "enter"),
+  actionKey("ridership", "print"),
 ];
 
 export const SEEDED_ROLES: SeededRole[] = [
@@ -100,6 +106,20 @@ export const SEEDED_ROLES: SeededRole[] = [
     name: "Trip Start Verifier",
     purpose: "Reads the Dispatch Log and records trip-start verifications.",
     actions: [...view("dispatch-log"), actionKey("dispatch-log", "verify")],
+  },
+  // Ridership counting (migration 154, ADR 0043). No Entra app role ever
+  // existed for these, so neither appears in LEGACY_APP_ROLE_TO_ROLE_KEY.
+  {
+    key: "ridership-recorder",
+    name: "Ridership Recorder",
+    purpose: "Keys and corrects Count Sheets and prints them.",
+    actions: RIDERSHIP_RECORDER_ACTIONS,
+  },
+  {
+    key: "ridership-manager",
+    name: "Ridership Manager",
+    purpose: "Runs ridership counting: everything a recorder does, plus the block-to-garage list.",
+    actions: [...RIDERSHIP_RECORDER_ACTIONS, actionKey("ridership", "configure")],
   },
   {
     key: "system-administrator",

@@ -38,6 +38,8 @@ interface ScheduledRevenueTripRow {
   service_id: string;
   block_id: string | null;
   first_departure_seconds: number;
+  /** NULL until migration 125's column is filled, or before migration 153 can store it. */
+  last_arrival_seconds: number | null;
   first_stop_id: string | null;
   route_short_name: string | null;
   direction_id: number | null;
@@ -133,6 +135,19 @@ async function resolveRotationAnchor(
   return seeded;
 }
 
+// The scheduled end needs two columns - the import's (migration 125) and the
+// log's (migration 153). Without either the log is written exactly as before,
+// so this deploys ahead of migration 153 without changing anything.
+async function hasScheduledEnd(pool: sql.ConnectionPool): Promise<boolean> {
+  const result = await pool.request().query<{ ok: number }>(`
+    SELECT CASE
+      WHEN COL_LENGTH('dbo.TripStartLog', 'scheduled_end_seconds') IS NOT NULL
+       AND COL_LENGTH('dbo.GtfsScheduledTrips', 'last_arrival_seconds') IS NOT NULL
+      THEN 1 ELSE 0 END AS ok
+  `);
+  return result.recordset[0]?.ok === 1;
+}
+
 async function schemaReady(pool: sql.ConnectionPool): Promise<boolean> {
   const result = await pool.request().query<{ ok: number }>(`
     SELECT CASE
@@ -165,6 +180,7 @@ async function loadRevenueTrips(
   pool: sql.ConnectionPool,
   serviceDate: string,
   serviceIds: readonly string[],
+  withEnd: boolean,
 ): Promise<ScheduledRevenueTripRow[]> {
   const req = pool.request();
   req.input("service_date", sql.Char(8), serviceDate);
@@ -172,6 +188,7 @@ async function loadRevenueTrips(
   serviceIds.forEach((id, i) => req.input(`sid${i}`, sql.NVarChar, id));
   const result = await req.query<ScheduledRevenueTripRow>(`
     SELECT st.trip_id, st.route_id, st.service_id, st.block_id, st.first_departure_seconds, st.first_stop_id,
+           ${withEnd ? "st.last_arrival_seconds" : "CAST(NULL AS INT) AS last_arrival_seconds"},
            r.route_short_name, d.direction_id, d.direction_label, s.stop_name AS origin_stop_name
     FROM GtfsScheduledTrips st
     LEFT JOIN GtfsRoutes r ON r.route_id = st.route_id
@@ -196,6 +213,7 @@ async function upsertTrip(
   dow: string,
   trip: ScheduledRevenueTripRow,
   rotation: Rotation,
+  withEnd: boolean,
 ): Promise<"inserted" | "refreshed" | "skipped"> {
   const scheduledStartAt = serviceDateAndGtfsSecondsToUtc(serviceDate, trip.first_departure_seconds);
   if (!scheduledStartAt) return "skipped";
@@ -213,6 +231,10 @@ async function upsertTrip(
   req.input("scheduled_start_at", sql.DateTime2, scheduledStartAt);
   req.input("in_rotation", sql.Bit, inRotation(rotation, trip.trip_id, dow) ? 1 : 0);
   req.input("rotation_day", sql.NVarChar, rotationDayFor(rotation, trip.trip_id, dow));
+  req.input("scheduled_end_seconds", sql.Int, trip.last_arrival_seconds);
+  const endSet = withEnd ? "scheduled_end_seconds = @scheduled_end_seconds," : "";
+  const endColumn = withEnd ? ", scheduled_end_seconds" : "";
+  const endValue = withEnd ? ", @scheduled_end_seconds" : "";
   const result = await req.query<{ action: string }>(`
     MERGE TripStartLog WITH (HOLDLOCK) AS target
     USING (SELECT @service_date AS service_date, @trip_id AS trip_id) AS src
@@ -227,15 +249,16 @@ async function upsertTrip(
       origin_stop_name = @origin_stop_name,
       scheduled_start_seconds = @scheduled_start_seconds,
       scheduled_start_at = @scheduled_start_at,
+      ${endSet}
       -- in_rotation and rotation_day deliberately not refreshed: the deal for
       -- a day that already exists is a snapshot (spec §4.1).
       updated_at = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN INSERT (
       service_date, trip_id, block_id, route_id, route_short_name, direction_id, direction_label,
-      origin_stop_id, origin_stop_name, scheduled_start_seconds, scheduled_start_at, in_rotation, rotation_day
+      origin_stop_id, origin_stop_name, scheduled_start_seconds, scheduled_start_at, in_rotation, rotation_day${endColumn}
     ) VALUES (
       @service_date, @trip_id, @block_id, @route_id, @route_short_name, @direction_id, @direction_label,
-      @origin_stop_id, @origin_stop_name, @scheduled_start_seconds, @scheduled_start_at, @in_rotation, @rotation_day
+      @origin_stop_id, @origin_stop_name, @scheduled_start_seconds, @scheduled_start_at, @in_rotation, @rotation_day${endValue}
     )
     OUTPUT $action AS action;
   `);
@@ -274,9 +297,10 @@ export async function materializeServiceDate(
   }
 
   const serviceIds = await activeServiceIdsToday(pool, serviceDate, dow);
+  const withEnd = await hasScheduledEnd(pool);
   const [rotationTrips, revenueTrips] = await Promise.all([
     loadRotationTrips(pool),
-    loadRevenueTrips(pool, serviceDate, serviceIds),
+    loadRevenueTrips(pool, serviceDate, serviceIds, withEnd),
   ]);
   const rotation = computeRotation(rotationTrips, calendar, calendarDates, anchor, serviceDate);
 
@@ -287,7 +311,7 @@ export async function materializeServiceDate(
   let rotationCount = 0;
   try {
     for (const trip of revenueTrips) {
-      const action = await upsertTrip(tx, serviceDate, dow, trip, rotation);
+      const action = await upsertTrip(tx, serviceDate, dow, trip, rotation, withEnd);
       if (action === "inserted") inserted++;
       else if (action === "refreshed") refreshed++;
       if (action !== "skipped" && inRotation(rotation, trip.trip_id, dow)) rotationCount++;
