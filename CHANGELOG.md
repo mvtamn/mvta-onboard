@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.53] - 2026-11-01
+## [1.6.57] - 2026-11-01
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,32 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.6.56] - 2026-11-01
+
+- **The console Ridership page (PR 3 of Increment 1 in `plans/ridership-build-plan.md`).** Specialist Operations › Ridership (`/ridership`, `ridership.view`) is the Enter sheets flow chosen from the prototype (spec §4): the worklist, opening the sheet form full-width. A user with no other workspace lands on it. No API change; it reads PR 2's endpoints and says so when migration 153 is missing.
+- **Worklist (`routes/modules/ridership/RidershipEntry.tsx`):**
+  - It shows the API's order (late, then in progress, then not entered), completeness cards by garage that filter the list, and Unassigned shown.
+  - Ranges are the last 8 or 32 service dates, because a late sheet stays late until it is keyed.
+  - The box reads a Count Sheet QR link (`…/r/<YYYYMMDD>/<block>`, `?p=N` ignored) or a typed block number.
+  - ↑/↓/Enter work on the list.
+- **Sheet form (`SheetForm.tsx`):**
+  - Each trip takes a number, `N` (Not counted) or `D` (Did not operate), as one box (`cellFromInput` in `lib/ridership.ts`). A letter replaces the box, and `D` is refused on unscheduled trips.
+  - Enter walks the trips and then lands on Save; Ctrl/⌘+Enter saves from anywhere. Save refuses blank required trips client-side and focuses the first one, then goes to the next sheet in a queue snapshotted when the first sheet opened.
+  - Esc returns to the worklist, and takes a second press when there are unsaved changes.
+  - The operator and bus are skipped by Enter unless Avail had no pull-out. Relief runs are offered as one-click fills, and the override pill uses the same comparison as the API.
+  - On 409 the form offers Reload.
+- **Speed:** the next sheet in the queue is fetched while the current one is keyed, so Save opens it at once. The Save button stays focusable while saving (`aria-disabled`), so a key typed during the save is not sent elsewhere.
+- **Administration › Ridership setup (`/admin/ridership`, `ridership.configure`):**
+  - Listed once in `adminNav.ts` under Service Setup, beside Service Configuration.
+  - Each block shows its garage in force on the chosen service-change day.
+  - Save sends only the blocks that change (`garageChanges`), so earlier service dates keep their garage.
+- **Dev:** mock sign-in presets for Ridership (recorder) and Planning (manager).
+- **Shared:** `Ridership*` types mirror `functions-restapi/src/lib/ridership/types.ts`, and the API client gains five methods.
+- **Tests:**
+  - `lib/ridership.test.ts`: cells, clock, draft and save, scan, garages.
+  - `Ridership.test.tsx`: keyboard flow, blank-trip refusal, Esc guard, 409 reload, relief fill, QR open, fetching ahead, read-only without `ridership.enter`, setup visible only with `ridership.configure`.
+  - `RidershipSetupAdmin.test.tsx`.
 
 ## [1.6.52] - 2026-11-01
 
