@@ -4,6 +4,7 @@
 // no API, no persistence. Operator names are fictional.
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import QRCode from "qrcode";
 import "./ridershipEntryPrototype.css";
 
 // ---------------------------------------------------------------- fixtures
@@ -711,6 +712,24 @@ function CombinedVariant({ entries, update, garages }: VariantProps) {
   function close() {
     setOpenKey(null);
   }
+  const [scan, setScan] = useState("");
+  // A scanned code names one sheet exactly; a typed block number has no date,
+  // so it opens that block's oldest open sheet, else its newest sheet.
+  function openScanned(raw: string) {
+    const parsed = parseSheetScan(raw);
+    if (!parsed) { setToast(`"${raw}" is not a Count Sheet code or a block number.`); return; }
+    const k = parsed.date
+      ? key(parsed.date, parsed.block)
+      : (outstanding.find((r) => r.b.block === parsed.block)?.k
+        ?? all.filter((r) => r.b.block === parsed.block).map((r) => r.k).sort().pop());
+    if (!k || !entries[k]) {
+      setToast(parsed.date ? `No sheet for block ${parsed.block} on ${parsed.date} in the Dispatch Log.` : `No sheet for block ${parsed.block}.`);
+      return;
+    }
+    setScan("");
+    open(k);
+    setToast(`Opened block ${parsed.block} (${k.split("|")[0]})${parsed.date ? " from its QR code" : ""}.`);
+  }
   function savedGoNext(k: string) {
     const rest = queue.slice(queue.indexOf(k) + 1).filter((x) => x !== k);
     const [d, blk] = k.split("|");
@@ -779,6 +798,22 @@ function CombinedVariant({ entries, update, garages }: VariantProps) {
           </button>
         ))}
       </div>
+      <label className="rp-scan">
+        <span className="rp-eyebrow">Scan a sheet's QR code, or type a block number</span>
+        <input autoFocus value={scan} placeholder="Scan or type block…" aria-label="Scan or type block"
+          onChange={(e) => setScan(e.target.value)}
+          onKeyDown={(e) => {
+            // An empty box hands the keys to the list, so the keyboard flow still works with it focused.
+            if (scan === "") {
+              if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, outstanding.length - 1)); }
+              if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
+              if (e.key === "Enter" && outstanding[cursor]) { e.preventDefault(); open(outstanding[cursor].k); }
+              return;
+            }
+            if (e.key === "Enter") { e.preventDefault(); openScanned(scan); }
+            if (e.key === "Escape") setScan("");
+          }} />
+      </label>
       <div className="rp-apc-head">
         <h3 className="rp-b-title">Sheets to enter ({outstanding.length}){garage !== "All" && <> · {garage} <button className="rp-link" onClick={() => setGarage("All")}>show all</button></>}</h3>
         {outstanding.length > 0 && <button className="rp-primary" onClick={() => open(outstanding[0].k)}>Start entering — {outstanding.length} sheet{outstanding.length === 1 ? "" : "s"}</button>}
@@ -974,15 +1009,53 @@ function DatasheetVariant({ entries, update, garages }: VariantProps) {
   );
 }
 
+// ---------------------------------------------------------------- Sheet QR (PROTOTYPE)
+
+// Build plan decision 2 (2026-10-30): one code per sheet naming the block and
+// service date - nothing else, so a lost sheet leaks nothing and the code never
+// goes stale. A USB scanner types it into the worklist's box like a keyboard.
+const QR_PREFIX = "MVTA-RIDERSHIP";
+const sheetPayload = (date: string, block: string) => `${QR_PREFIX}:${date.replace(/-/g, "")}:${block}`;
+
+/** A scanned payload, or a typed block number ("24" → 024) with no date. */
+function parseSheetScan(raw: string): { date: string | null; block: string } | null {
+  const text = raw.trim().toUpperCase();
+  const m = text.match(/^MVTA-RIDERSHIP:(\d{4})(\d{2})(\d{2}):(\d{3})$/);
+  if (m) return { date: `${m[1]}-${m[2]}-${m[3]}`, block: m[4] };
+  if (/^\d{1,3}$/.test(text)) return { date: null, block: text.padStart(3, "0") };
+  return null;
+}
+
+function SheetQr({ date, block }: { date: string; block: string }) {
+  const payload = sheetPayload(date, block);
+  const [svg, setSvg] = useState("");
+  useEffect(() => {
+    // Q (25%) error correction: a creased or coffee-ringed sheet should still scan.
+    QRCode.toString(payload, { type: "svg", errorCorrectionLevel: "Q", margin: 1 }).then(setSvg, () => setSvg(""));
+  }, [payload]);
+  return (
+    <div className="rp-qr-wrap">
+      <div className="rp-qr" role="img" aria-label={`QR code ${payload}`} data-payload={payload} dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="rp-qr-text"><span>BLOCK</span><strong>{block}</strong><span>{date}</span></div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Print + garage list
 
 function PrintSheets({ garages }: { garages: Record<string, Garage> }) {
-  const date = "2026-10-31";
+  const [date, setDate] = useState("2026-10-31");
   const blocks = blocksFor(date);
   return (
     <div className="rp-print">
       <div className="rp-print-bar">
-        <span>Next service date <strong>{date}</strong> · {blocks.length} sheets · printed overnight after the Dispatch Log is built</span>
+        <label className="rp-print-date">Service date
+          <select value={date} onChange={(e) => setDate(e.target.value)}>
+            <option value="2026-10-31">2026-10-31 · next service date</option>
+            {SERVICE_DATES.map((d) => <option key={d} value={d}>{d} · reprint a lost sheet</option>)}
+          </select>
+        </label>
+        <span>{blocks.length} sheets · printed the evening before, once the Dispatch Log has the day</span>
         <button className="rp-primary" onClick={() => window.print()}>Print</button>
       </div>
       <div className="rp-print-pages">
@@ -990,7 +1063,7 @@ function PrintSheets({ garages }: { garages: Record<string, Garage> }) {
           <div key={b.block} className="rp-sheet">
             <div className="rp-sheet-head">
               <div><div className="rp-sheet-title">PASSENGER COUNT SHEET</div><div className="rp-dim">{garages[b.block] ?? "Unassigned"} garage</div></div>
-              <div className="rp-qr" aria-label="QR code">QR<br /><span className="mono">{date.replace(/-/g, "")}-{b.block}</span></div>
+              <SheetQr date={date} block={b.block} />
             </div>
             <div className="rp-sheet-fields">
               <div>Service date <strong>{date}</strong></div><div>Block <strong>{b.block}</strong></div>
@@ -1001,10 +1074,10 @@ function PrintSheets({ garages }: { garages: Record<string, Garage> }) {
               <tbody>
                 {b.trips.map((t) => <tr key={t.tripId}><td className="mono">{t.tripId}</td><td>{t.route}</td><td>{t.dir}</td><td className="mono">{t.start}–{t.end}</td><td /><td /></tr>)}
                 <tr className="rp-sheet-section"><td colSpan={6}>Unscheduled trips (route · direction · start)</td></tr>
-                <tr><td colSpan={4} /><td /><td /></tr><tr><td colSpan={4} /><td /><td /></tr>
+                <tr><td colSpan={4} /><td /><td /></tr><tr><td colSpan={4} /><td /><td /></tr><tr><td colSpan={4} /><td /><td /></tr>
               </tbody>
             </table>
-            <div className="rp-sheet-foot">☐ Reconstructed (sheet lost or damaged) · Write "Did not operate" in Total for a trip that did not run</div>
+            <div className="rp-sheet-foot">☐ Reconstructed (sheet lost or damaged) · Write DNO in Total for a trip that did not operate · Hand in at pull-in — do not fold through the code</div>
           </div>
         ))}
       </div>
