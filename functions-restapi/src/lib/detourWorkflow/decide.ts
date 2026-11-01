@@ -62,7 +62,15 @@ export interface HistoryEntry {
 
 export type Decision = { refusal: Refusal } | { patch: RowPatch; history: HistoryEntry };
 
-export const RE_REVIEW_REASON = "Material operational details changed; OCC review required before next steps";
+// The history sentence when nobody added details: the result as the console's
+// buttons say it, not the stored value.
+const AVAIL_RESULT_WORDS: Record<AvailEntryResult, string> = {
+  entered: "built in Avail",
+  conflict: "Avail refused it",
+  not_entered: "not built yet",
+};
+
+export const RE_REVIEW_REASON ="Material operational details changed; OCC review required before next steps";
 
 export function needsConflicts(act: DetourAct): boolean {
   return (act.act === "avail_entry" && act.result === "entered") || act.act === "override_conflict";
@@ -152,7 +160,7 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
         }
         if (currentConflictStatus(snapshot) === "unresolved") {
           const conflicts = snapshot.conflicts ?? [];
-          return refuse("conflict_unresolved", `This Detour conflicts with ${conflicts.map((c) => c.label).join(", ")}. Record a conflict override with a reason before confirming the Avail entry.`, conflicts);
+          return refuse("conflict_unresolved", `This Detour overlaps ${conflicts.map((c) => c.label).join(", ")}. Record an override with a reason before recording it as built in Avail.`, conflicts);
         }
       }
       const to: DetourLifecycleState = act.result === "entered" ? "fulfilled" : act.result === "conflict" ? "fulfillment_failed" : "awaiting_fulfillment";
@@ -163,13 +171,13 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
           avail_entry: { result: act.result, external_detour_id: text(act.externalDetourId) },
           avail_build_confirmed: act.result === "entered" ? "now" : "clear",
         },
-        history: { event_type: "fulfillment_confirmation", from_state: state, to_state: to, detail: clip(text(act.detail) ?? `Human Avail entry result: ${act.result}`) },
+        history: { event_type: "fulfillment_confirmation", from_state: state, to_state: to, detail: clip(text(act.detail) ?? `Avail result: ${AVAIL_RESULT_WORDS[act.result]}`) },
       };
     }
 
     case "manual_fallback": {
-      if (snapshot.fulfillment_mode !== "avail") return refuse("not_avail_backed", "A manual fallback is available only for an Avail-backed Detour after an Avail conflict.");
-      if (state !== "fulfillment_failed") return refuse("not_allowed_from_state", "A manual fallback is available only after an Avail conflict.");
+      if (snapshot.fulfillment_mode !== "avail") return refuse("not_avail_backed", "Running it manually instead is available only for an Avail Detour that Avail refused.");
+      if (state !== "fulfillment_failed") return refuse("not_allowed_from_state", "Running it manually instead is available only after Avail refused the entry.");
       if (snapshot.review_status === "needs_review") {
         return refuse("re_review_outstanding", "This Detour's details changed since OCC reviewed them. Mark the re-review complete before switching to manual operations.");
       }
@@ -188,9 +196,9 @@ export function decide(snapshot: WorkflowSnapshot, act: DetourAct, actor: Actor)
     }
 
     case "override_conflict": {
-      if (state === "closed") return refuse("not_allowed_from_state", "A closed Detour has no conflicts to override.");
+      if (state === "closed") return refuse("not_allowed_from_state", "A closed Detour has no overlaps to override.");
       const conflicts = snapshot.conflicts ?? [];
-      if (conflicts.length === 0) return refuse("no_conflicts_to_override", "This Detour has no current conflicts to override.");
+      if (conflicts.length === 0) return refuse("no_conflicts_to_override", "This Detour does not overlap any open detour, so there is nothing to override.");
       const reason = act.reason.trim();
       return {
         patch: { conflict_override: { reason, ids: conflicts.map((c) => c.id) } },

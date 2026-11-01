@@ -110,6 +110,7 @@
 .readiness-verdict small { color: var(--muted, #6b6b66); }
 .readiness-verdict p { margin: 4px 0; font-size: 0.85rem; }
 .readiness-verdict button { justify-self: start; }
+.readiness-verdict p.readiness-backlog { color: var(--pill-warning-fg); font-weight: 600; }
 .readiness-figure { font-size: 2.2rem; font-weight: 700; line-height: 1.1; margin-top: 6px; color: var(--text, #222); }
 .readiness-row.is-met .readiness-figure { color: #205640; }
 .readiness-row.is-short .readiness-figure { color: #9a2a2a; }
