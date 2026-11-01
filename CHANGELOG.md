@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.53] - 2026-11-01
+## [1.6.58] - 2026-11-01
 
 - **The OTP historical backfill stopped reporting success as failure.** `otpHistoricalBackfill.ts` ran OTP Monthly (13-30 s for a month) and then the Missed Trips reload inside one invocation, so the 200 carrying `otp_monthly.upserted` was not written until the second phase finished. The gateway timed the request out mid-reload and the console rendered a 504 with a zero count: on dev 2026-10-28 both 202605 and 202606 reported `OTP Monthly - Request failed (504)` and `0 OTP Monthly rows upserted` for months that had been written in full (confirmed against `OtpMonthlyRestatements.detected_at` and the month totals reconciling exactly to the ledger deltas). This was structural, not a slow month: any month whose Missed Trips reload outran the gateway reported failure however well the OTP half had gone.
 - **The endpoint takes one phase per request, the same reason it already took one month per request.** `POST /otp-historical-backfill` now accepts `phase: "otp_monthly" | "missed_trips"`; omitted still means both, so nothing that called it before changes behaviour. Only the feed being asked for has to be configured, and only the OTP phase reads the measurement register - a Missed Trips request has no business reading it. The console's backfill panel loops phase-by-phase within each month and renders each result as it lands.
@@ -13,6 +13,32 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Re-pulling a month from the measurement standard page asks for `otp_monthly` alone.** ADR 0042's re-pull button went through the same endpoint and waited on a Missed Trips reload it never wanted - the Tier A months it exists to re-pull are exactly the ones that failed this way.
 - **A Missed Trips month reload is one bulk load, not one INSERT per row.** `replaceMissedTripsForMonths` builds a `sql.Table` and calls `.bulk()`, the shape `predictionAccuracy/store.ts` and `gtfsStopsSync.ts` already use. The row-at-a-time loop is the root slowness the file's own header comment recorded (15+ minutes for three months, every row a round trip to Azure SQL), and `availMissedTripsPoll.ts` shares the function, so the daily poller gets the same speedup. Still inside the one transaction, so an interrupted run still rolls the whole month back. `id` (IDENTITY) and `ingested_at` (DEFAULT) are left out of the column list and `missedTripsReplace.db.contract.test.ts` proves against a real server that they are still filled, that nulls stay null, that the delete+reload stays scoped to the months given, and that an empty month empties rather than fails.
 - No migration. Nothing to apply.
+
+## [1.6.56] - 2026-11-01
+
+- **The console Ridership page (PR 3 of Increment 1 in `plans/ridership-build-plan.md`).** Specialist Operations › Ridership (`/ridership`, `ridership.view`) is the Enter sheets flow chosen from the prototype (spec §4): the worklist, opening the sheet form full-width. A user with no other workspace lands on it. No API change; it reads PR 2's endpoints and says so when migration 153 is missing.
+- **Worklist (`routes/modules/ridership/RidershipEntry.tsx`):**
+  - It shows the API's order (late, then in progress, then not entered), completeness cards by garage that filter the list, and Unassigned shown.
+  - Ranges are the last 8 or 32 service dates, because a late sheet stays late until it is keyed.
+  - The box reads a Count Sheet QR link (`…/r/<YYYYMMDD>/<block>`, `?p=N` ignored) or a typed block number.
+  - ↑/↓/Enter work on the list.
+- **Sheet form (`SheetForm.tsx`):**
+  - Each trip takes a number, `N` (Not counted) or `D` (Did not operate), as one box (`cellFromInput` in `lib/ridership.ts`). A letter replaces the box, and `D` is refused on unscheduled trips.
+  - Enter walks the trips and then lands on Save; Ctrl/⌘+Enter saves from anywhere. Save refuses blank required trips client-side and focuses the first one, then goes to the next sheet in a queue snapshotted when the first sheet opened.
+  - Esc returns to the worklist, and takes a second press when there are unsaved changes.
+  - The operator and bus are skipped by Enter unless Avail had no pull-out. Relief runs are offered as one-click fills, and the override pill uses the same comparison as the API.
+  - On 409 the form offers Reload.
+- **Speed:** the next sheet in the queue is fetched while the current one is keyed, so Save opens it at once. The Save button stays focusable while saving (`aria-disabled`), so a key typed during the save is not sent elsewhere.
+- **Administration › Ridership setup (`/admin/ridership`, `ridership.configure`):**
+  - Listed once in `adminNav.ts` under Service Setup, beside Service Configuration.
+  - Each block shows its garage in force on the chosen service-change day.
+  - Save sends only the blocks that change (`garageChanges`), so earlier service dates keep their garage.
+- **Dev:** mock sign-in presets for Ridership (recorder) and Planning (manager).
+- **Shared:** `Ridership*` types mirror `functions-restapi/src/lib/ridership/types.ts`, and the API client gains five methods.
+- **Tests:**
+  - `lib/ridership.test.ts`: cells, clock, draft and save, scan, garages.
+  - `Ridership.test.tsx`: keyboard flow, blank-trip refusal, Esc guard, 409 reload, relief fill, QR open, fetching ahead, read-only without `ridership.enter`, setup visible only with `ridership.configure`.
+  - `RidershipSetupAdmin.test.tsx`.
 
 ## [1.6.52] - 2026-11-01
 
