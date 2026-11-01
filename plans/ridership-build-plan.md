@@ -66,7 +66,8 @@ are backend merges, which restart the REST app, so merge them outside
 **PR 4 · Count Sheet printing**
 - A server-rendered HTML sheet per block for a service date, letter size, one block per page, in the style of `renderAssessmentReport`.
 - `GET /api/ridership/print?date=&garage=` (`ridership.print`), opened from the Print sheets tab. The contractor prints it from the browser, so no nightly job is needed: tomorrow's trips already exist.
-- QR code: see decision 2.
+- QR code: see decision 2. The page layout is spec §3's sheet design, already
+  built as the prototype's print preview.
 
 **PR 5 · Parallel-run comparison for December**
 - A daily totals CSV by route, direction and day, so Planning can compare December against Access.
@@ -174,9 +175,9 @@ Spec §15, alongside the operator app (PR #458):
    - When the sheet names someone else, OCC overrides it and the override is
      recorded (§4).
 5. **The printed sheet carries "Did not operate" and blank unscheduled rows.**
-   - The footer tells the operator to write DNO in the total for a trip that
-     did not run. OCC keys it as `did_not_operate`, which excuses the trip
-     from needing a count.
+   - Each trip row has a **DNO tick box** (changed 2026-10-31 from writing DNO
+     in the total; see spec §3). OCC keys a ticked trip as `did_not_operate`,
+     which excuses it from needing a count.
    - Increment 2 compares DNO with the Dispatch Log status and missed-trip
      cases; a mismatch is a question for OCC, not an automatic correction.
    - Three blank rows (route, direction, start, total) take trippers and

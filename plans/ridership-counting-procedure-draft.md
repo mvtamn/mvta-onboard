@@ -59,7 +59,8 @@ covered separately.
 4. If you operate a trip that is not on your sheet (extra service, a tripper,
    an OCC-directed trip), write its route, direction, start time and count in
    the blank rows at the bottom.
-5. If a trip on your sheet did not operate, write "Did not operate" in its row.
+5. If a trip on your sheet did not operate, tick its **DNO** box and leave its
+   total blank.
 6. At pull-in, hand the completed sheet to the check-in desk.
 7. If your sheet is lost or damaged, tell the check-in desk and the OCC at
    pull-in, and reconstruct the counts as accurately as you can on a new sheet,

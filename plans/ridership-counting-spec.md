@@ -59,6 +59,34 @@ each of those words a measurable rule:
   - The QR code is printed from Dec 1.
   - Each trip row takes a total or **DNO** (did not operate).
   - Three blank rows take unscheduled trips.
+- **The sheet's design (agreed 2026-10-31,** prototype commit `86ca3da3` on
+  `claude/ridership-ui-0aa433`). It is built to be filled in with a pen on a
+  moving bus, and read twice: by OCC from Dec 1, and by the scan reader with
+  the kiosk pilot (§15).
+  - **Page:** US Letter, one block per page. A block with more than 14 trips
+    continues on page 2, whose QR link carries `?p=2`. The unscheduled rows
+    and the footer go on the last page only.
+  - **Header:** MVTA, "Passenger Count Sheet", the garage, a large boxed
+    **BLOCK** number, the service date and weekday, and the QR link marked
+    "Scan to enter counts on the kiosk or web · Sign-in required".
+  - **Operator section:** a line for the operator's name, one-digit boxes for
+    the operator ID (5) and bus (4), and an initials box.
+  - **"How to count" strip:** one stroke per boarding; write the total one
+    digit per box; tick DNO if the trip didn't run; write 0 for zero riders.
+  - **Trip rows:** route and direction in large type, scheduled start–end,
+    trip ID, a wide tally area, **three one-digit boxes for the total**, and a
+    **DNO tick box**. This replaces writing "Did not operate" or "DNO" in
+    the total, because a tick is quicker on a bus and far easier for the
+    scan reader.
+  - **Three unscheduled-trip rows:** boxes for the route and the start time
+    (HH:MM), N S E W to circle, Tripper / Extra / OCC to tick, a tally area
+    and a total.
+  - **Footer:** ☐ Reconstructed; "Hand in at pull-in to operations
+    management. Do not fold through the code. Entering on the kiosk does not
+    replace handing this in."; page x of y, the link, and the print time.
+  - **Four solid corner marks**, so a scan can be straightened and matched to
+    its page.
+  - **Always black on white**, whatever the screen theme.
 
 ## 4. Entry
 
