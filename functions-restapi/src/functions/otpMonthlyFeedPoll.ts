@@ -93,10 +93,11 @@ app.timer("otpMonthlyFeedPoll", {
           candidates.push({ mapped, source: report });
         }
 
-        // Avail sends more than one record per key when a month holds more than
-        // one schedule pattern, and the MERGE's key cannot tell them apart.
-        // Collapsing first is what stops the second write overwriting the
-        // first; reporting it is what stops that being invisible.
+        // Avail sends more than one record per key when a stop is renamed
+        // part-way through the month, and the MERGE's key cannot tell the two
+        // names apart. Collapsing first is what stops the second write
+        // overwriting the first; reporting it is what stops that being
+        // invisible.
         const { rows, collisions } = collapseOtpMonthlyReports(candidates);
         for (const collision of collisions) {
           context.warn(`Avail OTP Monthly poll: ${describeOtpMonthlyCollision(collision)}`);

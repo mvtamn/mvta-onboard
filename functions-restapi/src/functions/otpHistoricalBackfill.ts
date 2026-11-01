@@ -110,10 +110,12 @@ app.http("otpHistoricalBackfill", {
         if (!mapped) continue;
         candidates.push({ mapped, source: report });
       }
-      // A month that holds two schedule patterns comes back as two records on
-      // one key. Summing them before the upsert is the only way the backfill
-      // stores the month Avail published rather than whichever half of it the
-      // MERGE happened to write last - 2026-03 lost 855 departures this way.
+      // A month in which a stop is renamed comes back as two records on one
+      // key, one per spelling. Summing them before the upsert is the only way
+      // the backfill stores the month Avail published rather than whichever
+      // half of it the MERGE happened to write last - 2026-03 lost 855
+      // departures this way, and was repaired by re-running this on
+      // 2026-10-30.
       const { rows, collisions } = collapseOtpMonthlyReports(candidates);
       const duplicateKeyDetail = collisions.map((collision) => describeOtpMonthlyCollision(collision));
       for (const line of duplicateKeyDetail) context.warn(`OTP Monthly backfill: ${line}`);

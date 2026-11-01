@@ -119,7 +119,7 @@ function candidate(overrides: Partial<OtpMonthlyReport>, serviceMonth = "202603"
   return { mapped: mapOtpMonthlyReport(source, serviceMonth)!, source };
 }
 
-test("sums the records that share a key, so a second pattern is not overwritten", () => {
+test("sums the records that share a key, so the second spelling is not overwritten", () => {
   const { rows, collisions } = collapseOtpMonthlyReports([
     candidate({ RouteID: 497, StopID: 31780, DayOfWeek: "Mon", Total: 34, Ontime: 29, Early: 2, Late: 3, Missed: 0, ActualDepartures: 34, PercentOntime: 29 / 34 }),
     candidate({ RouteID: 497, StopID: 31780, DayOfWeek: "Mon", Total: 54, Ontime: 51, Early: 1, Late: 2, Missed: 0, ActualDepartures: 54, PercentOntime: 51 / 54 }),
