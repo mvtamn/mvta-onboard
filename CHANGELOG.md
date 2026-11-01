@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.60] - 2026-11-01
+## [1.6.63] - 2026-11-01
 
 - **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0044 is that decision, and this is it built.
 - **The symptom that matters is not the figures, it is the list.** ADR 0042 derives "months measured under a different standard" from the stamps, so those 11 unstampable rows would have held 2026-05, 2026-08 and 2026-09 on the re-pull list permanently, each with a Re-pull button that could not clear them. A list that cannot reach empty stops being read, which is the one thing it was built not to be. The figures move by 0.014 points in 2026-05 (87.560% → 87.574%), 0.001 in 2026-08 and 0.005 in 2026-09.
@@ -64,7 +64,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
   - `GET /ridership/sheets/{date}/{block}` (`ridership.view`): the block's trips, which of them need a count and why, Avail's pull-out pre-fill with the relief runs as a hint, what has been saved, and the sheet's history.
   - `PUT` on the same path (`ridership.enter`) saves the whole sheet in one transaction. It returns 400 unless every required trip has an entry, and 409 when the sheet was saved again after the editor loaded its `version`. A future service date is refused.
   - `GET` / `PUT /ridership/block-garages` (`PUT` needs `ridership.configure`): one service change's rows, from `effective_from`.
-- **Which trips need a count (spec §5, ADR 0044):** every Dispatch Log trip on the block, unless the log calls it `missed` or `canceled`, or a missed-trip case counts as missed. That uses the shared classification (`missedTripCaseSql`), not a WHERE clause of ridership's own. An `unknown` trip still needs a count. Excused trips can still be keyed.
+- **Which trips need a count (spec §5, ADR 0043):** every Dispatch Log trip on the block, unless the log calls it `missed` or `canceled`, or a missed-trip case counts as missed. That uses the shared classification (`missedTripCaseSql`), not a WHERE clause of ridership's own. An `unknown` trip still needs a count. Excused trips can still be keyed.
 - **Sheet state:**
   - Entered means every required trip has an entry now and the sheet has been saved.
   - The deadline is midnight Central at the start of the second day after service, and is correct across daylight-saving changes.
@@ -77,9 +77,9 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [1.6.50] - 2026-10-30
 
-- **Ridership counting's schema, roles and access (ADR 0044, migrations 153 and 154).** This is the first of five PRs in Increment 1 of `plans/ridership-build-plan.md`, which replaces the paper Count Sheet's Access entry by 2026-12-01. Nothing reads the new tables yet; the API (PR 2) and console (PR 3) follow.
+- **Ridership counting's schema, roles and access (ADR 0043, migrations 153 and 154).** This is the first of five PRs in Increment 1 of `plans/ridership-build-plan.md`, which replaces the paper Count Sheet's Access entry by 2026-12-01. Nothing reads the new tables yet; the API (PR 2) and console (PR 3) follow.
 - **Migration 153** adds `RidershipSheets` (one per block per service date: pre-filled operator and bus, the run they came from, override and reconstructed flags, and `entered_at`, which lateness is judged on), `RidershipCounts` (one per Dispatch Log trip, `counted | not_counted | did_not_operate`, with a number only when counted, enforced by a CHECK), `RidershipAddedTrips` (unscheduled trips from the sheet's blank rows, soft-removed), `RidershipCountHistory` (append-only, who and when for every change), and `RidershipBlockGarages` (Planning's list, dated by service change). It also adds `TripStartLog.scheduled_end_seconds`, backfilled for logged trips still in the imported schedule.
-- **Keys follow the Dispatch Log (ADR 0044).** A count is `(service_date, trip_id)` on the GTFS trip, and a sheet is `(service_date, block)` with the block in the printed `001` form that `workbookBlock()` already reads. Ridership keeps no roster of its own, so the Optibus → Excel → `Riders_FINAL` build goes away.
+- **Keys follow the Dispatch Log (ADR 0043).** A count is `(service_date, trip_id)` on the GTFS trip, and a sheet is `(service_date, block)` with the block in the printed `001` form that `workbookBlock()` already reads. Ridership keeps no roster of its own, so the Optibus → Excel → `Riders_FINAL` build goes away.
 - **`tripStartLogMaterialize` writes the scheduled end** from `GtfsScheduledTrips.last_arrival_seconds` when both columns exist, and the log is written exactly as before when they don't, so this can deploy ahead of the migration.
 - **A `ridership` module in the access catalog** (`view`, `enter`, `print`, `configure`), and **migration 154** seeds `ridership-recorder` (view, enter, print) and `ridership-manager` (plus configure) in the same insert-if-missing way as migration 129. Seeding grants them to nobody: assigning the named Planning staff and the Keolis OCC guests is a separate step. `seeds.ts` and the console's dev `mockAccess.ts` carry the same roles, and `access.db.contract.test.ts` now applies 154 as well.
 - **Schema-drift entries for the new tables wait for PR 2**, because nothing in the merged code reads them yet (see the rule in `lib/schemaDrift.ts`).
