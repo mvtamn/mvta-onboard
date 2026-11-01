@@ -51,6 +51,18 @@ review.
 
 ## 2. Home screen
 
+**Layout decided by the user, 2026-10-31: For you above the tiles**, as drawn
+below. It was chosen from a clickable prototype that also showed two other
+layouts:
+
+- **B:** For you as a column on the left, with large tiles on the right.
+- **C:** a "next action first" layout, with red banners for anything that
+  needs an OK, one large Ridership button and the other modules along the
+  bottom.
+
+The prototype is kept off main, on branch `claude/operator-kiosk-prototype`
+(`design/operator-kiosk/PROTOTYPE-kiosk.html`, commit 2c2eecd3).
+
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ Garage A · Thu 6 Nov 17:42      Signed in: (name) · Run 041 │
