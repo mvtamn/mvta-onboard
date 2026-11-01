@@ -53,7 +53,8 @@ import type {
 
 export * from "./types";
 export { addDays, daysBetween, isServiceDate, normalizeBlock, sheetDeadline, type SaveProblem } from "./rules";
-export { ridershipTablesReady } from "./store";
+export { printLogReady, ridershipTablesReady } from "./store";
+export { linkBaseFor, loadPrintStatus, printCountSheets, type GarageChoice, type PrintResult, type PrintStatus } from "./print";
 
 const sheetKey = (serviceDate: string, block: string) => `${serviceDate}|${block}`;
 

@@ -42,7 +42,7 @@ import { EventWorkspaceProvider } from "./context/EventWorkspaceContext.js";
 import { AppDialogProvider } from "./components/AppDialog.js";
 import { Compliance } from "./routes/Compliance.js";
 import { ScheduleReview } from "./routes/ScheduleReview.js";
-import { Ridership } from "./routes/Ridership.js";
+import { Ridership, SheetLink } from "./routes/Ridership.js";
 import { RidershipSetupAdmin } from "./routes/RidershipSetupAdmin.js";
 import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
@@ -98,7 +98,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     title: "OCC Tools",
     sub: "Service-risk prediction, procedure guidance, and vehicle monitoring",
   },
-  { match: (p) => p === "/ridership", title: "Ridership", sub: "Key Count Sheets from the garages, with completeness by garage and the deadline in front" },
+  { match: (p) => p === "/ridership", title: "Ridership", sub: "Print and key Count Sheets, with completeness by garage and the deadline in front" },
   {
     match: (p) => p === "/schedule-review",
     title: "Schedule Review",
@@ -653,6 +653,7 @@ function AuthenticatedApp({ account, signOut }: {
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/schedule-review" element={<ScheduleReview />} />
               <Route path="/ridership" element={<RequireAccess action="ridership.view"><Ridership /></RequireAccess>} />
+              <Route path="/r/:date/:block" element={<SheetLink />} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireAccess anyOf={[...ADMIN_ACTIONS]}><AdminLayout /></RequireAccess>}>
                 <Route index element={<AdminHome />} />

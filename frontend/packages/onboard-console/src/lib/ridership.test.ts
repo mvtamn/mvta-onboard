@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { RidershipSheet } from "@mvta/shared";
 import {
+  blocksToReprint,
   cellFromInput,
+  centralDay,
   clock,
   draftFromSheet,
   dueLabel,
   garageChanges,
+  garageFromValue,
   garagePercent,
+  garageValue,
   isOverridden,
+  normalizeBlock,
   parseClock,
   parseSheetScan,
+  printedTime,
   rowInForce,
   saveFromDraft,
+  sheetLinkBase,
 } from "./ridership.js";
 
 const sheet = (overrides: Partial<RidershipSheet> = {}): RidershipSheet => ({
@@ -147,5 +154,37 @@ describe("worklist and setup", () => {
       { block: "105", garage: null },
       { block: "212", garage: "Eagan" },
     ]);
+  });
+});
+
+describe("printing", () => {
+  it("tomorrow is the Central day after today, even late in the evening", () => {
+    // 22:30 CST on Dec 1 is already Dec 2 in UTC.
+    expect(centralDay(1, new Date("2026-12-02T04:30:00Z"))).toBe("2026-12-02");
+    expect(centralDay(0, new Date("2026-12-02T04:30:00Z"))).toBe("2026-12-01");
+  });
+
+  it("lists the blocks still to print: never printed or changed since", () => {
+    const row = (block: string, state: "not_printed" | "printed" | "changed") => ({ block, garage: "Burnsville", order: 1, first_start_seconds: 0, trips: 1, pages: 1, state, printed_at: null, printed_by: null });
+    expect(blocksToReprint([row("024", "printed"), row("105", "changed"), row("212", "not_printed")])).toEqual(["105", "212"]);
+  });
+
+  it("points the QR link at this console until the operator app has an address", () => {
+    expect(sheetLinkBase("https://ops.example.test", "/console/")).toBe("https://ops.example.test/console");
+    expect(sheetLinkBase("http://localhost:5173", "/")).toBe("http://localhost:5173");
+  });
+
+  it("shows the print time in Central", () => {
+    expect(printedTime("2026-12-02T03:05:00Z")).toBe("Tue, Dec 1 21:05");
+  });
+
+  it("reads a block as the sheet prints it", () => {
+    expect(normalizeBlock("24")).toBe("024");
+    expect(normalizeBlock("1234")).toBeNull();
+  });
+
+  it("gives Unassigned a select value of its own", () => {
+    expect(garageFromValue(garageValue(null))).toBeNull();
+    expect(garageFromValue(garageValue("Eagan"))).toBe("Eagan");
   });
 });

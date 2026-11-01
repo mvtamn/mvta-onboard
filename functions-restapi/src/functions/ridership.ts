@@ -14,6 +14,13 @@
 //   GET /ridership/block-garages               - ridership.view
 //   PUT /ridership/block-garages               - ridership.configure
 //     One service change's block -> garage rows, from `effective_from`.
+//   GET /ridership/print?date=&garage=         - ridership.print
+//     The date's sheets in pull-out order with where each stands against the
+//     print log (not printed, printed, changed since). The default date is
+//     tomorrow. `garage=` (empty) is the Unassigned blocks; no `garage` is all.
+//   POST /ridership/print                      - ridership.print
+//     { date, garage, blocks?, blank_backs?, link_base } -> one PDF of the
+//     garage's sheets (or just `blocks`, a reprint), logged as it is made.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
@@ -23,9 +30,13 @@ import {
   buildWorklist,
   daysBetween,
   isServiceDate,
+  linkBaseFor,
   listBlockGarages,
+  loadPrintStatus,
   loadSheet,
   normalizeBlock,
+  printCountSheets,
+  printLogReady,
   ridershipTablesReady,
   saveBlockGarages,
   saveSheet,
@@ -35,6 +46,14 @@ const NOT_READY = {
   status: 503,
   jsonBody: { error: "Ridership counting is not set up in this environment yet. Apply migration 153." },
 };
+
+const PRINT_NOT_READY = {
+  status: 503,
+  jsonBody: { error: "Count Sheet printing is not set up in this environment yet. Apply migration 157." },
+};
+
+/** A garage's whole stack is about 70 blocks; a reprint names a few of them. */
+const MAX_REPRINT_BLOCKS = 200;
 
 /** A month and a bit: enough for a month's completeness, small enough to stay quick. */
 const MAX_WORKLIST_DAYS = 62;
@@ -198,6 +217,100 @@ app.http("ridershipBlockGaragesPut", {
       return { status: 200, jsonBody: result.list };
     } catch (err) {
       context.error("PUT /ridership/block-garages failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+/** `garage` absent is every garage; present and empty is the Unassigned blocks. */
+function garageQuery(request: HttpRequest): string | null | undefined {
+  const raw = request.query.get("garage");
+  if (raw === null) return undefined;
+  return raw.trim() === "" ? null : raw.trim();
+}
+
+app.http("ridershipPrintStatus", {
+  route: "ridership/print",
+  methods: ["GET"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = await requireAccess(request, "ridership.print");
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const serviceDate = request.query.get("date")?.trim() || agencyServiceDate(new Date(), 1).serviceDate;
+    if (!isServiceDate(serviceDate)) return { status: 400, jsonBody: { error: "date must be a calendar day as YYYYMMDD." } };
+
+    try {
+      const pool = await getPool();
+      if (!(await ridershipTablesReady(pool))) return NOT_READY;
+      if (!(await printLogReady(pool))) return PRINT_NOT_READY;
+      return { status: 200, jsonBody: await loadPrintStatus(pool, serviceDate, garageQuery(request)) };
+    } catch (err) {
+      context.error("GET /ridership/print failed:", err);
+      return { status: 500, jsonBody: { error: "Internal server error" } };
+    }
+  },
+});
+
+type PrintBody = { date: string; garage: string | null; blocks?: string[]; blank_backs: boolean; link_base: string };
+
+function parsePrintBody(raw: unknown): { body: PrintBody } | { error: string } {
+  if (!raw || typeof raw !== "object") return { error: "Request body must be an object." };
+  const b = raw as Record<string, unknown>;
+  const date = typeof b.date === "string" ? b.date.trim() : "";
+  if (!isServiceDate(date)) return { error: "date must be a calendar day as YYYYMMDD." };
+  if (b.garage !== null && typeof b.garage !== "string") return { error: "garage must be a garage name, or null for the Unassigned blocks." };
+  const garage = typeof b.garage === "string" && b.garage.trim() !== "" ? b.garage.trim() : null;
+  let blocks: string[] | undefined;
+  if (b.blocks !== undefined) {
+    if (!Array.isArray(b.blocks) || b.blocks.length === 0 || b.blocks.length > MAX_REPRINT_BLOCKS) {
+      return { error: `blocks must list between 1 and ${MAX_REPRINT_BLOCKS} block numbers.` };
+    }
+    blocks = [];
+    for (const value of b.blocks) {
+      const block = typeof value === "string" ? normalizeBlock(value) : null;
+      if (!block) return { error: "blocks must be block numbers of up to three digits." };
+      if (!blocks.includes(block)) blocks.push(block);
+    }
+  }
+  if (b.blank_backs !== undefined && typeof b.blank_backs !== "boolean") return { error: "blank_backs must be true or false." };
+  const linkBase = linkBaseFor(b.link_base);
+  if (!linkBase) return { error: "link_base must be the https address the QR code links to." };
+  return { body: { date, garage, blocks, blank_backs: b.blank_backs === true, link_base: linkBase } };
+}
+
+app.http("ridershipPrint", {
+  route: "ridership/print",
+  methods: ["POST"],
+  authLevel: "anonymous", // authorization enforced via requireAccess below
+  handler: async (request: HttpRequest, context: InvocationContext) => {
+    const auth = await requireAccess(request, "ridership.print");
+    if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+    const json = await readJson(request);
+    if (!json.ok) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
+    const parsed = parsePrintBody(json.body);
+    if ("error" in parsed) return { status: 400, jsonBody: { error: parsed.error } };
+
+    try {
+      const pool = await getPool();
+      if (!(await ridershipTablesReady(pool))) return NOT_READY;
+      if (!(await printLogReady(pool))) return PRINT_NOT_READY;
+      const { body } = parsed;
+      const result = await printCountSheets(pool, {
+        service_date: body.date, garage: body.garage, blocks: body.blocks, blank_backs: body.blank_backs, link_base: body.link_base,
+      }, actorOf(auth.principal));
+      if (result.kind === "nothing") return { status: 404, jsonBody: { error: result.message } };
+      return {
+        status: 200,
+        body: result.pdf,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${result.filename}"`,
+          "X-Count-Sheets": String(result.sheets),
+          "X-Count-Sheet-Pages": String(result.pages),
+        },
+      };
+    } catch (err) {
+      context.error("POST /ridership/print failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
     }
   },

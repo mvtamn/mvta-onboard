@@ -1,16 +1,16 @@
-/* Ridership: the Enter sheets worklist and Count Sheet form, and Ridership setup. */
-.ridership-entry { display: flex; flex-direction: column; gap: 12px; color: var(--text); }
-.ridership-entry .mono, .ridership-setup .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+/* Ridership: the Enter sheets worklist and Count Sheet form, Print sheets, and Ridership setup. */
+.ridership-entry, .ridership-print { display: flex; flex-direction: column; gap: 12px; color: var(--text); }
+.ridership-entry .mono, .ridership-setup .mono, .ridership-print .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
 .ridership-entry .num { text-align: right; }
 .ridership-dim { color: var(--text-muted); font-size: 0.88em; }
 .ridership-eyebrow { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
 .ridership-big { font-size: 1.9rem; font-weight: 700; line-height: 1.2; }
-.ridership-entry input, .ridership-entry select, .ridership-setup input, .ridership-setup select {
+.ridership-entry input, .ridership-entry select, .ridership-setup input, .ridership-setup select, .ridership-print input, .ridership-print select {
   font: inherit; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text);
 }
 .ridership-entry input:disabled { background: var(--surface-alt-bg); }
-.ridership-entry label, .ridership-setup label { display: flex; flex-direction: column; gap: 3px; font-size: 0.8rem; color: var(--text-dim); }
-.ridership-entry label.ridership-check { flex-direction: row; align-items: center; gap: 6px; font-size: 0.88rem; color: var(--text); }
+.ridership-entry label, .ridership-setup label, .ridership-print label { display: flex; flex-direction: column; gap: 3px; font-size: 0.8rem; color: var(--text-dim); }
+.ridership-entry label.ridership-check, .ridership-print label.ridership-check { flex-direction: row; align-items: center; gap: 6px; font-size: 0.88rem; color: var(--text); }
 .ridership-inline { display: inline-flex; gap: 6px; align-items: center; }
 .ridership-short { width: 80px; }
 .ridership-link { background: none; border: none; color: var(--brand-green-text); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
@@ -74,6 +74,18 @@ kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.
 .ridership-setup { display: flex; flex-direction: column; gap: 12px; }
 .ridership-garage-table { max-width: 640px; }
 .ridership-garage-table input { width: 220px; }
+
+/* Tabs: Enter sheets / Print sheets. */
+.ridership-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.ridership-tabs button { background: none; border: none; border-bottom: 2px solid transparent; padding: 6px 12px; font: inherit; color: var(--text-muted); cursor: pointer; }
+.ridership-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--brand-green); font-weight: 600; }
+.ridership-tabs button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* Print sheets: the print log's word on the chosen garage. */
+.ridership-print-status { border: 1px solid var(--border); border-left-width: 4px; border-radius: 4px; padding: 8px 12px; }
+.ridership-print-status.is-ok { border-left-color: var(--pill-success-fg); }
+.ridership-print-status.is-warn { border-left-color: var(--pill-warning-fg); }
+.ridership-print-status.is-todo { border-left-color: var(--border-strong); }
 
 @media (max-width: 640px) {
   .ridership-who { grid-template-columns: 1fr; }
