@@ -93,6 +93,17 @@ are backend merges, which restart the REST app, so merge them outside
 - **Totals and export:** the `FixedTotals`-shaped export, with operator names gated by role. ServiceType stays blank until decided.
 - **History import:** a one-off import of Access `FixedTotals`.
 
+## Later — with the kiosk pilot (after the March 2027 close)
+
+Spec §15, alongside the operator app (PR #458):
+- Upload the garage scans (MFP to a watched folder or an upload page) and
+  split each batch into sheets by QR code.
+- Store each scan under a locked retention policy, with the period taken
+  from MVTA's records schedule.
+- Read the handwritten totals: compare them with kiosk or web submissions,
+  pre-fill proposed values for OCC when nothing was submitted, and check
+  each sheet. A trial of reading real sheets from December comes first.
+
 ## Increment 3 — early February 2027 (January close)
 
 - A `ridership-sheet` source in `occurrenceIntake`, with `source_ref` `ridership:<YYYYMMDD>:<block>`.
@@ -110,7 +121,12 @@ are backend merges, which restart the REST app, so merge them outside
    - In January it raises a flag the contractor answers.
    - Schema: `RidershipCounts.count_status` (`counted` | `not_counted` |
      `did_not_operate`), with `boardings` NULL unless counted.
-2. **The QR code is printed from Dec 1.**
+2. **The QR code is printed from Dec 1.** *(Payload changed 2026-10-31: the
+   code is now a **link** to the operator app,
+   `https://<operator app>/r/<YYYYMMDD>/<block>`, not the
+   `MVTA-RIDERSHIP:` string below. It still carries only the block and date,
+   and the scan box and the batch splitter read it the same way. See spec
+   §15. Everything else below stands.)*
    - Add a QR library to `functions-restapi` that renders server-side SVG
      into the print HTML (PR 4). Payload `MVTA-RIDERSHIP:<YYYYMMDD>:<block>`.
    - The worklist's "Scan or type block" box accepts that payload (a USB

@@ -148,7 +148,9 @@ in front of OCC instead of on a separate page.
   confirmation is the management review Attachment G requires before a
   penalty.
 - **Paper sheets are retained** by the contractor until the month's Assessment
-  Period is final and its dispute window has passed (C6).
+  Period is final and its dispute window has passed (C6). Once scanning
+  arrives (§15), the scan held in OnBoard under MVTA's records schedule is the
+  kept copy.
 
 ## 9. Day types, totals and reporting
 
@@ -535,6 +537,93 @@ logon findings (contractor practice) should propose occurrences is for later.
   (door-level counts, board/alight balance).
 - Whether the ridership report can carry the vehicle and the door per row.
 - Whether a null `StopName` means no GPS fix or only "between stops".
+
+## 15. Future — the Count Sheet's journey: QR link, submission, scan and reading
+
+Added 2026-10-31 at the user's request. It ties together the printed sheet
+(§3), OCC entry (§4) and the operator app (`plans/ridership-operator-app.md`,
+PR #458), and **changes #458 decision 20**: the paper is handed in and
+scanned even when the run was submitted digitally.
+
+**The flow**
+
+1. **The contractor prints** each block's Count Sheet with its QR code (§3,
+   build plan decision 2).
+2. **The operator submits** their totals in one of two ways:
+   - on the **Operator Kiosk**;
+   - on the **web**, by scanning the sheet's QR code with a phone (once
+     OPR-038 allows phones, #458 decision 3).
+
+   Either way they still tally on the paper during the trip.
+3. **The paper goes to the contractor's operations management** at the
+   garage, every time, whether or not the run was submitted.
+4. **Operations management batch-scans the day's sheets** on the garage
+   multifunction printer. The PDF reaches OnBoard through an upload page or a
+   watched folder, and OnBoard splits the batch into sheets by each page's QR
+   code.
+5. **OnBoard reads each scanned sheet and flags anything wrong** (below).
+6. **The scan is stored** under MVTA's records retention schedule.
+
+**Decisions (agreed 2026-10-31)**
+
+- **The QR code is a link, not a secret.**
+  - It is the operator app's address plus the block and service date, for
+    example `https://<operator app>/r/20261201/024`. The address is not set
+    until the operator app is built.
+  - Opening it lands on that run **after** the normal sign-in (Avail logon
+    ID + PIN, #458 decision 7). The link alone submits nothing, so a photo
+    of a sheet does not let anyone else submit its counts.
+  - OCC's USB-scanner box (§4) and the batch splitter read the same link.
+    This **replaces** the `MVTA-RIDERSHIP:<date>:<block>` payload in build
+    plan decision 2.
+  - A link makes the code denser. At about 25 mm with error correction Q it
+    is still about 0.75 mm per module, which office printers and phone
+    cameras handle, but test it at the OCC rehearsal.
+- **The submission is the record; the scan is evidence that verifies it.**
+  - A kiosk or web submission stays the count of record (#458 decision 16).
+  - The scanned paper is kept and compared with it. Differences become
+    flags (§6) that OCC settles; neither copy silently overwrites the other.
+  - A run with no submission falls back to OCC entry (§4), now helped by the
+    scan.
+- **What reading a scanned sheet does** (all three):
+  - **Compares with the submission:** each trip whose handwritten total
+    differs from the kiosk or web total is flagged with both figures and the
+    page image beside them.
+  - **Pre-fills when nothing was submitted:** the totals read from the page
+    go into OCC's sheet form as **proposed** values, marked as read from the
+    scan. OCC confirms or corrects each one. A handwritten number is never
+    stored as a count without a person confirming it.
+  - **Checks the sheet itself:**
+    - a sheet expected but never scanned;
+    - a page whose QR code can't be read;
+    - a trip left blank, or a total that can't be read;
+    - an operator or bus that disagrees with Avail's pull-out;
+    - DNO written against a trip the Dispatch Log says ran;
+    - a QR code whose block and date don't match the trips printed on the page.
+- **Who scans:** the contractor's operations management at each garage,
+  using the garage's multifunction printer.
+- **Retention:** a setting filled from MVTA's records retention schedule,
+  together with the FTA/NTD record rules, once Planning or records management
+  confirms the period. Scans are stored under a **locked, time-based
+  retention policy**, so nobody can delete one early. Until the period is
+  set, nothing is deleted.
+- **When:** scanning, storage and reading all arrive **with the kiosk pilot**,
+  after the March 2027 close (#458 decision 24). Dec 1 and Jan 1 are
+  unchanged, except that the QR code printed from Dec 1 is already the link,
+  so sheets don't change format when the pilot starts.
+
+**Still open**
+
+- **How handwriting is read.** The likely route is Azure AI Document
+  Intelligence with a custom model trained on real filled-in sheets. Its
+  accuracy on operators' handwriting, and the cost per page, need a trial.
+  That trial needs a few hundred filled-in sheets, which December's parallel
+  run will produce.
+- **Upload route:** a watched folder (SharePoint or email-to-scan) or an
+  OnBoard upload page. It depends on what the garage printers can send to.
+- **The retention period itself (X):** from MVTA's records schedule.
+- **Personal data in scans:** a scan shows the operator's name and
+  handwriting. Who may open scans should follow §10's operator-name rule.
 
 ## Open
 
