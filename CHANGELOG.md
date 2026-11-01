@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.57] - 2026-11-01
+## [1.6.60] - 2026-11-01
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,14 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.6.59] - 2026-11-01
+
+- **The GPS dead-zone bar is editable, with every first stop's record beside it.** A missed-trip case is marked "likely GPS dead zone" when at least 5 other judged silent no-shows at its first stop exist and at least 80% of them ran (1.6.27, 1.6.52). Those were constants. They are now two `AppSettings` rows, module `missed_trip`: `dead_zone_ran_percent` (50-100) and `dead_zone_min_cases` (3-50), seeded by **migration 155** at today's values, so applying it changes nothing a reviewer sees. They are saved through the existing `PATCH /app-settings`, which already refuses an integer outside its declared range. A whole percent rather than 0.80, because that endpoint does not range-check decimals.
+- **`lib/missedTripCase/deadZone.ts`** now holds the bar (`isLikelyDeadZone`, `readDeadZoneBar`, defaults and limits), the judged-cases rule (`UNJUDGEABLE_QUALITY`) and the per-stop SQL (`stopRecordsSql`). The case detail and the admin table therefore cannot disagree about which stops a bar flags. `caseEvidence.ts` uses it. A setting missing, unreadable or outside its range falls back to its default.
+- **`GET /missed-trip-dead-zones`** (Service Configuration) returns the bar, whether migration 155's rows exist, the limits, and every first stop with judged cases and how many ran, most cases first.
+- **Missed-trip Detectors → GPS dead zones** shows the bar's two inputs over that table. Moving them previews the result before saving, like the OTP Threshold Tuner: "5 of 22 stops would be flagged, up from 3", with each stop the draft adds or drops tinted. Only the setting that changed is written. Before migration 155 the inputs are locked and the panel says why. The bar only labels a case; it opens, holds and closes nothing, so `updated_by`/`updated_at` is the history it keeps.
+- Tests: `deadZone.test.ts` (5), `caseEvidence.test.ts` (+1), `deadZoneBar.test.ts` (5), `DeadZoneBarPanel.test.tsx` (4). `caseEvidence.db.contract.test.ts` now checks the per-stop read, and the bar before and after migration 155's rows, including that an out-of-range value is not trusted. Seen in the mock console against a stub serving dev's real 22 stop records.
 
 ## [1.6.56] - 2026-11-01
 

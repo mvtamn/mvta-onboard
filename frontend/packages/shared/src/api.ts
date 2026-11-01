@@ -11,6 +11,7 @@ import type {
   ActiveMessage,
   AdminMessage,
   AppSettingRow,
+  MissedTripDeadZones,
   AssessmentPeriod,
   AvailAvlVehicle,
   AvailMissedTripRecord,
@@ -1302,6 +1303,9 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<DetectorPromotionView>("/api/missed-trip-detector-promotions", {}, true);
     },
 
+    getMissedTripDeadZones() {
+      return request<MissedTripDeadZones>("/api/missed-trip-dead-zones", {}, true);
+    },
     getMissedTripDetectorScorecard(query: { from?: string; to?: string; group?: DetectorScorecardGrouping } = {}) {
       const params = new URLSearchParams();
       if (query.from) params.set("from", query.from);
