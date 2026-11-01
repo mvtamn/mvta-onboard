@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.53] - 2026-11-01
+## [1.6.57] - 2026-11-01
 
 - **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0044 is that decision, and this is it built.
 - **The symptom that matters is not the figures, it is the list.** ADR 0042 derives "months measured under a different standard" from the stamps, so those 11 unstampable rows would have held 2026-05, 2026-08 and 2026-09 on the re-pull list permanently, each with a Re-pull button that could not clear them. A list that cannot reach empty stops being read, which is the one thing it was built not to be. The figures move by 0.014 points in 2026-05 (87.560% → 87.574%), 0.001 in 2026-08 and 0.005 in 2026-09.
@@ -16,6 +16,32 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The daily table is left alone**, deliberately: `OtpDailyRouteStopHour` keys on a date and an hour, the re-pull list does not read it, and no stranded row has been seen there. `OtpMonthlyRestatements` keeps pointing at retired keys, also deliberately — migration 141's ledger carries no foreign key precisely so history outlives the figure it describes.
 - Proved against real SQL: nothing is deleted that is not archived in the same transaction, a short payload removes nothing, only the named month is at risk, a returning key is stored again with both lives on the record, and the migration's one-off repair spares a month that has not been re-polled since 151.
 - Apply migration 152 after this deploys. It archives and removes the 11 stranded rows; nothing else in the table changes.
+
+## [1.6.56] - 2026-11-01
+
+- **The console Ridership page (PR 3 of Increment 1 in `plans/ridership-build-plan.md`).** Specialist Operations › Ridership (`/ridership`, `ridership.view`) is the Enter sheets flow chosen from the prototype (spec §4): the worklist, opening the sheet form full-width. A user with no other workspace lands on it. No API change; it reads PR 2's endpoints and says so when migration 153 is missing.
+- **Worklist (`routes/modules/ridership/RidershipEntry.tsx`):**
+  - It shows the API's order (late, then in progress, then not entered), completeness cards by garage that filter the list, and Unassigned shown.
+  - Ranges are the last 8 or 32 service dates, because a late sheet stays late until it is keyed.
+  - The box reads a Count Sheet QR link (`…/r/<YYYYMMDD>/<block>`, `?p=N` ignored) or a typed block number.
+  - ↑/↓/Enter work on the list.
+- **Sheet form (`SheetForm.tsx`):**
+  - Each trip takes a number, `N` (Not counted) or `D` (Did not operate), as one box (`cellFromInput` in `lib/ridership.ts`). A letter replaces the box, and `D` is refused on unscheduled trips.
+  - Enter walks the trips and then lands on Save; Ctrl/⌘+Enter saves from anywhere. Save refuses blank required trips client-side and focuses the first one, then goes to the next sheet in a queue snapshotted when the first sheet opened.
+  - Esc returns to the worklist, and takes a second press when there are unsaved changes.
+  - The operator and bus are skipped by Enter unless Avail had no pull-out. Relief runs are offered as one-click fills, and the override pill uses the same comparison as the API.
+  - On 409 the form offers Reload.
+- **Speed:** the next sheet in the queue is fetched while the current one is keyed, so Save opens it at once. The Save button stays focusable while saving (`aria-disabled`), so a key typed during the save is not sent elsewhere.
+- **Administration › Ridership setup (`/admin/ridership`, `ridership.configure`):**
+  - Listed once in `adminNav.ts` under Service Setup, beside Service Configuration.
+  - Each block shows its garage in force on the chosen service-change day.
+  - Save sends only the blocks that change (`garageChanges`), so earlier service dates keep their garage.
+- **Dev:** mock sign-in presets for Ridership (recorder) and Planning (manager).
+- **Shared:** `Ridership*` types mirror `functions-restapi/src/lib/ridership/types.ts`, and the API client gains five methods.
+- **Tests:**
+  - `lib/ridership.test.ts`: cells, clock, draft and save, scan, garages.
+  - `Ridership.test.tsx`: keyboard flow, blank-trip refusal, Esc guard, 409 reload, relief fill, QR open, fetching ahead, read-only without `ridership.enter`, setup visible only with `ridership.configure`.
+  - `RidershipSetupAdmin.test.tsx`.
 
 ## [1.6.52] - 2026-11-01
 

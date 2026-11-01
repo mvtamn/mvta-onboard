@@ -1999,7 +1999,7 @@ export interface OtpHistoricalBackfillResponse {
     duplicate_key_detail?: string[];
     // Keys the month held that Avail did not return, archived to
     // OtpMonthlyRetiredKeys and removed from the figure (ADR 0044). Before
-    // 1.6.53 they stayed, unreachable by any poll and - since the measurement
+    // 1.6.57 they stayed, unreachable by any poll and - since the measurement
     // stamp - unstampable, which kept their month on the re-pull list for good.
     retired_keys?: number;
     retired_key_detail?: string[];
@@ -2546,4 +2546,173 @@ export interface DetectorPromotionInput {
   measured_precision?: number | null;
   sample_size?: number | null;
   on_demand_conditions_met?: boolean;
+}
+
+// ---------------------------------------------------------------- ridership counting
+// Mirrors functions-restapi/src/lib/ridership/types.ts (ADR 0043); the two change together.
+
+/** How a trip was keyed. Not counted is a gap, never a zero. */
+export type RidershipCountStatus = "counted" | "not_counted" | "did_not_operate";
+/** An unscheduled trip ran by definition, so it cannot be "did not operate". */
+export type RidershipAddedTripStatus = Exclude<RidershipCountStatus, "did_not_operate">;
+export type RidershipAddedTripReason = "tripper" | "extra_service" | "occ_directed" | "other";
+export type RidershipSheetState = "entered" | "entered_late" | "in_progress" | "not_entered" | "late";
+export type RidershipExcusedReason = "dispatch_log_missed" | "dispatch_log_canceled" | "missed_trip_confirmed";
+
+/** The sheet's total is three one-digit boxes. */
+export const RIDERSHIP_MAX_BOARDINGS = 999;
+
+export interface RidershipSheetProgress {
+  trips: number;
+  required: number;
+  /** Required trips with an entry of any kind. */
+  keyed: number;
+  counted: number;
+  not_counted: number;
+  did_not_operate: number;
+  added_trips: number;
+  boardings: number;
+}
+
+export interface RidershipWorklistSheet {
+  service_date: string;
+  block: string;
+  garage: string | null;
+  state: RidershipSheetState;
+  due_at: string;
+  first_start_seconds: number;
+  entered_at: string | null;
+  entered_by: string | null;
+  reconstructed: boolean;
+  progress: RidershipSheetProgress;
+}
+
+export interface RidershipGarageCompleteness {
+  /** Null is Unassigned. */
+  garage: string | null;
+  sheets: number;
+  entered: number;
+  entered_late: number;
+  late: number;
+  open: number;
+  required_trips: number;
+  missing_trips: number;
+  not_counted_trips: number;
+}
+
+export interface RidershipWorklist {
+  from: string;
+  to: string;
+  generated_at: string;
+  sheets: RidershipWorklistSheet[];
+  garages: RidershipGarageCompleteness[];
+  /** Dispatch Log trips with no block, which no sheet can carry. */
+  trips_without_block: number;
+}
+
+export interface RidershipSheetTrip {
+  trip_id: string;
+  route_short_name: string | null;
+  direction_label: string | null;
+  scheduled_start_seconds: number;
+  scheduled_end_seconds: number | null;
+  start_status: TripStartStatus;
+  required: boolean;
+  excused_reason: RidershipExcusedReason | null;
+  entry: { count_status: RidershipCountStatus; boardings: number | null } | null;
+}
+
+export interface RidershipAddedTrip {
+  id: string;
+  route_short_name: string;
+  direction_label: string;
+  scheduled_start_seconds: number;
+  reason: RidershipAddedTripReason;
+  count_status: RidershipAddedTripStatus;
+  boardings: number | null;
+}
+
+export interface RidershipPulloutRun {
+  run: number;
+  operator_name: string | null;
+  operator_id: string | null;
+  bus: string | null;
+}
+
+export interface RidershipSheetHistoryEntry {
+  subject: "sheet" | "trip" | "added_trip";
+  subject_ref: string | null;
+  field: string;
+  previous_value: string | null;
+  new_value: string | null;
+  changed_at: string;
+  changed_by: string;
+}
+
+export interface RidershipSheet {
+  service_date: string;
+  block: string;
+  garage: string | null;
+  state: RidershipSheetState;
+  due_at: string;
+  pullout: { prefill: RidershipPulloutRun | null; other_runs: RidershipPulloutRun[] };
+  /** Null until the sheet is first saved. */
+  header: {
+    operator_name: string | null;
+    operator_id: string | null;
+    bus: string | null;
+    prefill_run: number | null;
+    operator_overridden: boolean;
+    reconstructed: boolean;
+    entered_at: string | null;
+    entered_by: string | null;
+    updated_at: string | null;
+    updated_by: string | null;
+  } | null;
+  /** Pass back on save; a sheet changed since is refused rather than overwritten. */
+  version: string | null;
+  trips: RidershipSheetTrip[];
+  added_trips: RidershipAddedTrip[];
+  progress: RidershipSheetProgress;
+  history: RidershipSheetHistoryEntry[];
+}
+
+export interface RidershipSheetSave {
+  version: string | null;
+  operator_name: string | null;
+  operator_id: string | null;
+  bus: string | null;
+  reconstructed: boolean;
+  trips: { trip_id: string; count_status: RidershipCountStatus; boardings: number | null }[];
+  /** The whole list. A saved row whose id is missing here is removed. */
+  added_trips: {
+    id: string | null;
+    route_short_name: string;
+    direction_label: string;
+    scheduled_start_seconds: number;
+    reason: RidershipAddedTripReason;
+    count_status: RidershipAddedTripStatus;
+    boardings: number | null;
+  }[];
+}
+
+export interface RidershipBlockGarageRow {
+  block: string;
+  /** YYYY-MM-DD. */
+  effective_from: string;
+  /** Null: deliberately Unassigned from this date. */
+  garage: string | null;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface RidershipBlockGarageList {
+  rows: RidershipBlockGarageRow[];
+  garages: string[];
+  recent_blocks: string[];
+}
+
+export interface RidershipBlockGarageSave {
+  effective_from: string;
+  rows: { block: string; garage: string | null }[];
 }
