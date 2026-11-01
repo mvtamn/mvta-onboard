@@ -85,7 +85,7 @@ describe("confirming a missed trip lands it in the month's assessment", () => {
     const user = userEvent.setup();
     view();
     await user.selectOptions(await screen.findByLabelText("Reason"), "OPERATOR");
-    await user.click(screen.getByText("Timely service"));
+    await user.click(screen.getByRole("button", { name: "Timely service" }));
     expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({
       validation_status: "timely_service", attribution: undefined,
     }));

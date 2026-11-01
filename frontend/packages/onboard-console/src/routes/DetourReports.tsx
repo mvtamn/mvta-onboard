@@ -20,7 +20,7 @@ import {
   type DetourFilters,
 } from "../lib/detourSearch.js";
 import { dateLabel, dateTimeLabel } from "../lib/detourDates.js";
-import { availEntryLabel, communicationStatusLabel, COMMUNICATION_PILL, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
+import { availEntryLabel, communicationStatusLabel, COMMUNICATION_PILL, createdByLabel, fulfillmentPathLabel, OVERLAP_OVERRIDDEN, OVERLAP_UNRESOLVED, readinessLabel, sourceLabel, workflowLabel } from "../lib/detourLabels.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
 import { DetourAttachmentsSection } from "../components/DetourAttachments.js";
@@ -398,7 +398,7 @@ export function DetourReports() {
                   <th>Routes</th>
                   <th>Dates</th>
                   <th>Status</th>
-                  <th>Readiness &amp; owner</th>
+                  <th>Next action &amp; owner</th>
                   <th>Communications</th>
                   <th><span className="sr-only">Details</span></th>
                 </tr>
@@ -407,7 +407,7 @@ export function DetourReports() {
                 {visible.map((d) => {
                   const open = expandedId === d.id;
                   const flag = d.conflicts?.length
-                    ? d.conflict_status === "overridden" ? "Conflict overridden" : "Conflict needs override"
+                    ? d.conflict_status === "overridden" ? OVERLAP_OVERRIDDEN : OVERLAP_UNRESOLVED
                     : d.review_status === "needs_review" ? "Needs OCC re-review" : "";
                   return (
                     <Fragment key={d.id}>
@@ -448,20 +448,20 @@ export function DetourReports() {
                                 <dl className="dr-dl">
                                   {reportingReady ? <div><dt>Reason</dt><dd>{reasonLabelOf(d.reason_code)}</dd></div> : null}
                                   {reportingReady ? <div><dt>Severity</dt><dd>{d.severity ? DETOUR_SEVERITY_LABELS[d.severity] : "—"}</dd></div> : null}
-                                  <div><dt>Avail number</dt><dd>{d.number || "—"}</dd></div>
-                                  <div><dt>Fulfillment path</dt><dd>{fulfillmentPathLabel(d)}</dd></div>
+                                  <div><dt>Number or label</dt><dd>{d.number || "—"}</dd></div>
+                                  <div><dt>How it is run</dt><dd>{fulfillmentPathLabel(d)}</dd></div>
                                   <div><dt>Workflow</dt><dd>{workflowLabel(d)}</dd></div>
-                                  <div><dt>Readiness</dt><dd>{readinessLabel(d)}</dd></div>
+                                  <div><dt>Next action</dt><dd>{readinessLabel(d)}</dd></div>
                                   <div><dt>Source</dt><dd>{sourceLabel(d)}</dd></div>
                                   {d.reported_by || d.reported_at ? (
                                     <div><dt>Reported by</dt><dd>{d.reported_by || "—"}{d.reported_at ? ` · ${dateTimeLabel(d.reported_at)}` : ""}</dd></div>
                                   ) : null}
                                   {d.approved_by || d.approved_at ? (
-                                    <div><dt>Approved by</dt><dd>{d.approved_by || "—"}{d.approved_at ? ` · ${dateTimeLabel(d.approved_at)}` : ""}</dd></div>
+                                    <div><dt>External sign-off (e.g. city permit)</dt><dd>{d.approved_by || "—"}{d.approved_at ? ` · ${dateTimeLabel(d.approved_at)}` : ""}</dd></div>
                                   ) : null}
                                   {d.fulfillment_mode === "avail" ? (
                                     <div>
-                                      <dt>Avail entry</dt>
+                                      <dt>Avail result</dt>
                                       <dd>
                                         {availEntryLabel(d)}
                                         {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
@@ -491,7 +491,7 @@ export function DetourReports() {
 
                               {d.conflicts?.length ? (
                                 <p className={d.conflict_status === "overridden" ? "td-dim" : "warn-note"} style={{ margin: 0 }}>
-                                  <b>{d.conflict_status === "overridden" ? "Conflict overridden" : "Conflict needs override"}:</b>{" "}
+                                  <b>{d.conflict_status === "overridden" ? OVERLAP_OVERRIDDEN : OVERLAP_UNRESOLVED}:</b>{" "}
                                   {d.conflicts.map((c) => `${c.label} (${c.shared.join(", ")})`).join("; ")}
                                   {d.conflict_status === "overridden" ? ` — ${d.conflict_override_reason} · ${d.conflict_override_by}${d.conflict_override_at ? ` ${dateTimeLabel(d.conflict_override_at)}` : ""}` : ""}
                                 </p>

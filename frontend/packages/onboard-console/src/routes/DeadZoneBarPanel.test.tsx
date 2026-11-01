@@ -72,7 +72,7 @@ describe("GPS dead-zone bar", () => {
   it("says the bar cannot change before migration 155, and locks the inputs", async () => {
     getMissedTripDeadZones.mockResolvedValue({ ...DATA, configured: false });
     render(<DeadZoneBarPanel />);
-    expect(await screen.findByText(/cannot be changed until migration 155 is applied/)).toBeInTheDocument();
+    expect(await screen.findByText(/Changes are turned off on this database/)).toBeInTheDocument();
     expect(screen.getByLabelText("Share that ran")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save bar" })).toBeDisabled();
   });
