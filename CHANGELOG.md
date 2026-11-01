@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.52] - 2026-11-01
+
+- **A case's first-stop record counted no-shows the evidence could not judge.** 1.6.27's stop record (`readCaseEvidence`, `caseEvidence.ts`) counted every silent no-show at a stop, including the 1,244 retired by migration 148 and those held as `unknown_data_gap`. Both show "no start" because the feed was down, not because of the stop, so they dragged real dead zones under the 80% bar. Seen live on dev 2026-10-22: Savage Park & Ride read "38 of 82 other no-shows here turned out to have run", though all 27 of its cases since the 2026-09-16 guards ran. The record now leaves out `legacy_unverified` and `unknown_data_gap` cases.
+- A case that is itself one of those is no longer taken off a record that never counted it (`counted_in_origin`), which would have undercounted the stop by one.
+- Tests: 1 new in `caseEvidence.test.ts`; `caseEvidence.db.contract.test.ts` seeds a retired and a data-gap case at the stop and checks both the counts and a retired case's own view.
+
 ## [1.6.51] - 2026-10-31
 
 - **The ridership API (`lib/ridership/`, PR 2 of Increment 1 in `plans/ridership-build-plan.md`).** It is one module that owns the rules. The handlers in `functions/ridership.ts` only check access and translate results into HTTP. No migration; it reads migration 153's tables and answers 503 until they exist.
@@ -62,6 +68,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **OTP is measured to MVTA's configured thresholds instead of the example in Avail's API specification.** `OTP_PARAMETERS` in `lib/availClient.ts` sent early 1 / late 5 / early outlier 15 / late outlier 30; Avail confirmed on 2026-10-27 that MVTA's BI configuration is early 2 / late 5 / early outlier 10 / late outlier 60, so only the late threshold matched. The thresholds were believed enum-constrained, which they are not, and the outlier values were taken from the spec's own example to rule out our configuration as a source of error while the feed was being diagnosed, then never aligned once it was ruled out. The early threshold is the one that mattered: at 1 minute a departure 1-2 minutes early counted as early, where MVTA's standard counts it on time, so OnBoard was measuring the agency stricter than its own rule and the correction raises OTP slightly.
 - **`Include Outliers` stays 1**, pending Avail's answer on whether the BI report drops outlying departures from its denominator. It is the likeliest explanation of the one gap that remains between the API and the report: 4,271 departures on route 465 against the report's 4,045, 5.6% more.
 - **Every stored OTP figure was polled under the old parameters.** Nothing is restated automatically. `otpMonthlyFeedPoll`'s trailing window (`TRAILING_MONTHS = 3`, current + prior 2) re-pulls the current month and the two before it on its own; any earlier month behind a comparison needs `POST /otp-historical-backfill` once this deploys.
+
 
 ## [1.6.35] - 2026-10-22
 
