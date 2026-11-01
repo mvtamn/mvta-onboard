@@ -224,7 +224,7 @@
 .cs-digits { display: inline-flex; }
 .cs-digit { width: 0.24in; height: 0.3in; border: 1.5px solid #000; margin-left: -1.5px; background: #fff; }
 .cs-digit:first-child { margin-left: 0; }
-.cs-how { font-size: 8.5pt; line-height: 1.4; border: 1px solid #000; padding: 5px 8px; background: #f2f2f2; }
+.cs-how { font-size: 8.5pt; line-height: 1.4; border: 1px solid #000; border-left: 4px solid #000; padding: 5px 8px; }
 .cs-eg { display: inline-block; width: 12px; height: 14px; border: 1px solid #000; text-align: center; line-height: 14px; font-size: 8pt; margin: 0 1px; background: #fff; font-family: "Bradley Hand", "Segoe Print", cursive; }
 .cs-trips { width: 100%; border-collapse: collapse; }
 .cs-trips th { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; text-align: left; border-bottom: 2px solid #000; padding: 3px 4px; color: #000; background: none; }
@@ -234,7 +234,11 @@
 .cs-dir { font-size: 12pt; font-weight: 700; }
 .cs-tripid { font-size: 7.5pt; color: #333; }
 .cs-tally-h { width: 2.1in; }
-.cs-tally { background: repeating-linear-gradient(90deg, transparent 0 0.3in, #ddd 0.3in calc(0.3in + 1px)); border-left: 1px solid #000; border-right: 1px solid #000; }
+/* Guide lines are borders, not a background, so they print with "background graphics" off. */
+.cs-tally { border-left: 1px solid #000; border-right: 1px solid #000; padding: 0 !important; }
+.cs-tally-guides { display: flex; height: 100%; min-height: 0.34in; }
+.cs-tally-guides span { flex: 1; border-right: 1px dotted #999; }
+.cs-tally-guides span:last-child { border-right: none; }
 .cs-check { display: inline-block; width: 0.2in; height: 0.2in; border: 1.5px solid #000; vertical-align: middle; margin-right: 4px; background: #fff; }
 .cs-section { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; border-top: 2.5px solid #000; padding-top: 6px; margin-top: 4px; }
 .cs-extra td { height: 0.4in; }
@@ -255,3 +259,15 @@
 .cs-extra td { white-space: nowrap; }
 .cs-extra th.cs-tally-h { width: 1.3in; }
 .cs-extra .cs-dirs { letter-spacing: 0.25em; }
+
+/* PROTOTYPE — bulk printing */
+.rp label.rp-print-check { font-size: 0.85rem; }
+.rp-print-check input { width: auto; margin: 0; }
+.rp-print-status { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.88rem; }
+.rp-print-status.todo { background: var(--pill-muted-bg); }
+.rp-print-status.ok { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.rp-print-status.warn { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.rp-print-sim { margin-left: auto; }
+.cs-changed { outline: 3px solid #d97706; outline-offset: 4px; }
+.cs-blank { min-height: 11in; display: flex; align-items: center; justify-content: center; font-size: 9pt; color: #555; box-shadow: none; }
+@media print { .cs-changed { outline: none; } }

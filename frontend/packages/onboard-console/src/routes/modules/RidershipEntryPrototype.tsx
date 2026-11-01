@@ -1055,13 +1055,18 @@ function DigitBoxes({ n, label }: { n: number; label?: string }) {
   return <span className="cs-digits" aria-label={label}>{Array.from({ length: n }, (_, i) => <span key={i} className="cs-digit" />)}</span>;
 }
 
-function CountSheetPage({ b, date, garage, page, pages, trips, printedAt }: {
+function TallyGuides() {
+  return <span className="cs-tally-guides">{Array.from({ length: 6 }, (_, i) => <span key={i} />)}</span>;
+}
+
+function CountSheetPage({ b, date, garage, page, pages, trips, printedAt, order, changed }: {
   b: Block; date: string; garage: Garage; page: number; pages: number; trips: Trip[]; printedAt: string;
+  order?: { n: number; of: number }; changed?: boolean;
 }) {
   const last = page === pages;
   const link = sheetLink(date, b.block, page);
   return (
-    <section className="cs-page" aria-label={`Count Sheet block ${b.block} ${date} page ${page} of ${pages}`}>
+    <section className={`cs-page ${changed ? "cs-changed" : ""}`} data-block={b.block} aria-label={`Count Sheet block ${b.block} ${date} page ${page} of ${pages}`}>
       <span className="cs-mark tl" /><span className="cs-mark tr" /><span className="cs-mark bl" /><span className="cs-mark br" />
 
       <header className="cs-head">
@@ -1103,7 +1108,7 @@ function CountSheetPage({ b, date, garage, page, pages, trips, printedAt }: {
               <td className="cs-n">{(page - 1) * ROWS_PER_PAGE + i + 1}</td>
               <td className="cs-route">{t.route}</td><td className="cs-dir">{t.dir}</td>
               <td className="mono">{t.start}–{t.end}</td><td className="mono cs-tripid">{t.tripId}</td>
-              <td className="cs-tally" /><td><DigitBoxes n={3} label={`Total trip ${t.tripId}`} /></td><td><span className="cs-check" /></td>
+              <td className="cs-tally"><TallyGuides /></td><td><DigitBoxes n={3} label={`Total trip ${t.tripId}`} /></td><td><span className="cs-check" /></td>
             </tr>
           ))}
         </tbody>
@@ -1121,7 +1126,7 @@ function CountSheetPage({ b, date, garage, page, pages, trips, printedAt }: {
                   <td className="cs-dirs">N S E W</td>
                   <td><DigitBoxes n={2} /><b className="cs-colon">:</b><DigitBoxes n={2} /></td>
                   <td className="cs-why"><span className="cs-check" />Tripper <span className="cs-check" />Extra <span className="cs-check" />OCC</td>
-                  <td className="cs-tally" /><td><DigitBoxes n={3} /></td>
+                  <td className="cs-tally"><TallyGuides /></td><td><DigitBoxes n={3} /></td>
                 </tr>
               ))}
             </tbody>
@@ -1134,7 +1139,7 @@ function CountSheetPage({ b, date, garage, page, pages, trips, printedAt }: {
       )}
 
       <footer className="cs-meta">
-        <span>Page {page} of {pages}</span>
+        <span>Page {page} of {pages}{order ? ` · pull-out order ${order.n} of ${order.of}` : ""}</span>
         <span className="mono">{link.replace(/^https:\/\//, "")}</span>
         <span>Printed {printedAt} from the Dispatch Log · PROTOTYPE</span>
       </footer>
@@ -1144,50 +1149,109 @@ function CountSheetPage({ b, date, garage, page, pages, trips, printedAt }: {
 
 // ---------------------------------------------------------------- Print + garage list
 
+// PROTOTYPE — bulk printing for the check-in desk (evaluated 2026-10-31):
+//   * one garage at a time, in pull-out order (first trip time), so the stack
+//     comes off the printer in the order sheets are handed out;
+//   * nothing on the page depends on the browser's "background graphics"
+//     setting - every line is a border;
+//   * an optional blank back per sheet, so a printer that defaults to
+//     double-sided never puts two blocks on one piece of paper;
+//   * a print log: who printed which garage and date, and which blocks changed
+//     in the Dispatch Log since, with a reprint of just those.
+// The real build (PR 4) produces this as a PDF per garage instead of browser
+// printing, and can email it to the garage printer each evening.
+const GARAGES = ["Burnsville", "Eagan", "Unassigned"] as const;
+const blockSignature = (b: Block) => b.trips.map((t) => `${t.tripId}@${t.start}`).join(",");
+
+interface PrintRun { at: string; by: string; blocks: Record<string, string> }
+
 function PrintSheets({ garages }: { garages: Record<string, Garage> }) {
   const [date, setDate] = useState("2026-10-31");
-  const [only, setOnly] = useState<string>("All");
-  const blocks = blocksFor(date).filter((b) => only === "All" || b.block === only);
-  // Long blocks overflow onto more pages; the fixtures are short, so 418 is padded to show one.
-  // The console has no print stylesheet and scrolls inside a clipped frame, so
-  // printing the page would bring the sidebar and cut the sheets off. Print
-  // the sheets alone in a window of their own, with the app's styles copied in.
-  function printSheets() {
+  const [garage, setGarage] = useState<(typeof GARAGES)[number]>("Burnsville");
+  const [blankBacks, setBlankBacks] = useState(false);
+  const [log, setLog] = useState<Record<string, PrintRun>>({});
+  // Prototype stand-in for the Dispatch Log changing after the sheets were printed.
+  const [lateChange, setLateChange] = useState<string | null>(null);
+  const [clock, setClock] = useState(5);
+
+  const withChange = (b: Block): Block => (lateChange === b.block
+    ? { ...b, trips: [...b.trips, { ...b.trips[b.trips.length - 1], tripId: "1436999", start: "17:50", end: "18:40" }] }
+    : b);
+  const all = blocksFor(date).map(withChange);
+  const forGarage = all
+    .filter((b) => (garages[b.block] ?? "Unassigned") === garage)
+    .sort((x, y) => x.trips[0].start.localeCompare(y.trips[0].start) || x.block.localeCompare(y.block));
+  const run = log[`${date}|${garage}`];
+  const changed = run ? forGarage.filter((b) => run.blocks[b.block] !== undefined && run.blocks[b.block] !== blockSignature(b)) : [];
+  const added = run ? forGarage.filter((b) => run.blocks[b.block] === undefined) : [];
+
+  function printBlocks(blocks: Block[], record: boolean) {
     const pages = document.getElementById("cs-pages");
+    if (!pages) return;
+    const wanted = new Set(blocks.map((b) => b.block));
+    const html = [...pages.querySelectorAll<HTMLElement>(".cs-page")]
+      .filter((p) => wanted.has(p.dataset.block ?? ""))
+      .map((p) => p.outerHTML + (blankBacks ? '<section class="cs-page cs-blank"><span>This side intentionally blank</span></section>' : ""))
+      .join("");
     const w = window.open("", "_blank", "width=900,height=1000");
-    if (!pages || !w) return;
+    if (!w) return;
     const styles = [...document.querySelectorAll('style, link[rel="stylesheet"]')].map((n) => n.outerHTML).join("");
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Count Sheets</title>${styles}<style>body{margin:0;background:#fff}.cs-pages{display:block}.cs-page{box-shadow:none;margin:0 auto}</style></head><body><div class="rp"><div class="cs-pages">${pages.innerHTML}</div></div></body></html>`);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Count Sheets ${date} ${garage}</title>${styles}<style>body{margin:0;background:#fff}.cs-pages{display:block}.cs-page{box-shadow:none;margin:0 auto}</style></head><body><div class="rp"><div class="cs-pages">${html}</div></div></body></html>`);
     w.document.close();
     w.focus();
     setTimeout(() => w.print(), 300);
+    if (record) {
+      const at = `${TODAY} 21:${String(clock).padStart(2, "0")}`;
+      setClock((c) => c + 7);
+      const prev = run?.blocks ?? {};
+      setLog({ ...log, [`${date}|${garage}`]: { at, by: "You (check-in desk)", blocks: { ...prev, ...Object.fromEntries(blocks.map((b) => [b.block, blockSignature(b)])) } } });
+    }
   }
-  const tripsFor = (b: Block) => b.block === "418" ? [...b.trips, ...b.trips.map((t, i) => ({ ...t, tripId: `${Number(t.tripId) + 100 + i}`, start: t.start, end: t.end })), ...Array.from({ length: 10 }, (_, i) => ({ ...b.trips[0], tripId: `${1436900 + i}` }))] : b.trips;
+
+  let order = 0;
   return (
     <div className="rp-print">
       <div className="rp-print-bar">
         <label className="rp-print-date">Service date
           <select value={date} onChange={(e) => setDate(e.target.value)}>
-            <option value="2026-10-31">2026-10-31 · next service date</option>
-            {SERVICE_DATES.map((d) => <option key={d} value={d}>{d} · reprint a lost sheet</option>)}
+            <option value="2026-10-31">2026-10-31 · tomorrow</option>
+            {SERVICE_DATES.map((d) => <option key={d} value={d}>{d} · reprint</option>)}
           </select>
         </label>
-        <label className="rp-print-date">Block
-          <select value={only} onChange={(e) => setOnly(e.target.value)}>
-            <option>All</option>
-            {blocksFor(date).map((b) => <option key={b.block}>{b.block}</option>)}
+        <label className="rp-print-date">Garage
+          <select value={garage} onChange={(e) => setGarage(e.target.value as (typeof GARAGES)[number])}>
+            {GARAGES.map((g) => <option key={g}>{g}</option>)}
           </select>
         </label>
-        <span>US Letter, one block per page · printed the evening before, once the Dispatch Log has the day</span>
-        <button className="rp-primary" onClick={printSheets}>Print</button>
+        <label className="rp-print-date rp-print-check"><input type="checkbox" checked={blankBacks} onChange={(e) => setBlankBacks(e.target.checked)} /> Blank back on each sheet (for double-sided printers)</label>
+        <button className="rp-primary" disabled={forGarage.length === 0} onClick={() => printBlocks(forGarage, true)}>
+          Print {forGarage.length} sheet{forGarage.length === 1 ? "" : "s"} · {garage}
+        </button>
       </div>
+
+      <div className={`rp-print-status ${run ? (changed.length || added.length ? "warn" : "ok") : "todo"}`} role="status">
+        {!run && <><b>Not printed yet</b> for {garage}, {date}. Sheets come off in pull-out order, one block per page.</>}
+        {run && !changed.length && !added.length && <><b>Printed</b> {run.at} by {run.by} · {Object.keys(run.blocks).length} sheets · nothing has changed since.</>}
+        {run && (changed.length > 0 || added.length > 0) && (
+          <>
+            <b>Printed {run.at}, but the Dispatch Log has changed since</b> for {[...changed, ...added].map((b) => `block ${b.block}`).join(", ")}.
+            <button className="rp-link" onClick={() => printBlocks([...changed, ...added], true)}>Reprint just {changed.length + added.length === 1 ? "that sheet" : "those sheets"}</button>
+          </>
+        )}
+        <span className="rp-dim rp-print-sim">
+          Prototype: <button className="rp-link" onClick={() => setLateChange(lateChange ? null : forGarage[0]?.block ?? null)}>{lateChange ? "undo the late change" : "simulate a late tripper on the first block"}</button>
+        </span>
+      </div>
+
+      {forGarage.length === 0 && <p className="rp-dim">No blocks are assigned to {garage} on {date}.</p>}
       <div className="rp-print-pages cs-pages" id="cs-pages">
-        {blocks.flatMap((b) => {
-          const trips = tripsFor(b);
-          const pages = Math.max(1, Math.ceil(trips.length / ROWS_PER_PAGE));
+        {forGarage.flatMap((b) => {
+          order += 1;
+          const pages = Math.max(1, Math.ceil(b.trips.length / ROWS_PER_PAGE));
           return Array.from({ length: pages }, (_, i) => (
             <CountSheetPage key={`${b.block}-${i}`} b={b} date={date} garage={garages[b.block] ?? null} page={i + 1} pages={pages}
-              trips={trips.slice(i * ROWS_PER_PAGE, (i + 1) * ROWS_PER_PAGE)} printedAt={`${TODAY} 21:05`} />
+              trips={b.trips.slice(i * ROWS_PER_PAGE, (i + 1) * ROWS_PER_PAGE)} printedAt={run?.at ?? `${TODAY} (preview)`}
+              order={{ n: order, of: forGarage.length }} changed={changed.includes(b) || added.includes(b)} />
           ));
         })}
       </div>
