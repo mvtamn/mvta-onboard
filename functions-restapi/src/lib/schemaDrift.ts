@@ -98,6 +98,37 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     table: "PredictionAccuracyDays",
     breaks: "Prediction accuracy is not scored; the capture keeps writing and is kept 90 days",
   },
+  {
+    migration: "153",
+    table: "RidershipSheets",
+    breaks: "Ridership: Count Sheets cannot be listed or keyed",
+  },
+  {
+    migration: "153",
+    table: "RidershipCounts",
+    breaks: "Ridership: trip counts cannot be saved",
+  },
+  {
+    migration: "153",
+    table: "RidershipAddedTrips",
+    breaks: "Ridership: unscheduled trips cannot be saved",
+  },
+  {
+    migration: "153",
+    table: "RidershipCountHistory",
+    breaks: "Ridership: a sheet cannot be saved without its change history",
+  },
+  {
+    migration: "153",
+    table: "RidershipBlockGarages",
+    breaks: "Ridership: no block has a garage, so completeness by garage is all Unassigned",
+  },
+  {
+    migration: "153",
+    table: "TripStartLog",
+    column: "scheduled_end_seconds",
+    breaks: "Count Sheets show no scheduled end time for their trips",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */
