@@ -61,7 +61,7 @@ app.timer("otpMonthlyFeedPoll", {
       // a new set is declared while it is still going.
       const stampReady = await measurementStampReady(pool);
       // And whether a key Avail has stopped returning can be archived
-      // (migration 152, ADR 0043). Without the archive nothing is retired: the
+      // (migration 152, ADR 0044). Without the archive nothing is retired: the
       // archive is where a retired row still exists.
       const archiveReady = await retirementArchiveReady(pool);
       const parameters = await readParametersInForce(pool);

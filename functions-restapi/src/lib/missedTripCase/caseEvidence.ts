@@ -29,6 +29,14 @@ export const DEAD_ZONE_MIN_CASES = 5;
 /** Share of them that ran for the stop to read as a likely dead zone. */
 export const DEAD_ZONE_RAN_SHARE = 0.8;
 
+// Cases a stop's record leaves out, because the evidence could not judge them.
+// Retired cases (migration 148) were raised before the guards, many on days
+// the feeds were down; data-gap cases were raised while the position feed was
+// not current. Either shows "no start" because of the feed, not the stop. Seen
+// live 2026-10-22: counting them put Savage Park & Ride at 38 of 82 ran, when
+// every one of its 27 cases since the guards had run.
+const UNJUDGEABLE_QUALITY = "N'legacy_unverified', N'unknown_data_gap'";
+
 /** One case's raw readings, as readCaseEvidence's query returns them. */
 export interface CaseEvidenceRow {
   trip_id: string;
@@ -47,9 +55,11 @@ export interface CaseEvidenceRow {
   block_trips_reported: number | null;
   origin_stop_id: string | null;
   origin_stop_name: string | null;
-  /** Every silent no-show at the stop, this one included. */
+  /** The judgeable silent no-shows at the stop - this case among them when counted_in_origin. */
   origin_cases: number | null;
   origin_cases_ran: number | null;
+  /** Whether this case is itself one of origin_cases. */
+  counted_in_origin: boolean;
 }
 
 /** What the console shows. Times are ISO strings. */
@@ -83,9 +93,11 @@ export function caseEvidence(r: CaseEvidenceRow): GtfsCaseEvidence {
 
   let originStop: GtfsCaseEvidence["origin_stop"] = null;
   if (r.origin_stop_id) {
-    // A case is not evidence about itself: take it off the stop's record.
-    const otherCases = Math.max(0, (r.origin_cases ?? 0) - 1);
-    const otherRan = Math.max(0, (r.origin_cases_ran ?? 0) - (started ? 1 : 0));
+    // A case is not evidence about itself: take it off the stop's record, when
+    // the record counted it.
+    const self = r.counted_in_origin ? 1 : 0;
+    const otherCases = Math.max(0, (r.origin_cases ?? 0) - self);
+    const otherRan = Math.max(0, (r.origin_cases_ran ?? 0) - (self && started ? 1 : 0));
     originStop = {
       stop_id: r.origin_stop_id,
       name: r.origin_stop_name,
@@ -135,8 +147,11 @@ export async function readCaseEvidence(
                dl.actual_start_at AS dispatch_start_at, dl.actual_start_source AS dispatch_start_source,
                dl.predicted_start_at AS dispatch_predicted_at, dl.scheduled_start_at AS dispatch_scheduled_at,
                dl.block_id, dl.origin_stop_id, dl.origin_stop_name,
-               e.first_vehicle_position_at, e.first_underway_at, e.vehicle_id
+               e.first_vehicle_position_at, e.first_underway_at, e.vehicle_id,
+               CAST(CASE WHEN self.detection_type = N'silent_no_show'
+                          AND self.data_quality_status NOT IN (${UNJUDGEABLE_QUALITY}) THEN 1 ELSE 0 END AS BIT) AS counted_in_origin
         FROM page p
+        LEFT JOIN MonitoredMissedTrips self ON self.trip_id = p.trip_id AND self.service_date = p.service_date
         LEFT JOIN TripStartLog dl ON dl.trip_id = p.trip_id AND CAST(dl.service_date AS NVARCHAR(20)) = p.service_date
         LEFT JOIN GtfsTripOperationalEvidence e ON e.trip_id = p.trip_id AND e.service_date = p.service_date
       ),
@@ -148,6 +163,7 @@ export async function readCaseEvidence(
         JOIN TripStartLog hl ON hl.trip_id = hm.trip_id AND CAST(hl.service_date AS NVARCHAR(20)) = hm.service_date
         LEFT JOIN GtfsTripOperationalEvidence he ON he.trip_id = hm.trip_id AND he.service_date = hm.service_date
         WHERE hm.detection_type = N'silent_no_show'
+          AND hm.data_quality_status NOT IN (${UNJUDGEABLE_QUALITY})
           AND hl.origin_stop_id IN (SELECT origin_stop_id FROM info WHERE origin_stop_id IS NOT NULL)
         GROUP BY hl.origin_stop_id
       )

@@ -5,9 +5,9 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.49] - 2026-10-30
+## [1.6.53] - 2026-11-01
 
-- **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0043 is that decision, and this is it built.
+- **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0044 is that decision, and this is it built.
 - **The symptom that matters is not the figures, it is the list.** ADR 0042 derives "months measured under a different standard" from the stamps, so those 11 unstampable rows would have held 2026-05, 2026-08 and 2026-09 on the re-pull list permanently, each with a Re-pull button that could not clear them. A list that cannot reach empty stops being read, which is the one thing it was built not to be. The figures move by 0.014 points in 2026-05 (87.560% → 87.574%), 0.001 in 2026-08 and 0.005 in 2026-09.
 - **Retired means archived and removed, not flagged.** Eleven queries in ten places read `OtpMonthlyRouteStopDay` — the month module, the OTP month endpoint, the flagged-stop rule, route classification, the date-exclusion snapshot, the provenance read, and the reporting views of migrations 106, 140, 141 and 151. A flag one reader forgot would be a figure that disagrees with itself depending on which query asked; a deleted row cannot be half-applied. `OtpMonthlyRetiredKeys` (migration 152) holds the row whole — figures, `first_seen_at`, `updated_at` and its stamp — with why it was retired and by what, and `vw_OtpMonthlyRetiredKeys` publishes it to `mvta_reporting_ro`.
 - **Absence alone retires nothing.** A truncated response and a month that genuinely shrank look identical from the payload, so `retirementDecision` requires the poll to have accounted for at least 90% of the month's stored keys, and the callers additionally require every one of their own upserts to have landed. The real cases are 1–8 keys in 850–1,000 (0.1–0.9%), so anything near the threshold is not the case this exists for — what it rules out is arithmetic over a bad delivery.
@@ -16,6 +16,41 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The daily table is left alone**, deliberately: `OtpDailyRouteStopHour` keys on a date and an hour, the re-pull list does not read it, and no stranded row has been seen there. `OtpMonthlyRestatements` keeps pointing at retired keys, also deliberately — migration 141's ledger carries no foreign key precisely so history outlives the figure it describes.
 - Proved against real SQL: nothing is deleted that is not archived in the same transaction, a short payload removes nothing, only the named month is at risk, a returning key is stored again with both lives on the record, and the migration's one-off repair spares a month that has not been re-polled since 151.
 - Apply migration 152 after this deploys. It archives and removes the 11 stranded rows; nothing else in the table changes.
+
+## [1.6.52] - 2026-11-01
+
+- **A case's first-stop record counted no-shows the evidence could not judge.** 1.6.27's stop record (`readCaseEvidence`, `caseEvidence.ts`) counted every silent no-show at a stop, including the 1,244 retired by migration 148 and those held as `unknown_data_gap`. Both show "no start" because the feed was down, not because of the stop, so they dragged real dead zones under the 80% bar. Seen live on dev 2026-10-22: Savage Park & Ride read "38 of 82 other no-shows here turned out to have run", though all 27 of its cases since the 2026-09-16 guards ran. The record now leaves out `legacy_unverified` and `unknown_data_gap` cases.
+- A case that is itself one of those is no longer taken off a record that never counted it (`counted_in_origin`), which would have undercounted the stop by one.
+- Tests: 1 new in `caseEvidence.test.ts`; `caseEvidence.db.contract.test.ts` seeds a retired and a data-gap case at the stop and checks both the counts and a retired case's own view.
+
+## [1.6.51] - 2026-10-31
+
+- **The ridership API (`lib/ridership/`, PR 2 of Increment 1 in `plans/ridership-build-plan.md`).** It is one module that owns the rules. The handlers in `functions/ridership.ts` only check access and translate results into HTTP. No migration; it reads migration 153's tables and answers 503 until they exist.
+- **Endpoints:**
+  - `GET /ridership/worklist?from=&to=` (`ridership.view`): every sheet with Dispatch Log trips in the range, late first, plus completeness by garage. The default range is the last eight service dates and the limit is 62 days. Trips with no workbook block are counted as `trips_without_block`, so they don't drop out of sight.
+  - `GET /ridership/sheets/{date}/{block}` (`ridership.view`): the block's trips, which of them need a count and why, Avail's pull-out pre-fill with the relief runs as a hint, what has been saved, and the sheet's history.
+  - `PUT` on the same path (`ridership.enter`) saves the whole sheet in one transaction. It returns 400 unless every required trip has an entry, and 409 when the sheet was saved again after the editor loaded its `version`. A future service date is refused.
+  - `GET` / `PUT /ridership/block-garages` (`PUT` needs `ridership.configure`): one service change's rows, from `effective_from`.
+- **Which trips need a count (spec §5, ADR 0044):** every Dispatch Log trip on the block, unless the log calls it `missed` or `canceled`, or a missed-trip case counts as missed. That uses the shared classification (`missedTripCaseSql`), not a WHERE clause of ridership's own. An `unknown` trip still needs a count. Excused trips can still be keyed.
+- **Sheet state:**
+  - Entered means every required trip has an entry now and the sheet has been saved.
+  - The deadline is midnight Central at the start of the second day after service, and is correct across daylight-saving changes.
+  - `entered_at` is set by the first complete save and never moved, so lateness is judged on it.
+  - An entered sheet that gains a required trip is open again until that trip is keyed.
+- **Pre-fill and override:** the first run is the earliest committed pull-out. Avail's midnight placeholder counts as a relief run (migration 139). The server sets `operator_overridden` by comparing the saved header with that run, ignoring case and spacing; the client doesn't send it.
+- **History (P6):** one `RidershipCountHistory` row per field that changed, with who and when. A first save records every field it sets, a removed unscheduled trip is soft-removed and recorded, and saving an unchanged sheet writes nothing.
+- **Schema drift:** migration 153's five tables and `TripStartLog.scheduled_end_seconds` are declared in `SCHEMA_REQUIREMENTS`.
+- **Tests:** `rules.test.ts` covers the rules: excuses, the deadline across the fall-back night, state, progress, pre-fill order, override, garage in force, parsing and history. `ridership.db.contract.test.ts` runs the real migrations 013 and 153 to cover the GTFS → workbook block read, confirmed and unreviewed cases, a refused incomplete save, history, a stale editor, a late correction, a no-op save and a late sheet.
+
+## [1.6.50] - 2026-10-30
+
+- **Ridership counting's schema, roles and access (ADR 0044, migrations 153 and 154).** This is the first of five PRs in Increment 1 of `plans/ridership-build-plan.md`, which replaces the paper Count Sheet's Access entry by 2026-12-01. Nothing reads the new tables yet; the API (PR 2) and console (PR 3) follow.
+- **Migration 153** adds `RidershipSheets` (one per block per service date: pre-filled operator and bus, the run they came from, override and reconstructed flags, and `entered_at`, which lateness is judged on), `RidershipCounts` (one per Dispatch Log trip, `counted | not_counted | did_not_operate`, with a number only when counted, enforced by a CHECK), `RidershipAddedTrips` (unscheduled trips from the sheet's blank rows, soft-removed), `RidershipCountHistory` (append-only, who and when for every change), and `RidershipBlockGarages` (Planning's list, dated by service change). It also adds `TripStartLog.scheduled_end_seconds`, backfilled for logged trips still in the imported schedule.
+- **Keys follow the Dispatch Log (ADR 0044).** A count is `(service_date, trip_id)` on the GTFS trip, and a sheet is `(service_date, block)` with the block in the printed `001` form that `workbookBlock()` already reads. Ridership keeps no roster of its own, so the Optibus → Excel → `Riders_FINAL` build goes away.
+- **`tripStartLogMaterialize` writes the scheduled end** from `GtfsScheduledTrips.last_arrival_seconds` when both columns exist, and the log is written exactly as before when they don't, so this can deploy ahead of the migration.
+- **A `ridership` module in the access catalog** (`view`, `enter`, `print`, `configure`), and **migration 154** seeds `ridership-recorder` (view, enter, print) and `ridership-manager` (plus configure) in the same insert-if-missing way as migration 129. Seeding grants them to nobody: assigning the named Planning staff and the Keolis OCC guests is a separate step. `seeds.ts` and the console's dev `mockAccess.ts` carry the same roles, and `access.db.contract.test.ts` now applies 154 as well.
+- **Schema-drift entries for the new tables wait for PR 2**, because nothing in the merged code reads them yet (see the rule in `lib/schemaDrift.ts`).
+- **Apply migrations 153 and 154 after this deploys**, on dev and then on prod. Both are re-runnable. This is a REST API merge, so it restarts the REST app: merge it outside 04:00–24:00 Central.
 
 ## [1.6.48] - 2026-10-30
 
@@ -45,6 +80,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **OTP is measured to MVTA's configured thresholds instead of the example in Avail's API specification.** `OTP_PARAMETERS` in `lib/availClient.ts` sent early 1 / late 5 / early outlier 15 / late outlier 30; Avail confirmed on 2026-10-27 that MVTA's BI configuration is early 2 / late 5 / early outlier 10 / late outlier 60, so only the late threshold matched. The thresholds were believed enum-constrained, which they are not, and the outlier values were taken from the spec's own example to rule out our configuration as a source of error while the feed was being diagnosed, then never aligned once it was ruled out. The early threshold is the one that mattered: at 1 minute a departure 1-2 minutes early counted as early, where MVTA's standard counts it on time, so OnBoard was measuring the agency stricter than its own rule and the correction raises OTP slightly.
 - **`Include Outliers` stays 1**, pending Avail's answer on whether the BI report drops outlying departures from its denominator. It is the likeliest explanation of the one gap that remains between the API and the report: 4,271 departures on route 465 against the report's 4,045, 5.6% more.
 - **Every stored OTP figure was polled under the old parameters.** Nothing is restated automatically. `otpMonthlyFeedPoll`'s trailing window (`TRAILING_MONTHS = 3`, current + prior 2) re-pulls the current month and the two before it on its own; any earlier month behind a comparison needs `POST /otp-historical-backfill` once this deploys.
+
 
 ## [1.6.35] - 2026-10-22
 

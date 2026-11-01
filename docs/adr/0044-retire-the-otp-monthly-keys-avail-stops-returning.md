@@ -1,4 +1,4 @@
-# ADR 0043: Retire the OTP monthly keys Avail stops returning
+# ADR 0044: Retire the OTP monthly keys Avail stops returning
 
 Status: accepted (2026-10-30)
 

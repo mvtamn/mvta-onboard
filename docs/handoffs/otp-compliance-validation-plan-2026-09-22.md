@@ -109,7 +109,7 @@ as is 2026-09, the month compared against Avail BI, so neither of those results 
 question.
 
 **11 rows across three months that Avail no longer reports — decided and fixed 2026-10-30
-(1.6.49, ADR 0043).** 2026-05 held 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 held
+(1.6.53, ADR 0044).** 2026-05 held 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 held
 912 against 910; 2026-09 held 860 against 859. The upsert never deleted, so a route/stop/day
 Avail has stopped reporting kept its last figure indefinitely — and, after 1.6.43, a figure
 nothing could ever stamp, which would have held all three months on the re-pull list for good.

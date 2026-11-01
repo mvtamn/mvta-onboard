@@ -6,7 +6,7 @@ import { parseConnectionString, sql } from "./db";
 import { upsertOtpMonthlyReport, type MappedOtpMonthlyReport } from "./otpMonthlyFeed";
 import { retireVanishedMonthlyKeys, retirementArchiveReady } from "./otpMonthlyRetirement";
 
-// Retiring vanished keys against a real SQL Server (ADR 0043).
+// Retiring vanished keys against a real SQL Server (ADR 0044).
 //
 // This is the first code that DELETES a contractual OTP figure, so the parts
 // that cannot be proved without a database are the parts that matter most:

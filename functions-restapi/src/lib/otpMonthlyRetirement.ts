@@ -1,7 +1,7 @@
 import sql from "mssql";
 import type { MappedOtpMonthlyReport } from "./otpMonthlyFeed";
 
-// Retiring the OTP monthly keys Avail has stopped returning (ADR 0043).
+// Retiring the OTP monthly keys Avail has stopped returning (ADR 0044).
 //
 // The monthly upsert inserts and updates; it has never had an opinion about a
 // stored key its payload did not mention, because a MERGE cannot have one. So

@@ -1,5 +1,5 @@
 -- Migration 152: retire the OTP monthly keys Avail has stopped returning, and
--- give the re-pull list a way to ever reach empty (ADR 0043).
+-- give the re-pull list a way to ever reach empty (ADR 0044).
 --
 -- The monthly upsert has only ever inserted and updated. A key Avail stops
 -- returning for a month it still publishes is left exactly as it was, because
@@ -197,7 +197,7 @@ SELECT service_month, route_id, stop_id, day_of_week, stop_name, route_label,
        pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
        early, ontime, late, missed, actual_departures, total,
        first_seen_at, updated_at, measurement_parameters,
-       N'Retired 2026-10-30 (migration 152): the month was re-polled under the declared measurement standard and Avail did not return this route/stop/day of week, so no poll can reach it and nothing can ever stamp it.',
+       N'Retired 2026-11-01 (migration 152): the month was re-polled under the declared measurement standard and Avail did not return this route/stop/day of week, so no poll can reach it and nothing can ever stamp it.',
        N'migration-152'
 FROM @stranded;
 

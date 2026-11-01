@@ -6,7 +6,7 @@ import {
   retirementDecision,
 } from "./otpMonthlyRetirement";
 
-// The gate, which is the whole safety story of ADR 0043: this is the code that
+// The gate, which is the whole safety story of ADR 0044: this is the code that
 // decides whether a route/stop/day of week missing from a payload means Avail
 // stopped publishing it, or means the response was short. Get it wrong in one
 // direction and contractual figures are deleted; get it wrong in the other and
