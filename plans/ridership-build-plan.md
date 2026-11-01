@@ -115,6 +115,35 @@ are backend merges, which restart the REST app, so merge them outside
      into the print HTML (PR 4). Payload `MVTA-RIDERSHIP:<YYYYMMDD>:<block>`.
    - The worklist's "Scan or type block" box accepts that payload (a USB
      scanner types it), so OCC can work through a physical stack in any order.
+   - **What the code holds:** the block and the service date only. No
+     operator, bus or trips, so a lost sheet reveals nothing and the code
+     never goes out of date.
+   - **How it prints** (agreed 2026-10-31 from the prototype, commit
+     `5bf7e950` on `claude/ridership-ui-0aa433`):
+     - In the sheet header, top right, about **25 mm** square.
+     - Error correction level **Q**, so it still reads with about a quarter of
+       it damaged (a crease, a coffee ring).
+     - A one-module quiet zone, with nothing else printed within it.
+     - **BLOCK `nnn`** and the service date printed in large type beside
+       it, as the manual fallback when a code won't scan.
+     - The footer says not to fold the sheet through the code.
+   - **Library:** `qrcode` 1.5.4, a pinned exact version. It renders to an SVG
+     string with no browser needed, so it fits the server-side print HTML. The
+     prototype uses the same library.
+   - **The scan box:**
+     - It has focus when the worklist opens.
+     - A scanned code opens that exact sheet.
+     - A typed block number opens that block's oldest open sheet, otherwise
+       its newest.
+     - A code for a date with no sheet, or unrecognised text, gets a message
+       and opens nothing.
+     - While the box is empty, ↑ ↓ and Enter still work the list.
+   - **Reprint:** the print page takes any service date, not only tomorrow's,
+     so a lost sheet can be reprinted. It carries the same code, since the
+     code names the sheet, not the copy.
+   - **Verified in the prototype:** the browser's own barcode reader decoded
+     the printed codes to the exact payload. It hasn't been tried with a
+     physical USB scanner yet; do that at the OCC rehearsal.
 3. **Entry goes live on prod on Dec 1.** Extra steps outside the code:
    - Add `fixedRouteDeparturesPoll` to prod's early-enabled timers
      (`restApiTimersEnabledEarly`); the Dispatch Log timers are already on.
