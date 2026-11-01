@@ -576,8 +576,12 @@ _Avoid_: public detour page, rider detour feed
 ## Fulfillment mode
 
 The operational path by which an authoritative Detour is carried out and
-communicated: Avail-backed, fixed-route manual, or mobility manual.
-_Avoid_: source, publication status
+communicated: Avail-backed, fixed-route manual, or mobility manual. Screens
+show one display label per mode, everywhere: "Build in Avail", "Fixed route,
+run manually", "Mobility, run manually"; the field is labelled "How it will be
+run". Switching an Avail-backed Detour to manual fallback reads "Run it
+manually instead".
+_Avoid_: source, publication status, fulfillment path
 
 ## Fixed-route manual Detour
 
@@ -608,8 +612,8 @@ _Avoid_: sent notification, automatic alert
 
 Creation of a new Detour identity from an existing Detour's configuration. The
 original record remains unchanged and the new record enters the selected
-workflow afresh.
-_Avoid_: reopen, extend in place
+workflow afresh. The worklist button reads "Re-establish".
+_Avoid_: reopen, extend in place, clone
 
 ## Temporal Detour status
 
@@ -624,7 +628,15 @@ The operational progress of an authoritative Detour: awaiting fulfillment,
 fulfilled, fulfillment failed, or closed. It is separate from temporal status,
 fulfillment mode, and communication eligibility. Approval is the promotion of a
 Detour intake and is not a stored Workflow state; intake decisions such as
-rejection and duplication belong to Detour intake.
+rejection and duplication belong to Detour intake. Screens use display labels
+and never the stored values: awaiting fulfillment is "Waiting for Avail entry";
+fulfilled is "Built in Avail" for an Avail-backed Detour and "Running manually"
+for a manual one ("In place" where the mode is not known); fulfillment failed
+is "Avail entry failed". An Avail entry result is recorded as "Built in Avail",
+"Avail refused it" or "Not built yet". The two things once both called a
+"conflict" are kept apart on screen: Avail refusing an entry is "Avail refused
+it — retry or run it manually", and an overlap that needs a Conflict override
+is "Overlaps another detour — override needed".
 _Avoid_: temporal status, communication readiness
 
 ## Detour workflow act
@@ -1146,8 +1158,8 @@ _Avoid_: missed-trip candidate, unresolved alert
 **First observed progress**:
 The earliest trustworthy observation that a run advanced beyond its first
 scheduled public stop. It bounds when Trip start occurred but is not itself the
-measured Trip start.
-_Avoid_: actual start, first arrival
+measured Trip start. On screen: "passed the first stop".
+_Avoid_: actual start, first arrival, underway
 
 **Indeterminate trip**:
 A scheduled run whose outcome cannot be classified because the available
@@ -1255,6 +1267,19 @@ standards. It remains available for explicit rereview but is excluded from
 compliance totals by default.
 _Avoid_: corrected history, confirmed missed trip
 
+**Likely GPS dead zone**:
+A first stop where most of the Suspected no-shows that the evidence could
+check turned out to have run, by the bar an administrator sets. It is a note
+for the reviewer of a case starting there. It opens, holds and closes nothing.
+_Avoid_: dead-zone exclusion, known bad stop
+
+**Dispatch Log departure**:
+The Dispatch Log's first-stop time for a run, and what that time is. Only a
+realised departure on a trip a bus reported against is a start. A repeated
+schedule, the last prediction, a time on a trip no bus reported against, or a
+time taken from bus positions is shown as what it is, not as a departure.
+_Avoid_: actual start, trip update time
+
 **Shadow detection**:
 Operation of a candidate detector for evaluation without automatic contractual
 promotion. A detector leaves Shadow detection only after a complete service
@@ -1263,7 +1288,7 @@ and unmatched cases separately; on-demand service-quality additionally requires
 two complete service weeks, dispatcher agreement, and no unresolved feed-health
 issue. Cases from a detector in Shadow detection can be reviewed but never
 reach Assessment promotion.
-_Avoid_: production truth, enabled detector
+_Avoid_: production truth, enabled detector, experimental detector
 
 **Detector promotion**:
 A dated decision that a detector family leaves Shadow detection, recorded with

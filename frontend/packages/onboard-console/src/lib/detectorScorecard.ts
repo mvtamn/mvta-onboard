@@ -49,15 +49,15 @@ export function dispatcherText(figures: Pick<DetectorPeriodFigures, "dispatcher"
 
 export function availRecallText(recall: DetectorScorecardPeriod["avail_recall"]): string {
   if (!recall) return "—";
-  if (recall.whole_misses === 0) return "No Avail misses";
-  const waiting = recall.awaiting_reviewer > 0 ? ` · ${recall.awaiting_reviewer} probable` : "";
-  return `${rateText(recall.recall)} · ${recall.unmatched} unmatched${waiting}`;
+  if (recall.whole_misses === 0) return "Avail recorded no whole misses";
+  const waiting = recall.awaiting_reviewer > 0 ? ` · ${recall.awaiting_reviewer} possible matches to confirm` : "";
+  return `Caught ${rateText(recall.recall)} of Avail's ${recall.whole_misses} whole misses · ${recall.unmatched} with no case${waiting}`;
 }
 
 export function dispatcherRecallText(recall: DetectorScorecardPeriod["dispatcher_recall"]): string {
   if (!recall) return "—";
-  if (recall.not_observed === 0) return "None not observed";
-  return `${rateText(recall.recall)} · ${recall.missed} missed`;
+  if (recall.not_observed === 0) return "Dispatchers marked no trip as not run";
+  return `Caught ${rateText(recall.recall)} of ${recall.not_observed} trips dispatchers marked not run · ${recall.missed} missed`;
 }
 
 /**
@@ -100,6 +100,30 @@ export function featuredWeek<P extends WeekFigures>(
 ): P | null {
   const complete = periods.filter((p) => p.detectors.find((d) => d.detector === detector)?.bar?.complete);
   return complete[complete.length - 1] ?? periods[periods.length - 1] ?? null;
+}
+
+// A week reads as complete only once nothing in it is waiting for review, and
+// the verdict shows the newest complete week - so a review backlog quietly
+// holds the verdict on an older week. Say so, with the number that would
+// release it, rather than let an old date look current.
+export function backlogText<P extends { detectors: readonly Pick<DetectorPeriodFigures, "detector" | "cases">[] }>(
+  periods: readonly P[],
+  detector: DetectorPeriodFigures["detector"],
+  featured: P | null,
+): string | null {
+  const after = featured ? periods.slice(periods.indexOf(featured) + 1) : periods;
+  let weeks = 0;
+  let waiting = 0;
+  for (const period of after) {
+    const figures = period.detectors.find((d) => d.detector === detector);
+    const count = figures ? figures.cases.awaiting_review + figures.cases.open : 0;
+    if (count > 0) {
+      weeks += 1;
+      waiting += count;
+    }
+  }
+  if (weeks === 0) return null;
+  return `${weeks === 1 ? "A later week is" : `${weeks} later weeks are`} waiting on ${waiting} case${waiting === 1 ? "" : "s"} to be reviewed. Until then the verdict reads ${featured ? "this older week" : "no week"}.`;
 }
 
 export function weeksMetText(periods: readonly WeekFigures[], detector: DetectorPeriodFigures["detector"]): string {

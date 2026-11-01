@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, DETOUR_LIFECYCLE_LABELS, type DetourWorkflowHistoryEntry } from "@mvta/shared";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
+import { historyEventLabel } from "../lib/detourLabels.js";
 
 // Append-only operational history for one Detour (GET
 // /detours/{id}/workflow-history): creation, state transitions, Avail
@@ -10,14 +11,9 @@ import { dateTimeLabel } from "../lib/detourDates.js";
 // Reports as well as the entry page. Loaded on demand - the list is
 // already one request per expanded row for images and communications.
 
-const EVENT_LABELS: Record<DetourWorkflowHistoryEntry["event_type"], string> = {
-  created: "Created",
-  state_transition: "Workflow",
-  source_observation: "Avail observation",
-  manual_correction: "Correction",
-  fulfillment_confirmation: "Fulfillment confirmed",
-};
-
+// History rows do not carry the fulfillment mode they were written under (a
+// manual fallback changes it), so states are named without it: "In place"
+// rather than guessing "Built in Avail" or "Running manually".
 function transition(entry: DetourWorkflowHistoryEntry): string | null {
   const from = entry.from_state ? DETOUR_LIFECYCLE_LABELS[entry.from_state] : null;
   const to = entry.to_state ? DETOUR_LIFECYCLE_LABELS[entry.to_state] : null;
@@ -54,7 +50,7 @@ export function DetourWorkflowHistorySection({ detourId }: { detourId: string })
                 {history.map((entry) => (
                   <tr key={entry.id}>
                     <td className="td-dim">{dateTimeLabel(entry.changed_at)}</td>
-                    <td>{EVENT_LABELS[entry.event_type] ?? entry.event_type}{entry.source === "avail" ? " · Avail" : ""}</td>
+                    <td>{historyEventLabel(entry)}{entry.source === "avail" ? " · Avail" : ""}</td>
                     <td className="td-dim">{transition(entry) ?? "—"}</td>
                     <td>{entry.detail || "—"}</td>
                     <td className="td-dim">{entry.changed_by}</td>

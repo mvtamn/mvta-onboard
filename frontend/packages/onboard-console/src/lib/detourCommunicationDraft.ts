@@ -1,4 +1,4 @@
-import type { Detour, DetourAudienceEligibility, DetourChannelOption, DetourCommunication, DetourCommunicationEligibility, DetourContractorNotification } from "@mvta/shared";
+import { detourChannelLabel, type Detour, type DetourAudienceEligibility, type DetourChannelOption, type DetourCommunication, type DetourCommunicationEligibility, type DetourContractorNotification } from "@mvta/shared";
 import { dateLabel } from "./detourDates.js";
 
 // Prefill for the Detour communications composer.
@@ -163,13 +163,21 @@ export function draftCommunicationText(detour: Pick<Detour, "internal_number" | 
 
 // What the buttons beside one saved draft should be.
 //
-// A channel OnBoard sends (email, text, Teams) offers Send, and is refused
-// while the Detour blocks sending. A recorded channel - a road sign, an Avail
-// message - never offers Send, and is NOT refused by a closed Detour, because
-// writing down on Tuesday what went out on Monday is an accurate record rather
-// than a late send (server: eligibility.ts).
+// The server sends two channels: email (queued to the dispatch app) and Teams
+// (one webhook) - functions-restapi detourCommunication/delivery.ts. A text
+// message is a channel OnBoard names but has no sender for, so it is marked
+// published once somebody has texted it from elsewhere; offering Send on it
+// only ever ended in a 409.
+//
+// A recorded channel - a road sign, an Avail message - never offers Send, and
+// is NOT refused by a closed Detour, because writing down on Tuesday what went
+// out on Monday is an accurate record rather than a late send. Every other
+// refusal still applies to it (server: eligibility.ts), so the button is
+// disabled with the server's reason instead of failing after the click.
 export interface CommunicationAction {
   canSend: boolean;
+  /** The label on the Send button, when there is one. */
+  sendLabel: string;
   /** Asks for the date it went out before recording. */
   isRecorded: boolean;
   /** The label on the button that marks it done. */
@@ -178,22 +186,48 @@ export interface CommunicationAction {
   blocked?: string;
 }
 
+/** A refusal as the server words it: detourSendBlock's result. */
+export interface SendRefusal { code: string; sentence: string }
+
+// The server's sentences for the two rules that still refuse a recorded
+// channel on a closed Detour, where the Detour-wide refusal says only that it
+// is closed (eligibility.ts SENTENCES - keep in step).
+const RE_REVIEW_SENTENCE = "The reviewed facts changed and have not been re-reviewed, so what this would say may already be wrong. Complete the re-review first.";
+const OVERLAP_SENTENCE = "This detour overlaps another open detour; record an override first, or two communications will describe the same closure differently.";
+
+/** The channels the server can send, and what its Send button says. */
+const SERVER_SENT: Record<string, string> = { email: "Send email", teams: "Post to Teams" };
+
 export function communicationAction(
   communication: Pick<DetourCommunication, "channel" | "recipients" | "status" | "delivery_status">,
   option: DetourChannelOption | undefined,
-  sendBlock: string | undefined,
+  refusal: SendRefusal | null | undefined,
+  detour?: Partial<Pick<Detour, "review_status" | "conflict_status">>,
 ): CommunicationAction {
   const isRecorded = option?.kind === "recorded";
-  const canSend = !isRecorded && (communication.channel === "teams"
-    || ((communication.channel === "email" || communication.channel === "sms") && Boolean(communication.recipients)));
+  const channel = communication.channel.trim().toLowerCase();
+  const serverSends = channel in SERVER_SENT;
+  const canSend = !isRecorded && serverSends && (channel === "teams" || Boolean(communication.recipients));
+  const sentElsewhere = !isRecorded && (canSend || channel === "sms");
   return {
     canSend,
+    sendLabel: communication.status === "failed" ? "Retry send" : SERVER_SENT[channel] ?? "Send",
     isRecorded,
     recordLabel: isRecorded
       ? `Record ${option?.label ?? "it"} went out`
-      : canSend ? "Mark published (sent elsewhere)" : "Mark published",
-    blocked: isRecorded ? undefined : sendBlock,
+      : sentElsewhere ? "Mark published (sent elsewhere)" : "Mark published",
+    blocked: isRecorded ? recordedBlock(refusal, detour) : refusal?.sentence,
   };
+}
+
+// What the server refuses for a recorded channel: everything a sent one is
+// refused for, except a closed Detour and a missing recipient list.
+function recordedBlock(refusal: SendRefusal | null | undefined, detour?: Partial<Pick<Detour, "review_status" | "conflict_status">>): string | undefined {
+  if (!refusal || refusal.code === "no_recipients") return undefined;
+  if (refusal.code !== "detour_closed") return refusal.sentence;
+  if (detour?.review_status === "needs_review") return RE_REVIEW_SENTENCE;
+  if (detour?.conflict_status === "unresolved") return OVERLAP_SENTENCE;
+  return undefined;
 }
 
 /**
@@ -211,9 +245,9 @@ export function copyFrom(
   channel: string,
 ): { content: string; from: string } | null {
   const sameAudience = communications.find((c) => key(c.audience) === key(audience) && key(c.channel) !== key(channel) && c.content.trim());
-  if (sameAudience) return { content: sameAudience.content, from: `${sameAudience.audience} · ${sameAudience.channel}` };
+  if (sameAudience) return { content: sameAudience.content, from: `${sameAudience.audience} · ${detourChannelLabel(sameAudience.channel)}` };
   const sameChannel = communications.find((c) => key(c.channel) === key(channel) && key(c.audience) !== key(audience) && c.content.trim());
-  if (sameChannel) return { content: sameChannel.content, from: `${sameChannel.audience} · ${sameChannel.channel}` };
+  if (sameChannel) return { content: sameChannel.content, from: `${sameChannel.audience} · ${detourChannelLabel(sameChannel.channel)}` };
   return null;
 }
 

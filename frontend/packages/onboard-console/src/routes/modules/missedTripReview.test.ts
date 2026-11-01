@@ -97,23 +97,23 @@ describe("pivotMonthlySummary", () => {
 // rendering a 1253-line page.
 describe("what the console calls a case", () => {
   it("names each detector, and says so honestly when the row predates detection tracking", () => {
-    expect(detectionTypeLabel("explicit_cancellation")).toBe("Explicit cancellation (GTFS-RT)");
-    expect(detectionTypeLabel("silent_no_show")).toBe("Scheduled no-show (never observed)");
-    expect(detectionTypeLabel("spare_multiple")).toBe("Multiple Spare missed-trip conditions");
+    expect(detectionTypeLabel("explicit_cancellation")).toBe("Advance cancellation: cancelled in the realtime feed");
+    expect(detectionTypeLabel("silent_no_show")).toBe("Suspected no-show: no start seen by the 30-minute deadline");
+    expect(detectionTypeLabel("spare_multiple")).toBe("More than one on-demand failure");
     // migration-023 added detection_type; older rows read back null.
     expect(detectionTypeLabel(null)).toBe("Unknown — flagged before detection tracking was added");
   });
 
   it("names the data-quality status, defaulting to legacy rather than guessing", () => {
-    expect(dataQualityLabel("source_verified")).toBe("Source verified");
-    expect(dataQualityLabel("experimental")).toBe("Experimental detector");
+    expect(dataQualityLabel("source_verified")).toBe("From the source's own records");
+    expect(dataQualityLabel("experimental")).toBe("Inferred from missing evidence");
     expect(dataQualityLabel("legacy_unverified")).toBe("Legacy — unverified");
-    expect(dataQualityLabel("unknown_data_gap")).toBe("Legacy — unverified");
+    expect(dataQualityLabel("unknown_data_gap")).toBe("Raised while the vehicle data had a gap");
   });
 
   it("names the source system", () => {
     expect(sourceLabel("spare")).toBe("Spare");
-    expect(sourceLabel("gtfs")).toBe("GTFS-Realtime");
+    expect(sourceLabel("gtfs")).toBe("GTFS-realtime");
   });
 });
 
@@ -327,9 +327,9 @@ describe("missed-trip start evidence", () => {
     expect(f["Started"].value).toBe("22:49 · 19 min late · inside the 30 minutes");
     expect(f["Started"].tone).toBe("good");
     expect(f["Dispatch Log departure"].value).toBe("22:49");
-    expect(f["Bus on this trip"].value).toBe("Bus 4265 reported from 22:20, under way 23:09");
+    expect(f["Bus on this trip"].value).toBe("Bus 4265 signed in 22:20, passed the first stop 23:09");
     expect(f["Block"].value).toBe("Block b14C: a bus reported on 8 of 9 trips");
-    expect(f["First stop"].value).toBe("Savage Park & Ride · 26 of 26 other no-shows here turned out to have run");
+    expect(f["First stop"].value).toBe("Savage Park & Ride · 26 of the 26 other no-shows here ran (100%)");
     expect(f["First stop"].note).toBe("Likely GPS dead zone — buses here often go quiet without missing the trip.");
   });
 
@@ -340,7 +340,7 @@ describe("missed-trip start evidence", () => {
     expect(reading("schedule_repeated")).toBe("Not a departure: only the schedule (22:30) was repeated");
     expect(reading("prediction_only")).toBe("Not a departure: only a prediction (22:30) was kept");
     expect(reading("no_vehicle")).toBe("Not a departure: 22:30 was logged, but no bus reported on the trip");
-    expect(reading("position_fallback")).toBe("Not recorded from the trip update");
+    expect(reading("position_fallback")).toBe("Not a departure: the Dispatch Log time came from bus positions, not the departure feed");
     expect(reading("not_recorded")).toBe("Not recorded");
   });
 
@@ -367,7 +367,7 @@ describe("missed-trip start evidence", () => {
 
   it("a bus that reported but never got going says so", () => {
     expect(facts({ ...evidence, vehicle: { reported_at: "2026-10-16T22:20:00.000Z", underway_at: null, vehicle_id: null } })["Bus on this trip"].value)
-      .toBe("A bus reported from 22:20, never shown under way");
+      .toBe("A bus signed in 22:20, never seen past the first stop");
   });
 
   it("a stop's record is only a warning when it says so, and absent rows are left out", () => {
