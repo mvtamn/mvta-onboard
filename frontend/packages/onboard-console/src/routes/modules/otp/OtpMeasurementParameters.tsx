@@ -142,11 +142,15 @@ function RepullList({
     setBusy(month);
     setError(null);
     try {
-      const result = await api.runOtpHistoricalBackfill({ month });
-      if (result.otp_monthly.error) {
+      // Only the OTP phase: a re-pull is about this month's OTP figures, and
+      // waiting on a Missed Trips reload it never asked for is what used to
+      // time this request out at the gateway and report a completed re-pull
+      // as a failure (dev 2026-10-28, 202605 and 202606).
+      const result = await api.runOtpHistoricalBackfill({ month, phase: "otp_monthly" });
+      if (result.otp_monthly?.error) {
         setError(`${month}: ${result.otp_monthly.error}`);
       } else {
-        setDone((d) => ({ ...d, [month]: `${result.otp_monthly.upserted} rows re-pulled` }));
+        setDone((d) => ({ ...d, [month]: `${result.otp_monthly?.upserted ?? 0} rows re-pulled` }));
         onChanged();
       }
     } catch (err) {
