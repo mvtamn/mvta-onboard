@@ -63,6 +63,8 @@ app.timer("otpDailyFeedPoll", {
 
       const stampReady = await dailyMeasurementStampReady(pool);
       let upsertedCount = 0;
+      let duplicateKeys = 0;
+      const keysSeen = new Set<string>();
       const storedByDate = new Map<string, number>();
       for (const report of reports) {
         let mapped;
@@ -73,6 +75,26 @@ app.timer("otpDailyFeedPoll", {
           continue;
         }
         if (!mapped) continue;
+
+        // The monthly feed's key turned out not to be unique in Avail's own
+        // delivery: for 2026-03 it sent 27 keys twice and each write overwrote
+        // the other silently (see lib/otpMonthlyFeed.ts). This table's key has
+        // held - 2,104 to 2,127 records a day, every one a distinct key on dev
+        // 2026-10-30 - and it has a discriminator the monthly feed lacks
+        // (direction, migration 123), so these records are not summed. But the
+        // check that would have caught the monthly collapse years earlier costs
+        // a Set, so it is here: if this ever fires, a row is being overwritten
+        // and the figures it carried are gone.
+        const key = `${mapped.calendar_date}|${mapped.route_id}|${mapped.stop_id}|${mapped.hour_of_day}|${mapped.direction ?? ""}`;
+        if (keysSeen.has(key)) {
+          duplicateKeys++;
+          context.warn(
+            `Avail OTP Daily poll: ${mapped.calendar_date} route ${mapped.route_id} stop ${mapped.stop_id} ` +
+              `hour ${mapped.hour_of_day} direction ${mapped.direction ?? "none"} arrived more than once ` +
+              `(total=${mapped.total ?? "null"}/ontime=${mapped.ontime ?? "null"}); the earlier record is being overwritten.`,
+          );
+        }
+        keysSeen.add(key);
 
         try {
           await upsertOtpDailyReport(pool, mapped, { measurementParameters: parameters.segments, stampReady });
@@ -95,7 +117,9 @@ app.timer("otpDailyFeedPoll", {
 
       const perDay = window.serviceDates.map((date) => `${date}=${storedByDate.get(date) ?? 0}`).join(", ");
       context.log(
-        `Avail OTP Daily poll: ${reports.length} reports seen, ${upsertedCount} rows upserted (${perDay}), ${purgedCount} old rows purged.`,
+        `Avail OTP Daily poll: ${reports.length} reports seen, ${keysSeen.size} keys` +
+          `${duplicateKeys > 0 ? ` (${duplicateKeys} records collided on a key already seen)` : ""}, ` +
+          `${upsertedCount} rows upserted (${perDay}), ${purgedCount} old rows purged.`,
       );
       // MVTA runs service every day, so a completed day with nothing in it is
       // Avail not having published it yet, not a quiet day. The next run

@@ -96,6 +96,22 @@ export function mapMissedTripReport(report: AvailMissedTripReport): MappedMissed
 // reuse the identical replace instead of duplicating it. Same
 // no-natural-key situation as the daily poller - safe and idempotent to
 // re-run for months already backfilled.
+//
+// One bulk load per call, not one INSERT per row. The row-at-a-time loop
+// this replaces is what made a three-month reload take 15+ minutes: every
+// row cost a full round trip to Azure SQL, and a month of missed trips runs
+// to thousands of them. That slowness was not merely slow - it timed the
+// admin backfill's HTTP request out at the gateway mid-reload, so a run
+// whose OTP half had already been written in full reported failure with a
+// zero row count (observed on dev 2026-10-28 for 202605 and 202606). Same
+// `sql.Table` + `.bulk()` shape as predictionAccuracy/store.ts and
+// gtfsStopsSync.ts, still inside the one transaction, so a killed request
+// still rolls the whole month back rather than leaving it half-reloaded.
+//
+// Column names, order and lengths are migration-015-avail-missed-trips.sql's.
+// `id` (IDENTITY) and `ingested_at` (DEFAULT SYSUTCDATETIME()) are left out
+// of the column list so the server fills them exactly as it did for the
+// row-by-row inserts.
 export async function replaceMissedTripsForMonths(
   pool: sql.ConnectionPool,
   targetMonths: string[],
@@ -110,34 +126,38 @@ export async function replaceMissedTripsForMonths(
       await deleteReq.query("DELETE FROM AvailMissedTripsRouteStopDay WHERE service_month = @service_month");
     }
 
+    const table = new sql.Table("AvailMissedTripsRouteStopDay");
+    table.columns.add("service_month", sql.Char(6), { nullable: false });
+    table.columns.add("calendar_date", sql.Char(8), { nullable: false });
+    table.columns.add("route_id", sql.Int, { nullable: false });
+    table.columns.add("route_desc", sql.NVarChar(200), { nullable: true });
+    table.columns.add("route_internet_name", sql.NVarChar(200), { nullable: true });
+    table.columns.add("departure_stop_id", sql.Int, { nullable: true });
+    table.columns.add("departure_stop_name", sql.NVarChar(200), { nullable: true });
+    table.columns.add("arrival_stop_id", sql.Int, { nullable: true });
+    table.columns.add("arrival_stop_name", sql.NVarChar(200), { nullable: true });
+    table.columns.add("departure_missed", sql.Bit, { nullable: false });
+    table.columns.add("arrival_missed", sql.Bit, { nullable: false });
+    table.columns.add("entire_trip_missed", sql.Bit, { nullable: false });
+    table.columns.add("departure_trip_start_time", sql.DateTime2, { nullable: true });
     for (const m of mapped) {
-      const insertReq = new sql.Request(tx);
-      insertReq.input("service_month", sql.Char(6), m.service_month);
-      insertReq.input("calendar_date", sql.Char(8), m.calendar_date);
-      insertReq.input("route_id", sql.Int, m.route_id);
-      insertReq.input("route_desc", sql.NVarChar, m.route_desc);
-      insertReq.input("route_internet_name", sql.NVarChar, m.route_internet_name);
-      insertReq.input("departure_stop_id", sql.Int, m.departure_stop_id);
-      insertReq.input("departure_stop_name", sql.NVarChar, m.departure_stop_name);
-      insertReq.input("arrival_stop_id", sql.Int, m.arrival_stop_id);
-      insertReq.input("arrival_stop_name", sql.NVarChar, m.arrival_stop_name);
-      insertReq.input("departure_missed", sql.Bit, m.departure_missed);
-      insertReq.input("arrival_missed", sql.Bit, m.arrival_missed);
-      insertReq.input("entire_trip_missed", sql.Bit, m.entire_trip_missed);
-      insertReq.input("departure_trip_start_time", sql.DateTime2, m.departure_trip_start_time);
-      await insertReq.query(`
-        INSERT INTO AvailMissedTripsRouteStopDay (
-          service_month, calendar_date, route_id, route_desc, route_internet_name,
-          departure_stop_id, departure_stop_name, arrival_stop_id, arrival_stop_name,
-          departure_missed, arrival_missed, entire_trip_missed, departure_trip_start_time
-        )
-        VALUES (
-          @service_month, @calendar_date, @route_id, @route_desc, @route_internet_name,
-          @departure_stop_id, @departure_stop_name, @arrival_stop_id, @arrival_stop_name,
-          @departure_missed, @arrival_missed, @entire_trip_missed, @departure_trip_start_time
-        )
-      `);
+      table.rows.add(
+        m.service_month,
+        m.calendar_date,
+        m.route_id,
+        m.route_desc,
+        m.route_internet_name,
+        m.departure_stop_id,
+        m.departure_stop_name,
+        m.arrival_stop_id,
+        m.arrival_stop_name,
+        m.departure_missed,
+        m.arrival_missed,
+        m.entire_trip_missed,
+        m.departure_trip_start_time,
+      );
     }
+    if (mapped.length > 0) await new sql.Request(tx).bulk(table);
 
     await tx.commit();
   } catch (err) {

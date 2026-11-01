@@ -21,12 +21,15 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { availConfig, fetchAvail } from "../lib/availClient";
 import {
+  collapseOtpMonthlyReports,
+  describeOtpMonthlyCollision,
   mapOtpMonthlyReport,
   measurementStampReady,
   restatementLedgerReady,
   serviceMonthOf,
   subtractMonths,
   upsertOtpMonthlyReport,
+  type OtpMonthlyCandidate,
 } from "../lib/otpMonthlyFeed";
 import { readParametersInForce } from "../lib/otpMeasurementParameters";
 import { runFeedIngestion } from "../lib/feedRun";
@@ -77,7 +80,7 @@ app.timer("otpMonthlyFeedPoll", {
           continue;
         }
 
-        let upsertedCount = 0;
+        const candidates: OtpMonthlyCandidate[] = [];
         for (const report of reports) {
           let mapped;
           try {
@@ -87,23 +90,45 @@ app.timer("otpMonthlyFeedPoll", {
             continue;
           }
           if (!mapped) continue;
+          candidates.push({ mapped, source: report });
+        }
 
+        // Avail sends more than one record per key when a month holds more than
+        // one schedule pattern, and the MERGE's key cannot tell them apart.
+        // Collapsing first is what stops the second write overwriting the
+        // first; reporting it is what stops that being invisible.
+        const { rows, collisions } = collapseOtpMonthlyReports(candidates);
+        for (const collision of collisions) {
+          context.warn(`Avail OTP Monthly poll: ${describeOtpMonthlyCollision(collision)}`);
+        }
+
+        let upsertedCount = 0;
+        let accountedReports = 0;
+        for (const { row, recordCount } of rows) {
           try {
-            await upsertOtpMonthlyReport(pool, mapped, {
+            await upsertOtpMonthlyReport(pool, row, {
               ledgerReady,
               currentServiceMonth,
               measurementParameters: parameters.segments,
               stampReady,
             });
             upsertedCount++;
+            accountedReports += recordCount;
           } catch (err) {
-            context.error(`Failed to upsert Avail OTP Monthly report for route ${mapped.route_id}/stop ${mapped.stop_id}:`, err);
+            context.error(`Failed to upsert Avail OTP Monthly report for route ${row.route_id}/stop ${row.stop_id}:`, err);
           }
         }
 
-        context.log(`Avail OTP Monthly poll: ${reports.length} reports seen, ${upsertedCount} rows upserted for ${serviceMonth}.`);
+        context.log(
+          `Avail OTP Monthly poll: ${reports.length} reports seen, ${rows.length} keys` +
+            `${collisions.length > 0 ? ` (${collisions.length} keys carried more than one record)` : ""}, ` +
+            `${upsertedCount} rows upserted for ${serviceMonth}.`,
+        );
         receivedReports += reports.length;
-        storedReports += upsertedCount;
+        // What the table represents, not how many rows it took: a summed pair
+        // is two records stored, or feed health would read a collapse as two
+        // records sent and one kept (`feedHealthOutcome`).
+        storedReports += accountedReports;
       }
       if (failedMonths.length > 0) {
         return {

@@ -336,3 +336,222 @@ export function monthsBetween(fromYyyymm: string, toYyyymm: string): string[] {
   }
   return months;
 }
+
+// ---------------------------------------------------------------------------
+// Two records, one key
+// ---------------------------------------------------------------------------
+//
+// The MERGE above is keyed on (service_month, route_id, stop_id, day_of_week),
+// and Avail does not guarantee one record per key. For 2026-03 it sent 1,108
+// records carrying 1,081 distinct keys: 27 keys arrived twice, each write
+// overwrote the other, and the poll still reported "1108 reports seen, 1108
+// rows upserted" because every overwrite is a successful upsert. 855 departures
+// and 805 on-time departures were dropped on the floor, and nothing said so.
+//
+// What the pairs are, established on dev 2026-10-30: they partition the month.
+// Route 425 at stop 30435 came back as 28 and 41 Monday departures; the same
+// route's other side of that intersection (stop 30451, one record) reports 70.
+// Route 497 at stop 31768 came back as 30 and 48; the terminal every one of
+// those trips passes (31723) reports 78. Across all 27 keys the two values sum
+// to the neighbouring stop's own total, day by day, and the split follows the
+// count of each weekday before and after about 18 March - three Mondays and two
+// Mondays, two Wednesdays and two Wednesdays - which is what a mid-month
+// schedule change looks like when the month is aggregated per day of week.
+//
+// So the month's figure is the SUM of the records sharing a key, and that is
+// what is stored. Keying on a discriminator instead would be preferable, except
+// that the operation's published record shape (OTP-Feed-Evaluation-and-
+// Recommendation.md) carries nothing to key on - no direction, no pattern, no
+// effective date - which is why `describeOtpMonthlyCollision` names the raw
+// fields that actually differ between the records. If a future collision turns
+// out to differ by a field we do not map, that log line says so, and widening
+// the key the way migration 123 widened the daily table's becomes the better
+// fix.
+//
+// Two records identical in their counts are not summed. Identical records carry
+// no new information, and summing them would double a figure to describe a
+// delivery artefact; one is kept and the collision is still reported.
+
+const COUNT_FIELDS = ["early", "ontime", "late", "missed", "actual_departures", "total"] as const;
+const PERCENT_FIELDS = ["pct_early", "pct_ontime", "pct_late", "pct_not_ontime", "pct_missed"] as const;
+
+export type OtpMonthlyCollisionResolution = "summed" | "deduplicated";
+
+export interface OtpMonthlyCollision {
+  service_month: string;
+  route_id: number;
+  stop_id: number;
+  day_of_week: string;
+  resolution: OtpMonthlyCollisionResolution;
+  /** The records that shared the key, in delivery order. */
+  records: MappedOtpMonthlyReport[];
+  /** The raw reports they were mapped from, where the caller supplied them. */
+  sources: OtpMonthlyReport[];
+}
+
+export interface OtpMonthlyCandidate {
+  mapped: MappedOtpMonthlyReport;
+  /**
+   * The record as Avail sent it. Optional only so a caller that has already
+   * discarded it can still collapse; supplying it is what lets a collision
+   * report name an unmapped discriminator.
+   */
+  source?: OtpMonthlyReport;
+}
+
+export interface OtpMonthlyCollapsedRow {
+  row: MappedOtpMonthlyReport;
+  /**
+   * How many delivered records this row accounts for. The caller adds these up
+   * rather than counting rows, so feed health compares what Avail sent with
+   * what is represented in the table - otherwise a collapsed pair reads as a
+   * record that went missing (`feedHealthOutcome`).
+   */
+  recordCount: number;
+}
+
+function keyOf(row: MappedOtpMonthlyReport): string {
+  return `${row.service_month}|${row.route_id}|${row.stop_id}|${row.day_of_week}`;
+}
+
+/** Sum of the present values, or null when every record left it null. */
+function sumOrNull(values: (number | null)[]): number | null {
+  const present = values.filter((value): value is number => value !== null);
+  return present.length === 0 ? null : present.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * The aggregate of a percentage over records of different sizes: each one
+ * weighted by its own Total.
+ *
+ * Avail's percentages are all ratios over Total (`PercentOntime` 47/172 in the
+ * specification's own example), so weighting by Total reproduces
+ * (c1 + c2) / (t1 + t2) exactly - without this file having to assert what each
+ * numerator is. `PercentNotOntime` in particular is not early + late, and
+ * guessing its identity to recompute it would be a guess stored as a figure.
+ */
+function weightedPercent(records: MappedOtpMonthlyReport[], field: (typeof PERCENT_FIELDS)[number]): number | null {
+  let weight = 0;
+  let weighted = 0;
+  for (const record of records) {
+    const value = record[field];
+    if (value === null || record.total === null || record.total <= 0) continue;
+    weight += record.total;
+    weighted += value * record.total;
+  }
+  if (weight > 0) return weighted / weight;
+  // No record had a total to weight by. There is nothing to average, so the
+  // first stated percentage stands rather than becoming a 0 nobody sent.
+  return records.find((record) => record[field] !== null)?.[field] ?? null;
+}
+
+function sameCounts(a: MappedOtpMonthlyReport, b: MappedOtpMonthlyReport): boolean {
+  return COUNT_FIELDS.every((field) => a[field] === b[field]);
+}
+
+function combine(records: MappedOtpMonthlyReport[]): MappedOtpMonthlyReport {
+  const [first] = records;
+  const combined: MappedOtpMonthlyReport = {
+    ...first,
+    // The label and the name are properties of the route and the stop, not of
+    // the half-month: the first record that states one states it for the key.
+    stop_name: records.find((record) => record.stop_name !== null)?.stop_name ?? null,
+    route_label: records.find((record) => record.route_label !== null)?.route_label ?? null,
+  };
+  for (const field of COUNT_FIELDS) combined[field] = sumOrNull(records.map((record) => record[field]));
+  for (const field of PERCENT_FIELDS) combined[field] = weightedPercent(records, field);
+  return combined;
+}
+
+/**
+ * One row per key, with the records that shared a key summed, and a report of
+ * every key that had more than one.
+ *
+ * Delivery order is preserved, so a month's rows go to the database in the
+ * order Avail sent them.
+ */
+export function collapseOtpMonthlyReports(
+  candidates: OtpMonthlyCandidate[],
+): { rows: OtpMonthlyCollapsedRow[]; collisions: OtpMonthlyCollision[] } {
+  const order: string[] = [];
+  const grouped = new Map<string, OtpMonthlyCandidate[]>();
+  for (const candidate of candidates) {
+    const key = keyOf(candidate.mapped);
+    const group = grouped.get(key);
+    if (group) {
+      group.push(candidate);
+      continue;
+    }
+    grouped.set(key, [candidate]);
+    order.push(key);
+  }
+
+  const rows: OtpMonthlyCollapsedRow[] = [];
+  const collisions: OtpMonthlyCollision[] = [];
+  for (const key of order) {
+    const group = grouped.get(key)!;
+    const records = group.map((candidate) => candidate.mapped);
+    if (records.length === 1) {
+      rows.push({ row: records[0], recordCount: 1 });
+      continue;
+    }
+    // Identical counts are a repeat of one figure, not two halves of a month.
+    const distinct = records.filter(
+      (record, index) => records.findIndex((other) => sameCounts(record, other)) === index,
+    );
+    const resolution: OtpMonthlyCollisionResolution = distinct.length === 1 ? "deduplicated" : "summed";
+    rows.push({
+      row: resolution === "deduplicated" ? records[0] : combine(records),
+      recordCount: records.length,
+    });
+    collisions.push({
+      service_month: records[0].service_month,
+      route_id: records[0].route_id,
+      stop_id: records[0].stop_id,
+      day_of_week: records[0].day_of_week,
+      resolution,
+      records,
+      sources: group.map((candidate) => candidate.source).filter((source): source is OtpMonthlyReport => !!source),
+    });
+  }
+  return { rows, collisions };
+}
+
+/**
+ * A collision as one log line: what shared the key, what each record said, and
+ * which raw fields differ between them.
+ *
+ * The differing fields are the point. Avail's own record shape has nothing to
+ * key on, so this is the only way to find out whether a future collision is
+ * distinguishable without shipping another build to look - if a field we do not
+ * map ever turns up here, widening the key becomes possible. Route ids, stop
+ * ids and departure counts only: no PII to leak into App Insights.
+ */
+export function describeOtpMonthlyCollision(collision: OtpMonthlyCollision): string {
+  const { service_month, route_id, stop_id, day_of_week, records, resolution, sources } = collision;
+  const said = records
+    .map((record) => `total=${record.total ?? "null"}/ontime=${record.ontime ?? "null"}`)
+    .join(" vs ");
+  // Read as a bag of fields, not as OtpMonthlyReport: a field nobody mapped is
+  // precisely the one worth naming here.
+  const raw = sources as unknown as Record<string, unknown>[];
+  // "absent" rather than an empty string: JSON.stringify(undefined) is not a
+  // string at all, and a field one record carries and the other does not is the
+  // most interesting difference there is.
+  const shown = (source: Record<string, unknown>, field: string) =>
+    field in source && source[field] !== undefined ? JSON.stringify(source[field]) : "absent";
+  const fields = new Set(raw.flatMap((source) => Object.keys(source)));
+  const differing = [...fields]
+    .map((field) => ({ field, values: raw.map((source) => shown(source, field)) }))
+    .filter(({ values }) => values.some((value) => value !== values[0]))
+    .map(({ field, values }) => `${field}=${values.join("|")}`);
+  const discriminator = sources.length === 0
+    ? "raw records not retained"
+    : differing.length === 0
+      ? "no field differs"
+      : `differing fields: ${differing.join(", ")}`;
+  return (
+    `${service_month} route ${route_id} stop ${stop_id} ${day_of_week}: ` +
+    `${records.length} records on one key (${said}), ${resolution}; ${discriminator}`
+  );
+}

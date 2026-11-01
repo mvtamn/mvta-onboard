@@ -11,6 +11,7 @@ import type {
   ActiveMessage,
   AdminMessage,
   AppSettingRow,
+  MissedTripDeadZones,
   AssessmentPeriod,
   AvailAvlVehicle,
   AvailMissedTripRecord,
@@ -140,6 +141,11 @@ import type {
   DetectorPromotionEntry,
   DetectorPromotionInput,
   DetectorPromotionView,
+  RidershipBlockGarageList,
+  RidershipBlockGarageSave,
+  RidershipSheet,
+  RidershipSheetSave,
+  RidershipWorklist,
   DetectorScorecard,
   DetectorScorecardGrouping,
 } from "./types.js";
@@ -1263,10 +1269,43 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
+    // Ridership counting (ADR 0043). Service dates are YYYYMMDD; blocks as the sheet prints them ("024").
+    getRidershipWorklist(query: { from?: string; to?: string } = {}) {
+      const params = new URLSearchParams();
+      if (query.from) params.set("from", query.from);
+      if (query.to) params.set("to", query.to);
+      const search = params.toString();
+      return request<RidershipWorklist>(`/api/ridership/worklist${search ? `?${search}` : ""}`, {}, true);
+    },
+
+    getRidershipSheet(serviceDate: string, block: string) {
+      return request<RidershipSheet>(`/api/ridership/sheets/${encodeURIComponent(serviceDate)}/${encodeURIComponent(block)}`, {}, true);
+    },
+
+    /** 409 when someone saved the sheet after `version`; 400 with `details` for what is missing. */
+    saveRidershipSheet(serviceDate: string, block: string, save: RidershipSheetSave) {
+      return request<RidershipSheet & { changes: number }>(
+        `/api/ridership/sheets/${encodeURIComponent(serviceDate)}/${encodeURIComponent(block)}`,
+        { method: "PUT", body: JSON.stringify(save) },
+        true,
+      );
+    },
+
+    getRidershipBlockGarages() {
+      return request<RidershipBlockGarageList>("/api/ridership/block-garages", {}, true);
+    },
+
+    saveRidershipBlockGarages(save: RidershipBlockGarageSave) {
+      return request<RidershipBlockGarageList>("/api/ridership/block-garages", { method: "PUT", body: JSON.stringify(save) }, true);
+    },
+
     getMissedTripDetectorPromotions() {
       return request<DetectorPromotionView>("/api/missed-trip-detector-promotions", {}, true);
     },
 
+    getMissedTripDeadZones() {
+      return request<MissedTripDeadZones>("/api/missed-trip-dead-zones", {}, true);
+    },
     getMissedTripDetectorScorecard(query: { from?: string; to?: string; group?: DetectorScorecardGrouping } = {}) {
       const params = new URLSearchParams();
       if (query.from) params.set("from", query.from);
