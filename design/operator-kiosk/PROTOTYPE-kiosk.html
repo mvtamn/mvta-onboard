@@ -1,0 +1,695 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Not production code, not wired to any API.
+  Question: what should the operator kiosk look like and feel like to use,
+  end to end, per plans/operator-kiosk-module-shell.md?
+  Three Home layouts, switchable with ?variant=A|B|C or the bottom bar
+  (or the arrow keys). Everything else (sign-in, Ridership, Detours,
+  Messages) is shared. All names, logon IDs and PINs are invented.
+  Run: open this file in a browser. Best at 1280x800 (a 10" tablet, landscape).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operator Kiosk Prototype</title>
+<style>
+  :root {
+    --page-bg:#edebe4; --surface:#fff; --surface-alt:#f6f5f1; --border:#ddd; --border-strong:#ccc;
+    --text:#2c2c2a; --text-dim:#4f4f4f; --text-muted:#76766e;
+    --green:#00553d; --green-hover:#003d2c; --green-soft:#dcede6;
+    --warn-bg:#fcefd8; --warn-fg:#7a4a00; --danger-bg:#fbe0e0; --danger-fg:#8a1f1f;
+    --accent-bg:#dceaf8; --accent-fg:#0b4c82; --success-bg:#e3f0d4; --success-fg:#33530f;
+    --muted-bg:#ececea;
+  }
+  html { font-size:16px; } html.large { font-size:19px; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--page-bg); color:var(--text);
+    font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; -webkit-tap-highlight-color:transparent;
+    user-select:none; }
+  button { font:inherit; color:inherit; cursor:pointer; border:0; background:none; }
+  #app { min-height:100vh; display:flex; flex-direction:column; }
+
+  /* ---------- header ---------- */
+  .hdr { background:var(--green); color:#fff; display:flex; align-items:center; gap:1.25rem;
+    padding:.7rem 1.25rem; min-height:4rem; }
+  .hdr .where { font-weight:700; font-size:1.05rem; }
+  .hdr .when { opacity:.85; font-size:1rem; }
+  .hdr .who { margin-left:auto; text-align:right; line-height:1.25; }
+  .hdr .who b { font-size:1.05rem; } .hdr .who small { display:block; opacity:.85; font-size:.85rem; }
+  .hbtn { background:rgba(255,255,255,.14); color:#fff; border-radius:.6rem; padding:.7rem 1.1rem;
+    font-weight:700; min-height:3rem; font-size:1rem; }
+  .hbtn:active { background:rgba(255,255,255,.28); }
+  .hbtn.solid { background:#fff; color:var(--green); }
+  .notyou { background:var(--warn-bg); color:var(--warn-fg); padding:.55rem 1.25rem; font-size:.95rem;
+    display:flex; gap:1rem; align-items:center; }
+  .notyou button { text-decoration:underline; font-weight:700; color:var(--warn-fg); }
+
+  main { flex:1; padding:1.25rem; display:flex; flex-direction:column; gap:1rem; }
+  .eyebrow { color:var(--green); font-size:.78rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+  h1 { font-size:1.6rem; margin:0; } h2 { font-size:1.2rem; margin:0; }
+  .muted { color:var(--text-muted); } .dim { color:var(--text-dim); }
+
+  /* ---------- sign-in ---------- */
+  .signin { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:2rem; padding:2rem 3rem; align-items:center; }
+  .signin .left h1 { font-size:2.4rem; line-height:1.1; }
+  .signin .left p { font-size:1.15rem; color:var(--text-dim); line-height:1.5; }
+  .badge-hint { margin-top:1.5rem; display:flex; gap:1rem; align-items:center; padding:1rem 1.25rem;
+    border:2px dashed var(--border-strong); border-radius:1rem; background:var(--surface); }
+  .badge-hint .nfc { width:3.2rem; height:3.2rem; border-radius:50%; background:var(--green-soft);
+    display:grid; place-items:center; font-size:1.6rem; flex:none; }
+  .entry { background:var(--surface); border-radius:1.25rem; padding:1.5rem; box-shadow:0 2px 10px rgba(0,0,0,.06); }
+  .entry .label { font-weight:700; font-size:1.1rem; margin-bottom:.6rem; }
+  .dots { display:flex; gap:.6rem; justify-content:center; margin:.5rem 0 1.1rem; min-height:3.2rem; align-items:center; }
+  .dots i { width:1.1rem; height:1.1rem; border-radius:50%; border:2px solid var(--border-strong); }
+  .dots i.on { background:var(--green); border-color:var(--green); }
+  .idshow { font-size:2.4rem; font-weight:800; letter-spacing:.3em; text-align:center; min-height:3.2rem; margin:.5rem 0 1.1rem; }
+  .err { background:var(--danger-bg); color:var(--danger-fg); border-radius:.6rem; padding:.7rem 1rem; margin-bottom:.8rem; font-weight:600; }
+  .note { background:var(--accent-bg); color:var(--accent-fg); border-radius:.6rem; padding:.7rem 1rem; margin-bottom:.8rem; }
+
+  /* ---------- number pad ---------- */
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; }
+  .pad button { background:var(--surface-alt); border:1px solid var(--border); border-radius:.8rem;
+    min-height:4.2rem; font-size:1.7rem; font-weight:700; }
+  .pad button:active { background:var(--green-soft); }
+  .pad button.wide { grid-column:span 2; }
+  .pad button.go { background:var(--green); color:#fff; border-color:var(--green); font-size:1.2rem; }
+  .pad button.go:disabled { opacity:.35; }
+  .pad button.fn { font-size:1.05rem; }
+
+  /* ---------- shared bits ---------- */
+  .btn { background:var(--green); color:#fff; border-radius:.75rem; padding:.9rem 1.4rem; font-weight:700;
+    font-size:1.1rem; min-height:3.5rem; }
+  .btn:active { background:var(--green-hover); }
+  .btn.ghost { background:var(--surface); color:var(--green); border:2px solid var(--green); }
+  .btn.big { font-size:1.3rem; min-height:4.5rem; padding:1rem 2rem; }
+  .card { background:var(--surface); border-radius:1rem; border:1px solid var(--border); }
+  .pill { display:inline-block; border-radius:99px; padding:.15rem .65rem; font-size:.8rem; font-weight:800;
+    letter-spacing:.03em; text-transform:uppercase; }
+  .p-imp { background:var(--danger-bg); color:var(--danger-fg); }
+  .p-you { background:var(--accent-bg); color:var(--accent-fg); }
+  .p-ok  { background:var(--success-bg); color:var(--success-fg); }
+  .p-mut { background:var(--muted-bg); color:var(--text-dim); }
+  .p-warn{ background:var(--warn-bg); color:var(--warn-fg); }
+  .topbar { display:flex; align-items:center; gap:1rem; }
+  .topbar h1 { flex:1; }
+
+  /* For-you rows */
+  .fy { display:flex; flex-direction:column; }
+  .fy-row { display:flex; align-items:center; gap:1rem; padding:.95rem 1.1rem; border-top:1px solid var(--border);
+    text-align:left; width:100%; min-height:4rem; }
+  .fy-row:first-child { border-top:0; }
+  .fy-row:active { background:var(--surface-alt); }
+  .fy-row .t { flex:1; } .fy-row .t b { display:block; font-size:1.05rem; } .fy-row .t span { color:var(--text-dim); font-size:.95rem; }
+  .fy-row .ack { background:var(--green); color:#fff; border-radius:.6rem; padding:.7rem 1.3rem; font-weight:800; min-height:3rem; }
+  .fy-row.unread b::before { content:""; display:inline-block; width:.6rem; height:.6rem; border-radius:50%;
+    background:var(--accent-fg); margin-right:.5rem; vertical-align:middle; }
+  .fy-head { display:flex; justify-content:space-between; align-items:center; padding:.9rem 1.1rem .4rem; }
+  .fy-head button { color:var(--green); font-weight:700; padding:.4rem; }
+  .empty { padding:1rem 1.1rem; color:var(--text-muted); }
+
+  /* ---------- variant A: feed + tile grid ---------- */
+  .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; }
+  .tile { background:var(--surface); border:1px solid var(--border); border-radius:1rem; padding:1.3rem;
+    text-align:left; min-height:9rem; display:flex; flex-direction:column; gap:.5rem; }
+  .tile:active { background:var(--surface-alt); }
+  .tile .ic { font-size:2rem; } .tile b { font-size:1.25rem; } .tile span { color:var(--text-dim); font-size:1rem; }
+  .tile .st { margin-top:auto; font-weight:700; color:var(--green); }
+
+  /* ---------- variant B: split rail ---------- */
+  .split { flex:1; display:grid; grid-template-columns:minmax(0,5fr) minmax(0,6fr); gap:1rem; }
+  .split .rail { display:flex; flex-direction:column; overflow:auto; }
+  .bigtiles { display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:1fr; gap:1rem; }
+  .bigtiles .tile { min-height:11rem; padding:1.5rem; }
+  .bigtiles .tile .ic { font-size:2.6rem; }
+  .bigtiles .tile b { font-size:1.45rem; }
+
+  /* ---------- variant C: next action first ---------- */
+  .blocker { background:var(--danger-bg); border:2px solid var(--danger-fg); color:var(--danger-fg); border-radius:1rem;
+    padding:1.1rem 1.3rem; display:flex; gap:1rem; align-items:center; }
+  .blocker .t { flex:1; } .blocker b { font-size:1.15rem; display:block; } .blocker span { color:var(--text); }
+  .hero { background:var(--green); color:#fff; border-radius:1.25rem; padding:1.75rem 2rem; display:flex; align-items:center;
+    gap:2rem; text-align:left; width:100%; }
+  .hero:active { background:var(--green-hover); }
+  .hero .t { flex:1; } .hero .t small { opacity:.85; font-size:1rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .hero .t b { display:block; font-size:2rem; margin:.3rem 0; } .hero .t span { opacity:.9; font-size:1.1rem; }
+  .hero .go { background:#fff; color:var(--green); border-radius:.9rem; padding:1.1rem 1.8rem; font-weight:800; font-size:1.3rem; }
+  .hero.done { background:var(--success-bg); color:var(--success-fg); } .hero.done .go { display:none; }
+  .strip { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(16rem,1fr); gap:1rem; overflow-x:auto; }
+  .strip .card { padding:1rem 1.1rem; text-align:left; display:flex; flex-direction:column; gap:.4rem; min-height:7rem; }
+  .strip .card .pill { align-self:flex-start; }
+  main { padding-bottom:4.5rem; } /* clear the prototype bar */
+  .strip .card b { font-size:1.05rem; } .strip .card span { color:var(--text-dim); font-size:.95rem; }
+  .dock { margin-top:auto; display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:.75rem; }
+  .dock button { background:var(--surface); border:1px solid var(--border); border-radius:1rem; padding:1rem;
+    display:flex; align-items:center; gap:.8rem; min-height:5rem; text-align:left; }
+  .dock button .ic { font-size:1.8rem; } .dock button b { display:block; font-size:1.1rem; } .dock button span { color:var(--text-dim); font-size:.9rem; }
+  .dock .badge { margin-left:auto; background:var(--accent-fg); color:#fff; border-radius:99px; min-width:1.8rem; height:1.8rem;
+    display:grid; place-items:center; font-weight:800; font-size:.9rem; padding:0 .5rem; }
+
+  /* ---------- ridership ---------- */
+  .runs { display:flex; flex-direction:column; gap:.75rem; }
+  .run { display:flex; align-items:center; gap:1.25rem; padding:1.1rem 1.3rem; text-align:left; width:100%; min-height:5rem; }
+  .run:active { background:var(--surface-alt); }
+  .run .no { font-size:1.8rem; font-weight:800; min-width:6rem; }
+  .run .t { flex:1; } .run .t span { color:var(--text-dim); }
+  .entrygrid { flex:1; display:grid; grid-template-columns:minmax(0,1fr) 20rem; gap:1rem; align-items:start; }
+  .trips { overflow:hidden; }
+  .trip { display:grid; grid-template-columns:5.5rem minmax(0,1fr) 10rem 6rem; gap:.8rem; align-items:center;
+    padding:.6rem 1rem; border-top:1px solid var(--border); min-height:4rem; width:100%; text-align:left; }
+  .trip:first-child { border-top:0; }
+  .trip.sel { background:var(--green-soft); box-shadow:inset 6px 0 0 var(--green); }
+  .trip .time { font-weight:800; font-size:1.15rem; } .trip .rt span { color:var(--text-dim); font-size:.92rem; display:block; }
+  .trip .val { font-size:1.6rem; font-weight:800; text-align:right; padding:.35rem .7rem; border-radius:.6rem;
+    background:var(--surface-alt); border:2px solid var(--border); min-height:3rem; }
+  .trip.sel .val { border-color:var(--green); background:#fff; }
+  .trip .val.blank { color:var(--text-muted); font-weight:500; font-size:1.1rem; }
+  .trip .dno { border:2px solid var(--border-strong); border-radius:.6rem; min-height:3rem; font-weight:800; }
+  .trip .dno.on { background:var(--warn-bg); border-color:var(--warn-fg); color:var(--warn-fg); }
+  .trip.missed { color:var(--text-muted); } .trip.missed .val { background:none; border-style:dashed; font-size:.95rem; font-weight:700; }
+  .addrow { padding:1rem; color:var(--green); font-weight:800; width:100%; text-align:left; border-top:1px solid var(--border); }
+  .sidepad { padding:1rem; position:sticky; top:1rem; }
+  .sidepad .cur { font-weight:700; margin-bottom:.6rem; }
+  .review td, .review th { padding:.75rem 1rem; text-align:left; border-top:1px solid var(--border); font-size:1.05rem; }
+  .review th { color:var(--text-muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.05em; border-top:0; }
+  .review { width:100%; border-collapse:collapse; } .review td.n { text-align:right; font-weight:800; font-size:1.25rem; }
+  .total { display:flex; justify-content:space-between; padding:1rem 1.25rem; font-size:1.3rem; font-weight:800;
+    border-top:2px solid var(--text); }
+  .actions { display:flex; gap:1rem; justify-content:flex-end; }
+
+  /* ---------- detours / messages ---------- */
+  .tabs { display:flex; gap:.5rem; }
+  .tabs button { padding:.75rem 1.3rem; border-radius:.75rem; background:var(--surface); border:1px solid var(--border);
+    font-weight:700; min-height:3.25rem; }
+  .tabs button.on { background:var(--green); color:#fff; border-color:var(--green); }
+  .list { display:flex; flex-direction:column; }
+  .dt-route { font-size:.85rem; font-weight:900; letter-spacing:.06em; color:var(--text-muted); text-transform:uppercase;
+    padding:1rem 0 .4rem .2rem; }
+  .detail { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:1rem; }
+  .detail .card { padding:1.3rem 1.4rem; }
+  .steps { margin:.5rem 0 0; padding-left:1.5rem; font-size:1.15rem; line-height:1.7; }
+  .map { background:repeating-linear-gradient(45deg,#e6e4dc,#e6e4dc 12px,#efede6 12px,#efede6 24px); border-radius:.8rem;
+    min-height:14rem; display:grid; place-items:center; color:var(--text-muted); font-weight:700; }
+  .msgbody { font-size:1.2rem; line-height:1.6; }
+
+  /* ---------- overlays ---------- */
+  .ovl { position:fixed; inset:0; background:rgba(0,30,20,.55); display:grid; place-items:center; z-index:40; }
+  .dlg { background:var(--surface); border-radius:1.25rem; padding:2rem; width:min(46rem,92vw); text-align:center; }
+  .dlg h1 { font-size:2rem; } .dlg p { font-size:1.15rem; color:var(--text-dim); }
+  .dlg .tiles { margin:1.3rem 0; text-align:left; } .dlg .tile { min-height:6.5rem; }
+  .bar { height:.5rem; background:var(--muted-bg); border-radius:99px; overflow:hidden; margin:1rem 0; }
+  .bar i { display:block; height:100%; background:var(--green); transition:width 1s linear; }
+  .check { width:4.5rem; height:4.5rem; border-radius:50%; background:var(--success-bg); color:var(--success-fg);
+    display:grid; place-items:center; font-size:2.4rem; margin:0 auto .8rem; font-weight:900; }
+
+  /* ---------- prototype chrome (not part of the design) ---------- */
+  .pt-switch { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:90; display:flex; align-items:center;
+    background:#111; color:#fff; border-radius:99px; box-shadow:0 6px 24px rgba(0,0,0,.35); font:600 13px/1 system-ui,sans-serif; }
+  .pt-switch button { color:#fff; padding:10px 14px; font-size:16px; }
+  .pt-switch span { padding:0 6px; min-width:220px; text-align:center; }
+  .pt-gear { position:fixed; right:12px; bottom:14px; z-index:90; background:#111; color:#fff; border-radius:99px;
+    padding:10px 14px; font:600 13px system-ui,sans-serif; box-shadow:0 6px 24px rgba(0,0,0,.35); }
+  .pt-panel { position:fixed; right:12px; bottom:60px; width:330px; max-height:calc(100vh - 80px); overflow:auto; z-index:91;
+    background:#111; color:#ddd; border-radius:12px; padding:14px; font:12.5px/1.45 system-ui,sans-serif; box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  .pt-panel h4 { margin:10px 0 4px; color:#fff; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+  .pt-panel label { display:block; padding:2px 0; } .pt-panel pre { background:#000; color:#8fd6ac; padding:8px; border-radius:6px;
+    white-space:pre-wrap; font-size:11px; margin:6px 0 0; }
+  .pt-panel button { background:#333; color:#fff; border-radius:6px; padding:5px 9px; margin:2px 4px 2px 0; font-size:12px; }
+  .pt-tag { position:fixed; left:12px; bottom:14px; z-index:90; background:#b3261e; color:#fff; border-radius:6px;
+    padding:6px 10px; font:800 11px system-ui,sans-serif; letter-spacing:.08em; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="chrome"></div>
+<script>
+/* ======================= invented data ======================= */
+const GARAGE = "Garage A";
+const OPERATORS = {
+  "4417": { name:"Jordan Sample", firstSignIn:false, run:"041" },
+  "3301": { name:"Riley Example", firstSignIn:true,  run:"052" },
+  "2208": { name:"Casey Placeholder", firstSignIn:false, run:null },   // no Avail run found
+};
+const RUNS = {
+  "041": { routes:["436 NB","436 SB","480 NB"], pullOut:"05:12", trips:[
+    {id:1,time:"05:40",route:"436",dir:"NB",from:"Apple Valley TS",to:"Cedar Grove"},
+    {id:2,time:"06:35",route:"436",dir:"SB",from:"Cedar Grove",to:"Apple Valley TS"},
+    {id:3,time:"07:30",route:"436",dir:"NB",from:"Apple Valley TS",to:"Cedar Grove", missed:true},
+    {id:4,time:"08:25",route:"436",dir:"SB",from:"Cedar Grove",to:"Apple Valley TS"},
+    {id:5,time:"09:20",route:"480",dir:"NB",from:"Apple Valley TS",to:"Downtown Mpls"},
+    {id:6,time:"10:45",route:"480",dir:"SB",from:"Downtown Mpls",to:"Apple Valley TS"},
+    {id:7,time:"11:50",route:"436",dir:"NB",from:"Apple Valley TS",to:"Cedar Grove"},
+  ]},
+  "052": { routes:["475 NB","475 SB"], pullOut:"05:40", trips:[
+    {id:1,time:"06:05",route:"475",dir:"NB",from:"Burnsville TS",to:"Downtown Mpls"},
+    {id:2,time:"07:20",route:"475",dir:"SB",from:"Downtown Mpls",to:"Burnsville TS"},
+    {id:3,time:"08:30",route:"475",dir:"NB",from:"Burnsville TS",to:"Downtown Mpls"},
+    {id:4,time:"09:45",route:"475",dir:"SB",from:"Downtown Mpls",to:"Burnsville TS"},
+  ]},
+  "063": { routes:["495 NB","495 SB"], pullOut:"06:02", trips:[
+    {id:1,time:"06:30",route:"495",dir:"NB",from:"Burnsville TS",to:"Mall of America"},
+    {id:2,time:"07:25",route:"495",dir:"SB",from:"Mall of America",to:"Burnsville TS"},
+    {id:3,time:"08:20",route:"495",dir:"NB",from:"Burnsville TS",to:"Mall of America"},
+  ]},
+  "077": { routes:["420 EB","420 WB"], pullOut:"06:15", trips:[
+    {id:1,time:"06:45",route:"420",dir:"EB",from:"Burnsville TS",to:"Heart of the City"},
+    {id:2,time:"07:15",route:"420",dir:"WB",from:"Heart of the City",to:"Burnsville TS"},
+  ]},
+};
+// DetourSegments.routes is free text; the normaliser reads it (or can't)
+const DETOURS = [
+  {id:"D-218", title:"Cedar Ave closed at 140th St", routesText:"436 NB", status:"Active", since:"Since Mon 06:00",
+    ack:true, steps:["Left on 138th St W","Right on Galaxie Ave","Left on 140th St W","Resume route at Cedar Ave & 142nd"],
+    missed:["140th St & Cedar Ave (NB)"], temp:["Galaxie Ave & 140th St"]},
+  {id:"D-221", title:"Lane closure on Marquette Ave", routesText:"480 North", status:"Active", since:"Today until 18:00",
+    ack:false, steps:["Use the left lane on Marquette Ave between 7th and 9th St","Board at the temporary stop at 8th St"],
+    missed:["Marquette & 8th (far side)"], temp:["Marquette & 8th (near side)"]},
+  {id:"D-224", title:"Event detour at the stadium", routesText:"475 SB, 495 SB", status:"Upcoming", since:"Starts today 19:00",
+    ack:false, steps:["Stay on I-35W past the exit","Exit at 4th St","Right on Park Ave, resume at Washington Ave"],
+    missed:["Chicago Ave & 5th St"], temp:["Park Ave & 4th St"]},
+  {id:"D-209", title:"Bridge work on 42nd St", routesText:"420 EB & WB", status:"Active", since:"Since 12 Oct",
+    ack:false, steps:["Use 46th St between Nicollet and Portland"], missed:["42nd & Nicollet"], temp:["46th & Nicollet"]},
+  {id:"D-226", title:"Downtown Mpls stops moved", routesText:"Downtown Mpls stops", status:"Active", since:"Today",
+    ack:false, steps:["See the stop list posted at the dispatch window"], missed:[], temp:[]},
+];
+function normalise(text){            // detourRouteMatch, prototype-grade
+  const out=[]; const map={N:"NB",NB:"NB",NORTH:"NB",S:"SB",SB:"SB",SOUTH:"SB",E:"EB",EB:"EB",EAST:"EB",W:"WB",WB:"WB",WEST:"WB"};
+  const re=/(\d{2,3})\s*((?:NB|SB|EB|WB|North|South|East|West|N|S|E|W)(?:\s*(?:&|and|\/)\s*(?:NB|SB|EB|WB|North|South|East|West|N|S|E|W))*)/gi;
+  let m; while((m=re.exec(text))){ m[2].split(/\s*(?:&|and|\/)\s*/i).forEach(d=>{ const k=map[d.toUpperCase()]; if(k) out.push(m[1]+" "+k); }); }
+  return out;
+}
+const MESSAGES_ALL = [
+  {id:"M-1", title:"Bus 1234 to bay 7 after pull-in", body:"Please park bus 1234 in bay 7 after pull-in today. The shop is checking the rear door sensor. Leave the keys at the dispatch window.",
+    audience:"you", important:true, ack:true, from:"Dispatch · 05:02"},
+  {id:"M-2", title:"Route 436 construction on 140th", body:"Expect 5–8 minutes of delay northbound through the Cedar Ave detour this week. Do not wait for time at 140th St; run early is fine on this segment.",
+    audience:"route 436", important:false, ack:false, from:"OCC · yesterday 15:40", detour:"D-218"},
+  {id:"M-3", title:"Uniform fittings Tuesday at the desk", body:"Fittings for the winter jacket are Tuesday 10:00–14:00 at the dispatch desk. Bring your current size if you know it.",
+    audience:"Garage A", important:false, ack:false, from:"Garage A office · Mon"},
+];
+
+/* ======================= state ======================= */
+const S = {
+  screen:"idle",          // idle | pin | newpin | home | rid-runs | rid-entry | rid-review | detours | detour | messages | message | vehicle
+  variant: new URLSearchParams(location.search).get("variant") || "A",
+  idBuf:"", pinBuf:"", newPin1:null, viaBadge:false, err:null,
+  op:null,                // {logon, name, run}
+  notYouUntil:0,
+  rid:{ run:null, counts:{}, dno:{}, extra:[], sel:null, submittedAt:null, state:"none" }, // none|draft|submitted
+  readMsgs:new Set(), ackMsgs:new Set(), ackDetours:new Set(),
+  detourTab:"mine", openDetour:null, openMsg:null,
+  idleSince:Date.now(), warn:false, afterSubmit:null,
+  large:false,
+  cfg:{ modules:{ridership:true,detours:true,messages:true,vehicle:false}, forYou:"both", fast:false, panel:false },
+};
+const T = () => S.cfg.fast ? {idle:20, warn:16.7, after:5} : {idle:120, warn:100, after:15};
+
+/* ======================= derived ======================= */
+function opRuns(){ return S.op && S.op.run ? [S.op.run] : []; }
+function activeRun(){ return S.rid.run || (S.op && S.op.run); }
+function myRouteDirs(){
+  const runs=new Set(opRuns()); if(S.rid.run) runs.add(S.rid.run);
+  return [...runs].flatMap(r=>RUNS[r].routes);
+}
+function detoursMine(){ const mine=new Set(myRouteDirs()); return DETOURS.filter(d=>normalise(d.routesText).some(rd=>mine.has(rd))); }
+function myMessages(){
+  const routes=new Set(myRouteDirs().map(r=>r.split(" ")[0]));
+  return MESSAGES_ALL.filter(m=> m.audience==="Garage A" || (m.audience==="you" && S.op.logon==="4417") ||
+    (m.audience.startsWith("route ") && routes.has(m.audience.slice(6))));
+}
+function forYouRows(){
+  const rows=[]; const show=S.cfg.forYou;
+  if(show!=="detours"){
+    myMessages().filter(m=>m.important && m.ack && !S.ackMsgs.has(m.id)).forEach(m=>rows.push({kind:"msg",imp:true,m}));
+    myMessages().filter(m=>!(m.important && m.ack) && !S.readMsgs.has(m.id)).forEach(m=>rows.push({kind:"msg",m}));
+  }
+  if(show!=="messages") detoursMine().forEach(d=>rows.push({kind:"det",d}));
+  return rows;
+}
+function unreadCount(){ return myMessages().filter(m=>!S.readMsgs.has(m.id) && !S.ackMsgs.has(m.id)).length; }
+function ridStatus(){
+  if(!activeRun()) return "Choose your run";
+  if(S.rid.state==="submitted") return "Submitted "+S.rid.submittedAt;
+  if(S.rid.state==="draft") return "Draft saved — run "+S.rid.run;
+  const n=RUNS[activeRun()].trips.filter(t=>!t.missed).length;
+  return "Run "+activeRun()+" · "+n+" trips to enter";
+}
+const MODULES = [
+  {key:"ridership", icon:"🧮", label:"Ridership", sub:"Enter your trip counts", status:()=>ridStatus(), go:()=>openRidership()},
+  {key:"detours",   icon:"↪️", label:"Detours", sub:"All detours and yours", status:()=>detoursMine().length+" yours · "+DETOURS.filter(d=>d.status==="Active").length+" in effect", go:()=>nav("detours")},
+  {key:"messages",  icon:"✉️", label:"Messages", sub:"From OCC and dispatch", status:()=>unreadCount()? unreadCount()+" unread":"All read", go:()=>nav("messages"), badge:()=>unreadCount()},
+  {key:"vehicle",   icon:"🔧", label:"Vehicle report", sub:"Report a defect", status:()=>"Later module", go:()=>nav("vehicle")},
+];
+const enabled = () => MODULES.filter(m=>S.cfg.modules[m.key]);
+
+/* ======================= helpers ======================= */
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const now=()=>new Date();
+const hhmm=d=>d.toTimeString().slice(0,5);
+const dayStr=d=>d.toLocaleDateString("en-US",{weekday:"short",day:"numeric",month:"short"});
+function nav(s){ S.screen=s; S.err=null; render(); }
+function pad(target, opts={}){
+  const go = opts.go ? `<button class="go fn" data-act="${opts.go}" ${opts.goDisabled?"disabled":""}>${opts.goLabel||"Next"}</button>` : "";
+  return `<div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-act="key" data-k="${n}" data-t="${target}">${n}</button>`).join("")}
+    <button class="fn" data-act="key" data-k="del" data-t="${target}">⌫ Delete</button>
+    <button data-act="key" data-k="0" data-t="${target}">0</button>${go}</div>`;
+}
+
+/* ======================= screens ======================= */
+function header(){
+  const d=now();
+  const who = S.op ? `<div class="who"><b>${esc(S.op.name)}</b><small>Logon ${esc(S.op.logon)}${activeRun()?" · Run "+activeRun():""}</small></div>
+      <button class="hbtn" data-act="textsize" title="Text size">${S.large?"A−":"A+"}</button>
+      <button class="hbtn solid" data-act="signout">Sign out</button>` : "";
+  const home = S.op && S.screen!=="home" ? `<button class="hbtn" data-act="home">⌂ Home</button>` : "";
+  return `<div class="hdr">${home}<div><div class="where">${GARAGE} · Operator kiosk</div></div><div class="when">${dayStr(d)} · ${hhmm(d)}</div>${who}</div>
+    ${S.op && Date.now()<S.notYouUntil && S.screen==="home" ? `<div class="notyou">Signed in as <b>${esc(S.op.name)}</b>, logon ${esc(S.op.logon)}. <button data-act="signout">Not you? Sign out</button></div>`:""}`;
+}
+
+function scrIdle(){
+  return `<div class="signin"><div class="left">
+      <div class="eyebrow">Operator kiosk</div>
+      <h1>Sign in to see your detours, messages and ridership</h1>
+      <p>Key your Avail logon ID, then your 6-digit OnBoard PIN.</p>
+      <div class="badge-hint"><div class="nfc">📶</div><div><b>Or tap your badge</b> on the back of the tablet<br><span class="muted">You will still need your PIN</span></div></div>
+      <p style="margin-top:1.2rem"><button class="btn ghost" data-act="badge">Prototype: simulate a badge tap</button></p>
+      <p class="muted" style="font-size:.95rem">Try logon <b>4417</b> (normal), <b>3301</b> (first sign-in) or <b>2208</b> (no run in Avail). Any 6-digit PIN works except 000000.</p>
+    </div>
+    <div class="entry"><div class="label">Logon ID</div>
+      ${S.err?`<div class="err">${esc(S.err)}</div>`:""}
+      <div class="idshow">${esc(S.idBuf)||'<span class="muted" style="letter-spacing:0;font-size:1.2rem;font-weight:500">3–4 digits</span>'}</div>
+      ${pad("id",{go:"idnext",goDisabled:S.idBuf.length<3})}
+    </div></div>`;
+}
+function scrPin(){
+  return `<div class="signin"><div class="left">
+      <div class="eyebrow">Step 2 of 2</div><h1>Enter your PIN</h1>
+      <p>${S.viaBadge?"Badge read. ":"Logon ID <b>"+esc(S.idBuf)+"</b>. "}Your PIN is 6 digits.</p>
+      <p><button class="btn ghost" data-act="cancel">← Start again</button></p>
+    </div>
+    <div class="entry"><div class="label">PIN</div>
+      ${S.err?`<div class="err">${esc(S.err)}</div>`:""}
+      <div class="dots">${[0,1,2,3,4,5].map(i=>`<i class="${i<S.pinBuf.length?"on":""}"></i>`).join("")}</div>
+      ${pad("pin",{go:"pinnext",goDisabled:S.pinBuf.length<6,goLabel:"Sign in"})}
+    </div></div>`;
+}
+function scrNewPin(){
+  const again = S.newPin1!==null;
+  return `<div class="signin"><div class="left">
+      <div class="eyebrow">First sign-in</div><h1>${again?"Key your new PIN again":"Choose your own PIN"}</h1>
+      <p>Welcome, ${esc(S.op.name)}. The PIN you were given works once. Choose 6 digits only you know. Not your birthday, not 123456.</p>
+    </div>
+    <div class="entry"><div class="label">${again?"Confirm new PIN":"New PIN"}</div>
+      ${S.err?`<div class="err">${esc(S.err)}</div>`:""}
+      <div class="dots">${[0,1,2,3,4,5].map(i=>`<i class="${i<S.pinBuf.length?"on":""}"></i>`).join("")}</div>
+      ${pad("pin",{go:"newpinnext",goDisabled:S.pinBuf.length<6,goLabel:again?"Save PIN":"Next"})}
+    </div></div>`;
+}
+
+function fyRow(r){
+  if(r.kind==="msg"){
+    const m=r.m;
+    return `<button class="fy-row ${S.readMsgs.has(m.id)?"":"unread"}" data-act="openmsg" data-id="${m.id}">
+      ${m.important?'<span class="pill p-imp">Important</span>':'<span class="pill p-mut">Message</span>'}
+      <div class="t"><b>${esc(m.title)}</b><span>${esc(m.from)}${m.audience==="you"?" · to you":""}</span></div>
+      ${r.imp?`<span class="ack" data-act="ackmsg" data-id="${m.id}">OK</span>`:""}</button>`;
+  }
+  const d=r.d; const need=d.ack && !S.ackDetours.has(d.id);
+  return `<button class="fy-row" data-act="opendet" data-id="${d.id}"><span class="pill p-you">Your detour</span>
+    <div class="t"><b>Rt ${esc(d.routesText)} — ${esc(d.title)}</b><span>${esc(d.since)}</span></div>
+    ${need?`<span class="ack" data-act="ackdet" data-id="${d.id}">OK</span>`:""}</button>`;
+}
+function forYouCard(cap){
+  const rows=forYouRows(); const shown=cap?rows.slice(0,cap):rows;
+  const noRun = S.op.run===null && !S.rid.run && S.cfg.forYou!=="messages";
+  return `<div class="card fy"><div class="fy-head"><div class="eyebrow">For you</div>
+      ${rows.length>(cap||99)?`<button data-act="nav" data-to="messages">See all ${rows.length} →</button>`:""}</div>
+    ${noRun?`<div class="note" style="margin:0 1.1rem .6rem">We couldn't find your run in Avail, so your detours can't be picked out. Open Detours → All, or choose your run in Ridership.</div>`:""}
+    ${shown.map(fyRow).join("") || '<div class="empty">Nothing new for you. ✓</div>'}</div>`;
+}
+function tile(m, cls=""){
+  return `<button class="tile ${cls}" data-act="mod" data-key="${m.key}"><div class="ic">${m.icon}</div><b>${m.label}</b><span>${m.sub}</span><div class="st">${esc(m.status())}</div></button>`;
+}
+
+const VARIANTS = {
+  A:{ name:"Feed above tiles (the spec)", render(){
+      return `${forYouCard(5)}<div class="tiles">${enabled().map(m=>tile(m)).join("")}</div>`; }},
+  B:{ name:"Split: For you rail + big tiles", render(){
+      return `<div class="split"><div class="rail">${forYouCard(0)}</div>
+        <div class="bigtiles">${enabled().map(m=>tile(m)).join("")}</div></div>`; }},
+  C:{ name:"Next action first + dock", render(){
+      const rows  = forYouRows();
+      const block = rows.filter(r=>r.imp || (r.kind==="det" && r.d.ack && !S.ackDetours.has(r.d.id)));
+      const rest  = rows.filter(r=>!block.includes(r));
+      const blockers = block.map(r=> r.kind==="msg"
+        ? `<div class="blocker"><span class="pill p-imp">Important</span><div class="t"><b>${esc(r.m.title)}</b><span>${esc(r.m.body)}</span></div><button class="btn" data-act="ackmsg" data-id="${r.m.id}">OK, got it</button></div>`
+        : `<div class="blocker"><span class="pill p-you">Your detour</span><div class="t"><b>Rt ${esc(r.d.routesText)} — ${esc(r.d.title)}</b><span>${esc(r.d.steps[0])} …</span></div><button class="btn ghost" data-act="opendet" data-id="${r.d.id}">Read it</button><button class="btn" data-act="ackdet" data-id="${r.d.id}">OK</button></div>`).join("");
+      let hero="";
+      if(S.cfg.modules.ridership){
+        const done=S.rid.state==="submitted";
+        hero=`<button class="hero ${done?"done":""}" data-act="mod" data-key="ridership"><div class="t"><small>${done?"Done":"Next"}</small>
+          <b>${done?"Ridership submitted "+S.rid.submittedAt:"Enter ridership for run "+(activeRun()||"…")}</b>
+          <span>${done?"Run "+S.rid.run+" · thank you":esc(ridStatus())}</span></div><span class="go">Start →</span></button>`;
+      }
+      const strip = rest.length? `<div><div class="eyebrow" style="margin-bottom:.5rem">Also for you</div><div class="strip">${rest.map(r=> r.kind==="msg"
+          ? `<button class="card" data-act="openmsg" data-id="${r.m.id}"><span class="pill p-mut">Message</span><b>${esc(r.m.title)}</b><span>${esc(r.m.from)}</span></button>`
+          : `<button class="card" data-act="opendet" data-id="${r.d.id}"><span class="pill p-you">Your detour</span><b>Rt ${esc(r.d.routesText)}</b><span>${esc(r.d.title)}</span></button>`).join("")}</div></div>` : "";
+      const dock=`<div class="dock">${enabled().filter(m=>m.key!=="ridership").map(m=>`<button data-act="mod" data-key="${m.key}"><span class="ic">${m.icon}</span><div><b>${m.label}</b><span>${esc(m.status())}</span></div>${m.badge&&m.badge()?`<span class="badge">${m.badge()}</span>`:""}</button>`).join("")}</div>`;
+      return blockers+hero+strip+dock; }},
+};
+function scrHome(){ const v=VARIANTS[S.variant]||VARIANTS.A; return v.render(); }
+
+/* ----- ridership ----- */
+function openRidership(){
+  if(S.rid.state==="submitted"){ nav("rid-review"); return; }
+  if(S.rid.run){ nav("rid-entry"); return; }
+  nav("rid-runs");
+}
+function scrRuns(){
+  const mine=opRuns(); const others=Object.keys(RUNS).filter(r=>!mine.includes(r));
+  const row=(r,tag)=>`<button class="card run" data-act="pickrun" data-run="${r}"><div class="no">${r}</div>
+    <div class="t"><b>${RUNS[r].routes.map(x=>x.split(" ")[0]).filter((x,i,a)=>a.indexOf(x)===i).map(x=>"Rt "+x).join(", ")}</b><br><span>Pull-out ${RUNS[r].pullOut} · ${RUNS[r].trips.length} trips</span></div>
+    ${tag?`<span class="pill p-ok">${tag}</span>`:""}<span style="font-size:1.6rem">›</span></button>`;
+  return `<div class="topbar"><div><div class="eyebrow">Ridership</div><h1>Which run are you entering?</h1></div></div>
+    ${mine.length?`<div class="runs">${mine.map(r=>row(r,"Avail shows you on this run")).join("")}</div>`:`<div class="note">Avail doesn't show you on a run today. Pick yours from the list.</div>`}
+    <div class="dt-route">Other runs at ${GARAGE} today</div><div class="runs">${others.map(r=>row(r)).join("")}</div>`;
+}
+function tripsOf(){ return RUNS[S.rid.run].trips.concat(S.rid.extra); }
+function scrEntry(){
+  const trips=tripsOf(); const sel=trips.find(t=>t.id===S.rid.sel);
+  const left = trips.filter(t=>!t.missed && !S.rid.dno[t.id] && S.rid.counts[t.id]===undefined).length;
+  return `<div class="topbar"><div><div class="eyebrow">Ridership · Run ${S.rid.run}</div><h1>Key the total for each trip</h1></div>
+      <span class="muted">${left? left+" left":"All entered"}</span>
+      <button class="btn ghost" data-act="changerun">Change run</button>
+      <button class="btn" data-act="review" ${left?"":""}>Review →</button></div>
+    <div class="entrygrid"><div class="card trips">
+      ${trips.map(t=>{ if(t.missed) return `<div class="trip missed"><div class="time">${t.time}</div><div class="rt"><b>Rt ${t.route} ${t.dir}</b><span>${t.from} → ${t.to}</span></div><div class="val">Missed — no count needed</div><div></div></div>`;
+        const v=S.rid.counts[t.id]; const dno=S.rid.dno[t.id];
+        return `<button class="trip ${S.rid.sel===t.id?"sel":""}" data-act="seltrip" data-id="${t.id}"><div class="time">${t.time}</div>
+          <div class="rt"><b>Rt ${t.route} ${t.dir}${t.unsched?' <span class="pill p-warn">Unscheduled</span>':""}</b><span>${t.from} → ${t.to}</span></div>
+          <div class="val ${v===undefined||dno?"blank":""}">${dno?"DNO":v===undefined?"—":v}</div>
+          <span class="dno ${dno?"on":""}" data-act="dno" data-id="${t.id}" style="display:grid;place-items:center">DNO</span></button>`; }).join("")}
+      <button class="addrow" data-act="addtrip">+ Add an unscheduled trip</button></div>
+      <div class="card sidepad"><div class="cur">${sel?`Trip ${sel.time} · Rt ${sel.route} ${sel.dir}`:"Tap a trip"}</div>
+        <div class="idshow" style="font-size:2.2rem;letter-spacing:.1em;margin:.2rem 0 .8rem">${sel&&S.rid.counts[sel.id]!==undefined&&!S.rid.dno[sel.id]?S.rid.counts[sel.id]:"&nbsp;"}</div>
+        ${pad("count",{go:"nexttrip",goLabel:"Next ↓"})}
+        <p class="muted" style="font-size:.9rem;margin:.8rem 0 0">DNO = did not operate. Saved on this kiosk as you go.</p></div></div>`;
+}
+function scrReview(){
+  const trips=tripsOf(); const done=S.rid.state==="submitted";
+  const missing=trips.filter(t=>!t.missed && !S.rid.dno[t.id] && S.rid.counts[t.id]===undefined);
+  const total=trips.reduce((a,t)=>a+(S.rid.dno[t.id]||t.missed?0:(S.rid.counts[t.id]||0)),0);
+  return `<div class="topbar"><div><div class="eyebrow">Ridership · Run ${S.rid.run}</div><h1>${done?"Submitted "+S.rid.submittedAt:"Check, then submit"}</h1></div>
+      ${done?'<span class="pill p-ok">Submitted</span>':'<button class="btn ghost" data-act="nav" data-to="rid-entry">← Edit</button>'}</div>
+    ${missing.length&&!done?`<div class="err">${missing.length} trip${missing.length>1?"s have":" has"} no count. Key a number (0 is fine) or mark DNO.</div>`:""}
+    <div class="card"><table class="review"><tr><th>Time</th><th>Trip</th><th style="text-align:right">Riders</th></tr>
+      ${trips.map(t=>`<tr><td>${t.time}</td><td>Rt ${t.route} ${t.dir} · ${t.from} → ${t.to}${t.unsched?" (unscheduled)":""}</td>
+        <td class="n">${t.missed?'<span class="pill p-mut">Missed</span>':S.rid.dno[t.id]?'<span class="pill p-warn">DNO</span>':S.rid.counts[t.id]===undefined?'<span class="pill p-imp">Missing</span>':S.rid.counts[t.id]}</td></tr>`).join("")}
+    </table><div class="total"><span>Total riders</span><span>${total}</span></div></div>
+    ${done?"":`<div class="actions"><button class="btn big" data-act="submit" ${missing.length?"disabled style='opacity:.4'":""}>Submit run ${S.rid.run}</button></div>`}`;
+}
+
+/* ----- detours ----- */
+function scrDetours(){
+  const mine=detoursMine(); const list=S.detourTab==="mine"?mine:DETOURS.filter(d=>d.status==="Active"||d.status==="Upcoming");
+  const groups={}; list.forEach(d=>{ const rs=normalise(d.routesText); const k=rs.length?"Route "+rs[0].split(" ")[0]:"Not matched to a route"; (groups[k]=groups[k]||[]).push(d); });
+  return `<div class="topbar"><div><div class="eyebrow">Detours</div><h1>${S.detourTab==="mine"?"Detours on your routes today":"All detours in effect today"}</h1></div>
+      <div class="tabs"><button class="${S.detourTab==="mine"?"on":""}" data-act="dtab" data-t="mine">Yours (${mine.length})</button><button class="${S.detourTab==="all"?"on":""}" data-act="dtab" data-t="all">All (${DETOURS.length})</button></div></div>
+    ${S.detourTab==="mine"&&myRouteDirs().length?`<div class="muted">Your routes today: ${myRouteDirs().join(", ")}</div>`:""}
+    ${S.detourTab==="mine"&&!myRouteDirs().length?`<div class="note">We couldn't find your run in Avail. Showing nothing here; use All.</div>`:""}
+    ${Object.entries(groups).map(([k,ds])=>`<div><div class="dt-route">${k}</div><div class="card list">${ds.map(d=>`<button class="fy-row" data-act="opendet" data-id="${d.id}">
+        <span class="pill ${d.status==="Active"?"p-warn":"p-mut"}">${d.status}</span><div class="t"><b>Rt ${esc(d.routesText)} — ${esc(d.title)}</b><span>${esc(d.since)}</span></div>
+        ${d.ack&&!S.ackDetours.has(d.id)?'<span class="pill p-imp">Needs your OK</span>':d.ack?'<span class="pill p-ok">OK’d</span>':""}<span style="font-size:1.5rem">›</span></button>`).join("")}</div></div>`).join("") || '<div class="card empty">No detours on your routes today.</div>'}`;
+}
+function scrDetour(){
+  const d=DETOURS.find(x=>x.id===S.openDetour); const need=d.ack&&!S.ackDetours.has(d.id);
+  return `<div class="topbar"><button class="btn ghost" data-act="nav" data-to="detours">← Detours</button><div style="flex:1"><div class="eyebrow">${d.id} · ${d.status}</div><h1>Rt ${esc(d.routesText)} — ${esc(d.title)}</h1></div>
+      ${need?`<button class="btn big" data-act="ackdet" data-id="${d.id}">OK, I've read this</button>`:d.ack?'<span class="pill p-ok">You OK’d this</span>':""}</div>
+    <div class="detail"><div class="card"><div class="eyebrow">Directions</div><ol class="steps">${d.steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ol>
+      ${d.missed.length?`<p class="dim" style="font-size:1.05rem;margin-top:1rem"><b>Stops missed:</b> ${d.missed.map(esc).join(", ")}<br><b>Temporary stops:</b> ${d.temp.map(esc).join(", ")}</p>`:""}
+      ${!normalise(d.routesText).length?'<p class="note" style="margin-top:1rem">This detour\'s route text couldn\'t be matched to a route, so it only shows under All.</p>':""}</div>
+      <div class="card"><div class="map">Map image from the detour record</div><p class="muted" style="margin-top:.6rem">${esc(d.since)}</p></div></div>`;
+}
+
+/* ----- messages ----- */
+function scrMessages(){
+  const ms=myMessages();
+  return `<div class="topbar"><div><div class="eyebrow">Messages</div><h1>Messages for you</h1></div></div>
+    <div class="card list">${ms.map(m=>`<button class="fy-row ${S.readMsgs.has(m.id)||S.ackMsgs.has(m.id)?"":"unread"}" data-act="openmsg" data-id="${m.id}">
+      ${m.important?'<span class="pill p-imp">Important</span>':'<span class="pill p-mut">Message</span>'}
+      <div class="t"><b>${esc(m.title)}</b><span>${esc(m.from)} · to ${m.audience==="you"?"you only":esc(m.audience)}</span></div>
+      ${m.ack?(S.ackMsgs.has(m.id)?'<span class="pill p-ok">OK’d</span>':'<span class="pill p-imp">Needs your OK</span>'):""}<span style="font-size:1.5rem">›</span></button>`).join("")||'<div class="empty">No messages.</div>'}</div>
+    <p class="muted">Messages from OCC and dispatch. Operational only. Messages sent to you alone show only when you're signed in.</p>`;
+}
+function scrMessage(){
+  const m=MESSAGES_ALL.find(x=>x.id===S.openMsg); const need=m.ack&&!S.ackMsgs.has(m.id);
+  return `<div class="topbar"><button class="btn ghost" data-act="nav" data-to="messages">← Messages</button><div style="flex:1"><div class="eyebrow">${m.important?"Important · ":""}${esc(m.from)}</div><h1>${esc(m.title)}</h1></div></div>
+    <div class="card" style="padding:1.6rem 1.8rem"><div class="msgbody">${esc(m.body)}</div>
+      <div class="actions" style="margin-top:1.4rem">${m.detour?`<button class="btn ghost" data-act="opendet" data-id="${m.detour}">Open the detour</button>`:""}
+      ${need?`<button class="btn big" data-act="ackmsg" data-id="${m.id}">OK, got it</button>`:m.ack?'<span class="pill p-ok">You OK’d this</span>':""}</div></div>`;
+}
+function scrVehicle(){
+  return `<div class="topbar"><div><div class="eyebrow">Vehicle report</div><h1>Report a defect</h1></div></div>
+    <div class="card" style="padding:2rem"><p class="dim" style="font-size:1.15rem">This module is a placeholder. Its design waits on Fleet saying where defect reports go (evaluation Q10). It shows here only because the garage setting switches it on.</p></div>`;
+}
+
+/* ======================= overlays ======================= */
+function overlays(){
+  let h="";
+  if(S.afterSubmit){
+    const left=Math.max(0,Math.ceil((S.afterSubmit-Date.now())/1000)); const pct=left/T().after*100;
+    h+=`<div class="ovl"><div class="dlg"><div class="check">✓</div><h1>Submitted ✓ — anything else?</h1>
+      <p>Run ${S.rid.run} sent at ${S.rid.submittedAt}. Signing you out in ${left} s.</p><div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="tiles">${enabled().filter(m=>m.key!=="ridership").map(m=>tile(m)).join("")}</div>
+      <button class="btn big" data-act="signout" style="width:100%">Sign out now</button></div></div>`;
+  } else if(S.warn && S.op){
+    const left=Math.max(0,Math.ceil(T().idle-(Date.now()-S.idleSince)/1000));
+    h+=`<div class="ovl"><div class="dlg"><h1>Still there?</h1><p>For your privacy you'll be signed out in ${left} seconds. ${S.rid.state==="draft"?"Your ridership draft stays saved.":""}</p>
+      <div class="actions" style="justify-content:center;margin-top:1.2rem"><button class="btn ghost big" data-act="signout">Sign out</button><button class="btn big" data-act="stay">I'm still here</button></div></div></div>`;
+  }
+  return h;
+}
+
+/* ======================= prototype chrome ======================= */
+function chrome(){
+  const keys=Object.keys(VARIANTS); const v=VARIANTS[S.variant];
+  const state={screen:S.screen,variant:S.variant,operator:S.op,activeRun:activeRun(),myRouteDirs:S.op?myRouteDirs():[],
+    ridership:{state:S.rid.state,run:S.rid.run,counts:S.rid.counts,dno:Object.keys(S.rid.dno),submittedAt:S.rid.submittedAt},
+    read:[...S.readMsgs],acknowledged:{messages:[...S.ackMsgs],detours:[...S.ackDetours]},
+    idleSeconds:S.op?Math.round((Date.now()-S.idleSince)/1000):null,
+    normaliser:Object.fromEntries(DETOURS.map(d=>[d.routesText,normalise(d.routesText)]))};
+  return `<div class="pt-tag">PROTOTYPE</div>
+  <div class="pt-switch"><button data-pt="prev">←</button><span>Home ${S.variant} — ${v.name}</span><button data-pt="next">→</button></div>
+  <button class="pt-gear" data-pt="panel">⚙ Garage & state</button>
+  ${S.cfg.panel?`<div class="pt-panel"><h4>Garage settings (Access & Identity → Kiosks)</h4>
+    ${Object.keys(S.cfg.modules).map(k=>`<label><input type="checkbox" data-cfg="mod" data-k="${k}" ${S.cfg.modules[k]?"checked":""}> ${k}</label>`).join("")}
+    <h4>For you shows</h4>${["both","messages","detours"].map(k=>`<label><input type="radio" name="fy" data-cfg="fy" data-k="${k}" ${S.cfg.forYou===k?"checked":""}> ${k}</label>`).join("")}
+    <h4>Timers</h4><label><input type="checkbox" data-cfg="fast" ${S.cfg.fast?"checked":""}> Fast (idle 20 s, after-submit 5 s)</label>
+    <h4>Jump</h4><button data-pt="reset">Reset everything</button><button data-pt="quick">Sign in as 4417</button>
+    <h4>State</h4><pre>${esc(JSON.stringify(state,null,1))}</pre></div>`:""}`;
+}
+
+/* ======================= render ======================= */
+function render(){
+  document.documentElement.classList.toggle("large",S.large);
+  let body;
+  switch(S.screen){
+    case "idle": body=scrIdle(); break; case "pin": body=scrPin(); break; case "newpin": body=scrNewPin(); break;
+    case "home": body=scrHome(); break; case "rid-runs": body=scrRuns(); break; case "rid-entry": body=scrEntry(); break;
+    case "rid-review": body=scrReview(); break; case "detours": body=scrDetours(); break; case "detour": body=scrDetour(); break;
+    case "messages": body=scrMessages(); break; case "message": body=scrMessage(); break; case "vehicle": body=scrVehicle(); break;
+  }
+  const wrap = ["idle","pin","newpin"].includes(S.screen) ? body : `<main>${body}</main>`;
+  document.getElementById("app").innerHTML = header()+wrap+overlays();
+  document.getElementById("chrome").innerHTML = chrome();
+}
+
+/* ======================= actions ======================= */
+function signIn(logon){
+  const o=OPERATORS[logon];
+  S.op={logon,name:o.name,run:o.run}; S.idleSince=Date.now(); S.notYouUntil=Date.now()+10000;
+  if(o.firstSignIn){ S.pinBuf=""; S.newPin1=null; nav("newpin"); } else nav("home");
+}
+function signOut(){
+  const keepCfg=S.cfg, variant=S.variant, large=false;
+  Object.assign(S,{screen:"idle",idBuf:"",pinBuf:"",newPin1:null,viaBadge:false,err:null,op:null,warn:false,afterSubmit:null,large,
+    rid:{run:null,counts:{},dno:{},extra:[],sel:null,submittedAt:null,state:"none"},readMsgs:new Set(),ackMsgs:new Set(),ackDetours:new Set(),
+    detourTab:"mine",openDetour:null,openMsg:null,cfg:keepCfg,variant});
+  render();
+}
+const ACT = {
+  key(el){ const k=el.dataset.k, t=el.dataset.t; S.err=null;
+    if(t==="id"){ S.idBuf = k==="del"?S.idBuf.slice(0,-1):(S.idBuf+k).slice(0,4); }
+    if(t==="pin"){ S.pinBuf = k==="del"?S.pinBuf.slice(0,-1):(S.pinBuf+k).slice(0,6); }
+    if(t==="count"){ const id=S.rid.sel; if(id==null) return; const cur=S.rid.counts[id]; delete S.rid.dno[id];
+      if(k==="del"){ const s=String(cur??"").slice(0,-1); if(s==="") delete S.rid.counts[id]; else S.rid.counts[id]=+s; }
+      else S.rid.counts[id]=Math.min(999,+(String(cur??"")+k)); S.rid.state="draft"; }
+    render(); },
+  idnext(){ nav("pin"); S.pinBuf=""; },
+  badge(){ S.viaBadge=true; S.idBuf="4417"; S.pinBuf=""; nav("pin"); },
+  cancel(){ S.idBuf=""; S.pinBuf=""; S.viaBadge=false; nav("idle"); },
+  pinnext(){ if(!OPERATORS[S.idBuf] || S.pinBuf==="000000"){ S.err="That logon ID and PIN don't match. 4 tries left before this ID is locked for 15 minutes."; S.pinBuf=""; render(); return; }
+    signIn(S.idBuf); },
+  newpinnext(){ if(S.newPin1===null){ if(/^(\d)\1{5}$|^123456$|^654321$/.test(S.pinBuf)){ S.err="That PIN is too easy to guess. Choose another."; S.pinBuf=""; render(); return; }
+      S.newPin1=S.pinBuf; S.pinBuf=""; render(); return; }
+    if(S.pinBuf!==S.newPin1){ S.err="Those didn't match. Start again."; S.newPin1=null; S.pinBuf=""; render(); return; }
+    OPERATORS[S.op.logon].firstSignIn=false; nav("home"); },
+  signout(){ signOut(); }, home(){ nav("home"); }, stay(){ S.warn=false; S.idleSince=Date.now(); render(); },
+  textsize(){ S.large=!S.large; render(); },
+  nav(el){ nav(el.dataset.to); },
+  mod(el){ S.afterSubmit=null; MODULES.find(m=>m.key===el.dataset.key).go(); },
+  pickrun(el){ S.rid.run=el.dataset.run; S.rid.sel=tripsOf().find(t=>!t.missed).id; nav("rid-entry"); },
+  changerun(){ S.rid={run:null,counts:{},dno:{},extra:[],sel:null,submittedAt:null,state:"none"}; nav("rid-runs"); },
+  seltrip(el){ S.rid.sel=+el.dataset.id; render(); },
+  dno(el,e){ e.stopPropagation(); const id=+el.dataset.id; if(S.rid.dno[id]) delete S.rid.dno[id]; else { S.rid.dno[id]=true; delete S.rid.counts[id]; } S.rid.state="draft"; render(); },
+  nexttrip(){ const ts=tripsOf().filter(t=>!t.missed); const i=ts.findIndex(t=>t.id===S.rid.sel); S.rid.sel=ts[Math.min(ts.length-1,i+1)].id; render(); },
+  addtrip(){ const id=100+S.rid.extra.length; const r=RUNS[S.rid.run].trips[0]; S.rid.extra.push({id,time:"—",route:r.route,dir:r.dir,from:"(unscheduled)",to:"",unsched:true}); S.rid.sel=id; render(); },
+  review(){ nav("rid-review"); },
+  submit(){ S.rid.state="submitted"; S.rid.submittedAt=hhmm(now()); S.afterSubmit=Date.now()+T().after*1000; render(); },
+  dtab(el){ S.detourTab=el.dataset.t; render(); },
+  opendet(el,e){ e.stopPropagation(); S.openDetour=el.dataset.id; nav("detour"); },
+  openmsg(el){ S.openMsg=el.dataset.id; S.readMsgs.add(el.dataset.id); nav("message"); },
+  ackmsg(el,e){ e.stopPropagation(); S.ackMsgs.add(el.dataset.id); S.readMsgs.add(el.dataset.id); render(); },
+  ackdet(el,e){ e.stopPropagation(); S.ackDetours.add(el.dataset.id); render(); },
+};
+document.addEventListener("click",e=>{
+  const pt=e.target.closest("[data-pt]");
+  if(pt){ const a=pt.dataset.pt, keys=Object.keys(VARIANTS);
+    if(a==="prev"||a==="next"){ const i=keys.indexOf(S.variant); setVariant(keys[(i+(a==="next"?1:keys.length-1))%keys.length]); }
+    if(a==="panel"){ S.cfg.panel=!S.cfg.panel; render(); }
+    if(a==="reset"){ location.reload(); }
+    if(a==="quick"){ S.idBuf="4417"; signIn("4417"); }
+    return; }
+  if(e.target.closest("#chrome")) return;
+  const el=e.target.closest("[data-act]"); if(!el || el.disabled) return;
+  const fn=ACT[el.dataset.act]; if(fn) fn(el,e);
+});
+document.addEventListener("change",e=>{
+  const c=e.target.dataset.cfg; if(!c) return;
+  if(c==="mod") S.cfg.modules[e.target.dataset.k]=e.target.checked;
+  if(c==="fy") S.cfg.forYou=e.target.dataset.k;
+  if(c==="fast") S.cfg.fast=e.target.checked;
+  render();
+});
+document.addEventListener("pointerdown",e=>{ if(!e.target.closest("#chrome") && S.op){ S.idleSince=Date.now(); if(S.warn){ S.warn=false; } } },true);
+function setVariant(k){ S.variant=k; const u=new URL(location); u.searchParams.set("variant",k); history.replaceState(null,"",u); render(); }
+document.addEventListener("keydown",e=>{
+  if(e.target.closest("input,textarea,[contenteditable]")) return;
+  const keys=Object.keys(VARIANTS), i=keys.indexOf(S.variant);
+  if(e.key==="ArrowRight") setVariant(keys[(i+1)%keys.length]);
+  if(e.key==="ArrowLeft") setVariant(keys[(i+keys.length-1)%keys.length]);
+});
+setInterval(()=>{
+  if(S.afterSubmit && Date.now()>=S.afterSubmit){ signOut(); return; }
+  if(S.op && !S.afterSubmit){ const idle=(Date.now()-S.idleSince)/1000;
+    if(idle>=T().idle){ signOut(); return; }
+    const w = idle>=T().warn; if(w!==S.warn){ S.warn=w; render(); } }
+  // re-render only for countdowns, the clock's minute and the "not you?" banner,
+  // so a re-render never lands between a press and its click
+  const tick = hhmm(now())+"|"+(Date.now()<S.notYouUntil);
+  if(S.afterSubmit || S.warn || tick!==lastTick){ lastTick=tick; render(); }
+},1000);
+let lastTick="";
+render();
+</script>
+</body>
+</html>
