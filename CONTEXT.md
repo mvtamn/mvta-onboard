@@ -576,8 +576,12 @@ _Avoid_: public detour page, rider detour feed
 ## Fulfillment mode
 
 The operational path by which an authoritative Detour is carried out and
-communicated: Avail-backed, fixed-route manual, or mobility manual.
-_Avoid_: source, publication status
+communicated: Avail-backed, fixed-route manual, or mobility manual. Screens
+show one display label per mode, everywhere: "Build in Avail", "Fixed route,
+run manually", "Mobility, run manually"; the field is labelled "How it will be
+run". Switching an Avail-backed Detour to manual fallback reads "Run it
+manually instead".
+_Avoid_: source, publication status, fulfillment path
 
 ## Fixed-route manual Detour
 
@@ -608,8 +612,8 @@ _Avoid_: sent notification, automatic alert
 
 Creation of a new Detour identity from an existing Detour's configuration. The
 original record remains unchanged and the new record enters the selected
-workflow afresh.
-_Avoid_: reopen, extend in place
+workflow afresh. The worklist button reads "Re-establish".
+_Avoid_: reopen, extend in place, clone
 
 ## Temporal Detour status
 
@@ -624,7 +628,15 @@ The operational progress of an authoritative Detour: awaiting fulfillment,
 fulfilled, fulfillment failed, or closed. It is separate from temporal status,
 fulfillment mode, and communication eligibility. Approval is the promotion of a
 Detour intake and is not a stored Workflow state; intake decisions such as
-rejection and duplication belong to Detour intake.
+rejection and duplication belong to Detour intake. Screens use display labels
+and never the stored values: awaiting fulfillment is "Waiting for Avail entry";
+fulfilled is "Built in Avail" for an Avail-backed Detour and "Running manually"
+for a manual one ("In place" where the mode is not known); fulfillment failed
+is "Avail entry failed". An Avail entry result is recorded as "Built in Avail",
+"Avail refused it" or "Not built yet". The two things once both called a
+"conflict" are kept apart on screen: Avail refusing an entry is "Avail refused
+it — retry or run it manually", and an overlap that needs a Conflict override
+is "Overlaps another detour — override needed".
 _Avoid_: temporal status, communication readiness
 
 ## Detour workflow act
