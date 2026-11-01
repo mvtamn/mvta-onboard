@@ -148,19 +148,46 @@ describe("communicationAction", () => {
   const avlOption = { channel: "avl_messaging" as const, label: "AVL messaging", kind: "recorded" as const, needs_recipients: false };
   const signageOption = { channel: "digital_signage" as const, label: "Digital signage", kind: "recorded" as const, needs_recipients: false };
 
+  const closed = { code: "detour_closed", sentence: "This Detour is closed." };
+  const reReview = { code: "re_review_outstanding", sentence: "Complete the re-review first." };
+
   it("offers Send for a channel OnBoard sends, and blocks it with the server's reason", () => {
-    expect(communicationAction(sent, emailOption, undefined)).toMatchObject({ canSend: true, isRecorded: false, recordLabel: "Mark published (sent elsewhere)" });
-    expect(communicationAction(sent, emailOption, "This Detour is closed.")).toMatchObject({ canSend: true, blocked: "This Detour is closed." });
+    expect(communicationAction(sent, emailOption, undefined)).toMatchObject({ canSend: true, sendLabel: "Send email", isRecorded: false, recordLabel: "Mark published (sent elsewhere)" });
+    expect(communicationAction(sent, emailOption, closed)).toMatchObject({ canSend: true, blocked: "This Detour is closed." });
   });
 
   it("never offers Send for a recorded channel, and a closed Detour does not block writing one down", () => {
     // The server allows recording on a closed Detour: Monday's AVL message may
     // be written down on Tuesday.
-    const action = communicationAction({ ...sent, channel: "avl_messaging", recipients: null }, avlOption, "This Detour is closed.");
+    const action = communicationAction({ ...sent, channel: "avl_messaging", recipients: null }, avlOption, closed);
     expect(action).toMatchObject({ canSend: false, isRecorded: true, recordLabel: "Record AVL messaging went out" });
     expect(action.blocked).toBeUndefined();
     expect(communicationAction({ ...sent, channel: "digital_signage", recipients: null }, signageOption, undefined).recordLabel)
       .toBe("Record Digital signage went out");
+  });
+
+  it("disables recording when the server would still refuse it, with the server's reason", () => {
+    // eligibility.ts applies re-review, fulfillment and overlap to recorded
+    // channels too; only "closed" and "no recipients" are waived.
+    const avl = { ...sent, channel: "avl_messaging" as const, recipients: null };
+    expect(communicationAction(avl, avlOption, reReview).blocked).toBe("Complete the re-review first.");
+    expect(communicationAction(avl, avlOption, { code: "fulfillment_pending", sentence: "Not in place yet." }).blocked).toBe("Not in place yet.");
+    expect(communicationAction(avl, avlOption, { code: "no_recipients", sentence: "Add a recipient." }).blocked).toBeUndefined();
+    // Closed hides the rest of the Detour-wide reason, so it is read off the record.
+    expect(communicationAction(avl, avlOption, closed, { review_status: "needs_review" }).blocked).toMatch(/re-review/);
+    expect(communicationAction(avl, avlOption, closed, { conflict_status: "unresolved" }).blocked).toMatch(/overlaps another open detour/);
+  });
+
+  it("never offers Send for a text message: the server has no sender for it", () => {
+    const sms = { channel: "sms" as const, label: "Text message", kind: "sent" as const, needs_recipients: true };
+    expect(communicationAction({ ...sent, channel: "sms", recipients: "Riders list" }, sms, undefined))
+      .toMatchObject({ canSend: false, recordLabel: "Mark published (sent elsewhere)" });
+  });
+
+  it("labels Send by what it does, and Retry on a failed one", () => {
+    const teams = { channel: "teams" as const, label: "Teams", kind: "sent" as const, needs_recipients: false };
+    expect(communicationAction({ ...sent, channel: "teams", recipients: null }, teams, undefined).sendLabel).toBe("Post to Teams");
+    expect(communicationAction({ ...sent, status: "failed" }, emailOption, undefined).sendLabel).toBe("Retry send");
   });
 
   it("does not offer Send for an email with no recipients", () => {
@@ -186,12 +213,12 @@ describe("starting a message from one that exists", () => {
       { ...comm("Operators", "published"), content: "Full email wording" },
       { ...comm("Riders", "published", "sms"), content: "Short text" },
     ];
-    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Full email wording", from: "Operators · email" });
+    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Full email wording", from: "Operators · Email" });
   });
 
   it("falls back to the same channel for another audience", () => {
     const messages = [{ ...comm("Riders", "published", "sms"), content: "Short text" }];
-    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Short text", from: "Riders · sms" });
+    expect(copyFrom(messages, "Operators", "sms")).toEqual({ content: "Short text", from: "Riders · Text message" });
   });
 
   it("offers nothing when there is nothing to copy", () => {

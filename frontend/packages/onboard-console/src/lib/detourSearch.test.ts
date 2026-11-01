@@ -54,7 +54,7 @@ describe("detoursToCsv", () => {
     const [header, row] = detoursToCsv([d]).split("\r\n").map(cells);
     const byHeader = Object.fromEntries(header.map((h, i) => [h, row[i]]));
     expect(byHeader["Closure reason"]).toBe("Work finished early");
-    expect(byHeader["Avail entry"]).toBe("entered");
+    expect(byHeader["Avail entry"]).toBe("Built in Avail");
     expect(byHeader["Avail detour ID"]).toBe("AV-77");
     expect(byHeader["Avail last seen"]).toBe("2026-09-02T10:00:00.000Z");
   });
@@ -94,7 +94,7 @@ describe("conflict columns", () => {
     const [header, unresolved] = detoursToCsv([detour({ conflicts, conflict_status: "unresolved" })]).split("\r\n").map(cells);
     const col = header.indexOf("Conflicts");
     expect(unresolved[col]).toBe("Unresolved: MVTA-DET-2026-0003");
-    expect(unresolved[header.indexOf("Readiness")]).toContain("Conflict needs override");
+    expect(unresolved[header.indexOf("Readiness")]).toContain("Overlaps another detour — override needed");
     const [, overridden] = detoursToCsv([detour({ conflicts, conflict_status: "overridden", conflict_override_reason: "Different stops" })]).split("\r\n").map(cells);
     expect(overridden[col]).toBe("Overridden (Different stops): MVTA-DET-2026-0003");
   });

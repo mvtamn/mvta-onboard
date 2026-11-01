@@ -83,6 +83,9 @@ test("the block counts its trips and the ones a bus reported on", () => {
 
 test("a trip with no block in the Dispatch Log carries no block", () => {
   assert.equal(caseEvidence(row({ block_id: null, block_trips: null, block_trips_reported: null })).block, null);
+  // The workbook's Block, not the feed's versioned id (CONTEXT.md "Block").
+  assert.equal(caseEvidence(row({ block_id: "515-v64" })).block?.block_id, "515");
+  assert.equal(caseEvidence(row({ block_id: "1-v64" })).block?.block_id, "001");
 });
 
 test("a stop where most earlier no-shows ran is a likely dead zone", () => {

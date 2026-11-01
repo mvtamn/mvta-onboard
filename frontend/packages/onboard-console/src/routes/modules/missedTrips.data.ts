@@ -1,4 +1,4 @@
-import type { AssessmentPeriodStatus, GtfsCaseEvidence, MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
+import type { AssessmentPeriodStatus, GtfsCaseEvidence, SpareCaseTimes, MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome, OccurrenceAttribution, OccurrenceReviewStatus } from "@mvta/shared";
 
 export type MissedTripAlertStatus = "watching" | "escalated" | "resolved";
 export type MissedTripValidationStatus = "unreviewed" | "confirmed" | "false_positive" | "timely_service" | "partial_service_failure" | "indeterminate";
@@ -77,6 +77,11 @@ export interface MissedTripAlert {
   // The start evidence a reviewer decides a GTFS case on. Null on Spare, and
   // absent from an API older than 1.6.27.
   gtfsEvidence?: GtfsCaseEvidence | null;
+  // A Spare case's promised, last-scheduled and actual times. Absent before 1.6.66.
+  spareTimes?: SpareCaseTimes | null;
+  // Whether the detector had left Shadow detection on this service date.
+  // Undefined from an API older than 1.6.66, which does not say.
+  detectorPromoted?: boolean;
 }
 
 // Preview-only fallback shown when the console can't reach the authenticated
@@ -105,6 +110,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     dataQualityStatus: "experimental",
     undecidedReason: null,
     sourceSystem: "gtfs",
+    detectorPromoted: false,
     sourceRecordId: null,
     conditionLateStart: null,
     conditionSuperseded: null,
@@ -146,6 +152,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     dataQualityStatus: "experimental",
     undecidedReason: null,
     sourceSystem: "gtfs",
+    detectorPromoted: false,
     sourceRecordId: null,
     conditionLateStart: null,
     conditionSuperseded: null,
@@ -178,6 +185,7 @@ export const MISSED_TRIP_ALERTS: MissedTripAlert[] = [
     dataQualityStatus: "experimental",
     undecidedReason: null,
     sourceSystem: "gtfs",
+    detectorPromoted: false,
     sourceRecordId: null,
     conditionLateStart: null,
     conditionSuperseded: null,

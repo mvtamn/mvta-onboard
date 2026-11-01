@@ -637,6 +637,21 @@ export interface MissedTrip {
   // lib/missedTripCase/caseEvidence.ts). Null on a Spare case and where the
   // evidence could not be read; absent from an API older than 1.6.27.
   gtfs_evidence?: GtfsCaseEvidence | null;
+  /** Whether the case's detector had left Shadow detection on its service date. Absent before 1.6.66. */
+  detector_promoted?: boolean;
+  /** A Spare case's promised, last-scheduled and actual times. Null on GTFS; absent before 1.6.66. */
+  spare_times?: SpareCaseTimes | null;
+}
+
+export interface SpareCaseTimes {
+  /** Promised at booking. */
+  original_pickup_at: string | null;
+  /** Spare's last schedule, after any re-plan. */
+  scheduled_pickup_at: string | null;
+  pickup_arrived_at: string | null;
+  original_dropoff_at: string | null;
+  scheduled_dropoff_at: string | null;
+  dropoff_arrived_at: string | null;
 }
 
 // Why a Dispatch Log time is or is not the trip's departure. Only "departed"
@@ -718,6 +733,8 @@ export interface MissedTripsDiagnostics {
   limit: number;
   offset: number;
   returned_count: number;
+  /** The page's start evidence could not be read; absent from an API older than 1.6.66. */
+  case_evidence_unavailable?: boolean;
   view_count: number;
   total_count: number;
   active_count: number;
@@ -1238,11 +1255,70 @@ export interface DetourHistoricalImportRow {
   imported_at: string;
 }
 
+// Display words for the workflow state. The stored values keep the glossary's
+// precise terms (CONTEXT.md, "Workflow state"); the screens use these. Only an
+// Avail Detour can wait for or fail an Avail entry, so those two name Avail.
+// "fulfilled" depends on the mode - built in Avail, or running manually - and
+// reads "In place" only where the mode is not known (detourLifecycleLabel).
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
-  awaiting_fulfillment: "Awaiting fulfillment",
-  fulfilled: "Fulfilled",
-  fulfillment_failed: "Fulfillment failed",
+  awaiting_fulfillment: "Waiting for Avail entry",
+  fulfilled: "In place",
+  fulfillment_failed: "Avail entry failed",
   closed: "Closed",
+};
+
+// One name per fulfillment mode, everywhere it is shown (CONTEXT.md,
+// "Fulfillment mode").
+export const DETOUR_FULFILLMENT_MODE_LABELS: Record<DetourFulfillmentMode, string> = {
+  avail: "Build in Avail",
+  fixed_route_manual: "Fixed route, run manually",
+  mobility_manual: "Mobility, run manually",
+};
+
+/** The workflow state in plain words, naming the mode when it decides them. */
+export function detourLifecycleLabel(state: DetourLifecycleState, mode?: DetourFulfillmentMode | null): string {
+  if (state === "fulfilled") {
+    if (mode === "avail") return "Built in Avail";
+    if (mode === "fixed_route_manual" || mode === "mobility_manual") return "Running manually";
+  }
+  return DETOUR_LIFECYCLE_LABELS[state];
+}
+
+/** A recorded Avail entry result, as the buttons that record it say it. */
+export const DETOUR_AVAIL_RESULT_LABELS: Record<"entered" | "conflict" | "not_entered", string> = {
+  entered: "Built in Avail",
+  conflict: "Avail refused it",
+  not_entered: "Not built yet",
+};
+
+// The server's channel names (functions-restapi detourCommunication/channels.ts),
+// mirrored for screens that render a stored channel before the server's
+// channel list has loaded. Keep the two in step.
+export const DETOUR_CHANNEL_LABELS: Record<DetourChannel, string> = {
+  email: "Email",
+  sms: "Text message",
+  teams: "Teams",
+  digital_signage: "Digital signage",
+  avl_messaging: "AVL messaging",
+};
+
+/** A stored channel string in plain words; an unknown one is shown as stored. */
+export function detourChannelLabel(channel: string): string {
+  return (DETOUR_CHANNEL_LABELS as Record<string, string>)[channel.trim().toLowerCase()] ?? channel;
+}
+
+// The operating window's certainty. "Pending" alone read like the queue state
+// "Pending OCC review" beside it.
+export const DETOUR_TIME_WINDOW_LABELS: Record<"pending" | "estimated" | "confirmed", string> = {
+  pending: "Times unconfirmed",
+  estimated: "Times estimated",
+  confirmed: "Times confirmed",
+};
+
+export const DETOUR_COMMUNICATION_STATUS_LABELS: Record<DetourCommunicationStatus, string> = {
+  draft: "Draft",
+  published: "Published",
+  failed: "Send failed",
 };
 
 export const DETOUR_STATUS_LABELS: Record<DetourStatus, string> = {

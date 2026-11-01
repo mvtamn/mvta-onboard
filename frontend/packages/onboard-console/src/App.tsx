@@ -84,7 +84,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Work active and upcoming detours — communications, Avail build, conflicts" },
-  { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Create and review the complete operational Detour record" },
+  { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Report a closure or detour for OCC review" },
   { match: (p) => p === "/detour-reports", title: "Detour Register", sub: "Every detour, active and past — search, filter and export, read-only" },
   { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
@@ -382,7 +382,7 @@ function AuthenticatedApp({ account, signOut }: {
       name: "Specialist Operations",
       entries: navEntries(
         canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Work active and upcoming detours — communications, Avail build, conflicts", icon: <IconDetour /> },
-        canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour />, count: pendingIntakeCount },
+        canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Report a closure or detour for OCC review", icon: <IconDetour />, count: pendingIntakeCount },
         canSeeDetours && { to: "/detour-reports", label: "Detour Register", desc: "Every detour, active and past — search, filter and export, read-only", icon: <IconClock /> },
         canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
         canSeeRidership && { to: "/ridership", label: "Ridership", desc: "Key Count Sheets, with completeness by garage", icon: <IconBus /> },

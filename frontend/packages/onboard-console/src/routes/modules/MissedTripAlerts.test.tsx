@@ -92,7 +92,7 @@ describe("Missed Trips legacy exclusion", () => {
 
     render(<MissedTripAlerts />);
 
-    expect(await screen.findByText(/3,518 legacy candidates/)).toBeInTheDocument();
+    expect(await screen.findByText(/3,518 older cases from the retired detector/)).toBeInTheDocument();
   });
 
   it("says nothing when no legacy candidates exist", async () => {
@@ -279,14 +279,14 @@ describe("Missed Trips start evidence", () => {
     expect(within(section).getByText(/19 min late · inside the 30 minutes/)).toBeInTheDocument();
     expect(within(section).getByText("Block b14C: a bus reported on 8 of 9 trips")).toBeInTheDocument();
     expect(within(section).getByText(/Likely GPS dead zone/)).toBeInTheDocument();
-    expect(screen.queryByText("First underway evidence")).not.toBeInTheDocument();
+    expect(screen.getByText("Looks like")).toBeInTheDocument();
   });
 
-  it("a case from an API without evidence keeps the underway line", async () => {
+  it("a case from an API without evidence says what it saw past the first stop", async () => {
     vi.mocked(api.getMissedTrips).mockResolvedValue({ missed_trips: [candidate("gtfs", "444")], diagnostics });
     render(<MissedTripAlerts />);
 
-    expect(await screen.findByText("First underway evidence")).toBeInTheDocument();
+    expect(await screen.findByText(/past the first stop/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Start evidence" })).not.toBeInTheDocument();
   });
 });
