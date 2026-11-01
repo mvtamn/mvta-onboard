@@ -358,7 +358,7 @@ export function printedTime(iso: string): string {
 }
 
 /** The blocks a desk still needs to print: never printed, or changed since. */
-export function blocksToReprint(sheets: readonly RidershipPrintStatusSheet[]): string[] {
+export function blocksToPrint(sheets: readonly RidershipPrintStatusSheet[]): string[] {
   return sheets.filter((s) => s.state !== "printed").map((s) => s.block);
 }
 

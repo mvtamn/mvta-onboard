@@ -38,6 +38,7 @@ import {
   printCountSheets,
   printLogReady,
   ridershipTablesReady,
+  type PrintRequest,
   saveBlockGarages,
   saveSheet,
 } from "../lib/ridership";
@@ -251,9 +252,8 @@ app.http("ridershipPrintStatus", {
   },
 });
 
-type PrintBody = { date: string; garage: string | null; blocks?: string[]; blank_backs: boolean; link_base: string };
-
-function parsePrintBody(raw: unknown): { body: PrintBody } | { error: string } {
+/** The body as the module takes it; the link base must come from the console the request came from. */
+function parsePrintBody(raw: unknown, requestOrigin: string | null): { input: PrintRequest } | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "Request body must be an object." };
   const b = raw as Record<string, unknown>;
   const date = typeof b.date === "string" ? b.date.trim() : "";
@@ -273,9 +273,9 @@ function parsePrintBody(raw: unknown): { body: PrintBody } | { error: string } {
     }
   }
   if (b.blank_backs !== undefined && typeof b.blank_backs !== "boolean") return { error: "blank_backs must be true or false." };
-  const linkBase = linkBaseFor(b.link_base);
-  if (!linkBase) return { error: "link_base must be the https address the QR code links to." };
-  return { body: { date, garage, blocks, blank_backs: b.blank_backs === true, link_base: linkBase } };
+  const linkBase = linkBaseFor(b.link_base, requestOrigin);
+  if (!linkBase) return { error: "link_base must be the https address of the console you are printing from." };
+  return { input: { service_date: date, garage, blocks, blank_backs: b.blank_backs === true, link_base: linkBase } };
 }
 
 app.http("ridershipPrint", {
@@ -287,17 +287,14 @@ app.http("ridershipPrint", {
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
     const json = await readJson(request);
     if (!json.ok) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
-    const parsed = parsePrintBody(json.body);
+    const parsed = parsePrintBody(json.body, request.headers.get("origin"));
     if ("error" in parsed) return { status: 400, jsonBody: { error: parsed.error } };
 
     try {
       const pool = await getPool();
       if (!(await ridershipTablesReady(pool))) return NOT_READY;
       if (!(await printLogReady(pool))) return PRINT_NOT_READY;
-      const { body } = parsed;
-      const result = await printCountSheets(pool, {
-        service_date: body.date, garage: body.garage, blocks: body.blocks, blank_backs: body.blank_backs, link_base: body.link_base,
-      }, actorOf(auth.principal));
+      const result = await printCountSheets(pool, parsed.input, actorOf(auth.principal));
       if (result.kind === "nothing") return { status: 404, jsonBody: { error: result.message } };
       return {
         status: 200,

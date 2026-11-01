@@ -221,6 +221,7 @@ function printStatus(garage: string | null, sheets: RidershipPrintStatus["sheets
     service_date: "20261202", garage, garages: ["Burnsville", "Eagan", null], sheets,
     last_print: lastPrint, prints: lastPrint ? [lastPrint] : [],
     not_printed: sheets.filter((s) => s.state === "not_printed").length, changed: sheets.filter((s) => s.state === "changed").length,
+    dropped: [],
   };
 }
 
@@ -278,6 +279,15 @@ describe("Ridership › Print sheets", () => {
     expect(await screen.findByText(/The Dispatch Log has changed since printing/)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Reprint just that sheet" }));
     await waitFor(() => expect(printRidershipSheets).toHaveBeenCalledWith(expect.objectContaining({ garage: "Burnsville", blocks: ["105"] })));
+  });
+
+  it("tells the desk to take back a printed sheet for a block that no longer runs", async () => {
+    getRidershipPrintStatus.mockImplementation(async () => ({
+      ...printStatus("Burnsville", [printRow("024", 1, "printed")], true),
+      dropped: [{ block: "330", printed_at: "2026-12-01T03:05:00Z", printed_by: "desk@example.test" }],
+    }));
+    renderPage("/ridership?tab=print");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Block 330 no longer runs .* Take it back/);
   });
 
   it("says when everything printed is still current", async () => {

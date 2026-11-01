@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RidershipSheet } from "@mvta/shared";
 import {
-  blocksToReprint,
+  blocksToPrint,
   cellFromInput,
   centralDay,
   clock,
@@ -166,7 +166,7 @@ describe("printing", () => {
 
   it("lists the blocks still to print: never printed or changed since", () => {
     const row = (block: string, state: "not_printed" | "printed" | "changed") => ({ block, garage: "Burnsville", order: 1, first_start_seconds: 0, trips: 1, pages: 1, state, printed_at: null, printed_by: null });
-    expect(blocksToReprint([row("024", "printed"), row("105", "changed"), row("212", "not_printed")])).toEqual(["105", "212"]);
+    expect(blocksToPrint([row("024", "printed"), row("105", "changed"), row("212", "not_printed")])).toEqual(["105", "212"]);
   });
 
   it("points the QR link at this console until the operator app has an address", () => {

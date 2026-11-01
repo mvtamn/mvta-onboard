@@ -11,7 +11,7 @@ import { api } from "../../../config.js";
 import {
   PRINT_STATE_LABEL,
   PRINT_STATE_TONE,
-  blocksToReprint,
+  blocksToPrint,
   centralDay,
   clock,
   formatServiceDate,
@@ -120,7 +120,8 @@ export function PrintSheets() {
 
   const data = status.state === "ready" ? status.data : null;
   const sheets = data?.sheets ?? [];
-  const pending = blocksToReprint(sheets);
+  const pending = blocksToPrint(sheets);
+  const dropped = data?.dropped ?? [];
   const stale = sheets.filter((s) => s.state === "changed");
   const label = garage === undefined ? "" : garageName(garage);
 
@@ -173,6 +174,13 @@ export function PrintSheets() {
             </>
           )}
         </div>
+      )}
+
+      {dropped.length > 0 && (
+        <p className="ridership-problems" role="alert">
+          <b>{dropped.length === 1 ? `Block ${dropped[0].block} no longer runs` : `Blocks ${dropped.map((d) => d.block).join(", ")} no longer run`}</b>{" "}
+          on {formatServiceDate(date)}, but {dropped.length === 1 ? "its sheet was" : "their sheets were"} printed. Take {dropped.length === 1 ? "it" : "them"} back from the desk.
+        </p>
       )}
 
       {sheets.length > 0 && (

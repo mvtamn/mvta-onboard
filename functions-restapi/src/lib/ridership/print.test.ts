@@ -77,7 +77,7 @@ const run = (over: Partial<StoredPrintRun>): StoredPrintRun => ({
   print_id: "r1", garage: "Burnsville", scope: "garage", blank_backs: false, sheet_count: 2, page_count: 2, printed_at: AT, printed_by: "desk@example.test", ...over,
 });
 const printed = (block: string, fingerprint: string, over: Partial<StoredPrintedSheet> = {}): StoredPrintedSheet => ({
-  print_id: "r1", block, fingerprint, printed_at: AT, printed_by: "desk@example.test", ...over,
+  print_id: "r1", garage: "Burnsville", block, fingerprint, printed_at: AT, printed_by: "desk@example.test", ...over,
 });
 
 test("each sheet reads not printed, printed, or changed since printing", () => {
@@ -93,6 +93,17 @@ test("each sheet reads not printed, printed, or changed since printing", () => {
   const eagan = printStatus(DAY, "Eagan", sheets, { runs: [run({})], sheets: [] });
   assert.equal(eagan.last_print, null, "Burnsville's print is not Eagan's");
   assert.equal(eagan.not_printed, 1);
+});
+
+test("a block this garage printed that no longer runs is reported as dropped", () => {
+  const sheets = sheetsToPrint(TRIPS, GARAGES, DAY, undefined);
+  const s024 = sheets.find((s) => s.block === "024")!;
+  const status = printStatus(DAY, "Burnsville", sheets, {
+    runs: [run({})],
+    sheets: [printed("024", s024.fingerprint), printed("330", "gone"), printed("400", "gone", { garage: "Eagan" })],
+  });
+  assert.deepEqual(status.dropped.map((d) => d.block), ["330"], "Eagan's dropped block is Eagan's to hear about");
+  assert.equal(status.sheets.length, 2);
 });
 
 test("the latest print of a block decides, and a reprint is not the garage's stack", () => {
@@ -126,9 +137,14 @@ test("the link base is an https address, or a local dev console", () => {
 });
 
 test("a configured operator app address wins over the console that printed", () => {
-  assert.equal(linkBaseFor("https://console.example.test", "https://operator.example.test"), "https://operator.example.test");
-  assert.equal(linkBaseFor("https://console.example.test", ""), "https://console.example.test");
-  assert.equal(linkBaseFor("https://console.example.test", undefined), "https://console.example.test");
+  assert.equal(linkBaseFor("https://console.example.test", "https://console.example.test", "https://operator.example.test"), "https://operator.example.test");
+  assert.equal(linkBaseFor("https://console.example.test/console", "https://console.example.test", ""), "https://console.example.test/console");
+});
+
+test("the console's address is taken only from the console the request came from", () => {
+  assert.equal(linkBaseFor("https://elsewhere.example.test", "https://console.example.test", undefined), null);
+  assert.equal(linkBaseFor("https://console.example.test", null, undefined), null, "no Origin, no console address");
+  assert.equal(linkBaseFor("http://localhost:5176/console", "http://localhost:5176", undefined), "http://localhost:5176/console");
 });
 
 test("the code is 25 mm, grown for a long link to keep modules near 0.7 mm, never past 30 mm", () => {

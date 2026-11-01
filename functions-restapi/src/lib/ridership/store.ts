@@ -18,6 +18,7 @@ import type {
   LoggedTrip,
   PulloutRun,
   SheetHeader,
+  PrintScope,
   SheetHistoryEntry,
 } from "./types";
 
@@ -438,7 +439,7 @@ export async function printLogReady(executor: Executor): Promise<boolean> {
 export interface StoredPrintRun {
   print_id: string;
   garage: string | null;
-  scope: "garage" | "blocks";
+  scope: PrintScope;
   blank_backs: boolean;
   sheet_count: number;
   page_count: number;
@@ -448,6 +449,8 @@ export interface StoredPrintRun {
 
 export interface StoredPrintedSheet {
   print_id: string;
+  /** The garage the print was for; null is Unassigned. */
+  garage: string | null;
   block: string;
   fingerprint: string;
   printed_at: Date;
@@ -467,7 +470,7 @@ export async function loadPrintLog(executor: Executor, serviceDate: string): Pro
   const sheetsReq = request(executor);
   sheetsReq.input("service_date", sql.Char(8), serviceDate);
   const sheets = await sheetsReq.query<StoredPrintedSheet>(`
-    SELECT CONVERT(NVARCHAR(36), s.print_id) AS print_id, s.block, s.fingerprint, r.printed_at, r.printed_by
+    SELECT CONVERT(NVARCHAR(36), s.print_id) AS print_id, r.garage, s.block, s.fingerprint, r.printed_at, r.printed_by
     FROM dbo.RidershipPrintedSheets s
     JOIN dbo.RidershipPrintRuns r ON r.print_id = s.print_id
     WHERE s.service_date = @service_date
@@ -482,7 +485,7 @@ export async function loadPrintLog(executor: Executor, serviceDate: string): Pro
 export interface PrintWrite {
   service_date: string;
   garage: string | null;
-  scope: "garage" | "blocks";
+  scope: PrintScope;
   blank_backs: boolean;
   page_count: number;
   sheets: { block: string; fingerprint: string; pages: number }[];

@@ -24,6 +24,8 @@ const QR_MIN = 25 * MM;
 /** ...grown for a long link so a module stays about 0.7 mm, up to 30 mm. */
 const QR_MAX = 30 * MM;
 const QR_MODULE = 0.7 * MM;
+/** The rule under the header: the largest code (30 mm from y 34) ends above it. */
+const RULE_Y = 122;
 const DIGIT = 16;
 const TRIP_ROW = 26;
 
@@ -87,15 +89,16 @@ function tallyGuides(doc: Doc, x: number, y: number, w: number, h: number) {
   doc.restore();
 }
 
-/** The code's side in points: 25 mm, or larger for a dense link, never past 30 mm. */
-export function qrSide(text: string): number {
-  const n = QRCode.create(text, { errorCorrectionLevel: "Q" }).modules.size;
-  return Math.min(QR_MAX, Math.max(QR_MIN, (n + 2) * QR_MODULE));
-}
+type Qr = ReturnType<typeof QRCode.create>;
+const qrFor = (text: string): Qr => QRCode.create(text, { errorCorrectionLevel: "Q" });
+/** 25 mm, or larger for a dense link, never past 30 mm; the quiet zone is a module each side. */
+const sideFor = (qr: Qr) => Math.min(QR_MAX, Math.max(QR_MIN, (qr.modules.size + 2) * QR_MODULE));
+
+/** The code's side in points for a link. */
+export const qrSide = (text: string): number => sideFor(qrFor(text));
 
 /** QR modules as squares, error correction Q, a one-module quiet zone inside the side. */
-function qrCode(doc: Doc, text: string, x: number, y: number, size: number) {
-  const qr = QRCode.create(text, { errorCorrectionLevel: "Q" });
+function qrCode(doc: Doc, qr: Qr, x: number, y: number, size: number) {
   const n = qr.modules.size;
   const cell = size / (n + 2);
   for (let r = 0; r < n; r++) {
@@ -128,19 +131,21 @@ function header(doc: Doc, serviceDate: string, sheet: PrintSheet, link: string) 
   doc.font(BOLD).fontSize(13).text(dashedDate(serviceDate), bx + 102, top + 14, { lineBreak: false });
   doc.font(FONT).fontSize(10).text(weekday(serviceDate), bx + 102, top + 31, { lineBreak: false });
 
-  const side = qrSide(link);
+  const qr = qrFor(link);
+  const side = sideFor(qr);
   const qx = RIGHT - side;
-  const qy = top - 12; // the largest code still clears the rule below it
-  qrCode(doc, link, qx, qy, side);
+  // Below the corner mark's row, and the largest code still clears the rule.
+  const qy = top - 6;
+  qrCode(doc, qr, qx, qy, side);
   doc.font(FONT).fontSize(7).text("Scan to enter counts", qx - 92, top + 12, { width: 86, align: "right", lineBreak: false });
   doc.text("on the kiosk or web", qx - 92, top + 21, { width: 86, align: "right", lineBreak: false });
   doc.font(BOLD).text("Sign-in required", qx - 92, top + 30, { width: 86, align: "right", lineBreak: false });
 
-  doc.lineWidth(1.2).moveTo(MARGIN, 116).lineTo(RIGHT, 116).stroke();
+  doc.lineWidth(1.2).moveTo(MARGIN, RULE_Y).lineTo(RIGHT, RULE_Y).stroke();
 }
 
 function operatorSection(doc: Doc) {
-  const y = 120;
+  const y = RULE_Y + 4;
   doc.font(FONT).fontSize(7).fillColor("#000");
   doc.text("Operator name", MARGIN, y, { lineBreak: false });
   doc.lineWidth(0.8).moveTo(MARGIN, y + 28).lineTo(MARGIN + 200, y + 28).stroke();
@@ -155,7 +160,7 @@ function operatorSection(doc: Doc) {
 }
 
 function howToCount(doc: Doc) {
-  const y = 156;
+  const y = RULE_Y + 38;
   box(doc, MARGIN, y, RIGHT - MARGIN, 30, 0.6);
   doc.fillColor("#000").font(BOLD).fontSize(7.5).text("How to count: ", MARGIN + 6, y + 5, { width: RIGHT - MARGIN - 12, continued: true });
   doc.font(FONT).text(
@@ -165,7 +170,8 @@ function howToCount(doc: Doc) {
   );
 }
 
-const TRIP_COLUMNS = { n: 18, route: 40, dir: 26, scheduled: 70, trip: 74, total: 3 * DIGIT + 10, dno: 30 };
+// Trip IDs are GTFS ids such as "t1A4-b1F6-sl1B-v63" (16-18 characters); the column fits 18 at 7.4 pt.
+const TRIP_COLUMNS = { n: 18, route: 40, dir: 26, scheduled: 70, trip: 84, total: 3 * DIGIT + 10, dno: 30 };
 
 function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): number {
   const c = TRIP_COLUMNS;
@@ -173,7 +179,7 @@ function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): 
   const xs = [MARGIN];
   for (const w of [c.n, c.route, c.dir, c.scheduled, c.trip, tallyWidth, c.total]) xs.push(xs[xs.length - 1] + w);
 
-  let y = 196;
+  let y = RULE_Y + 76;
   const heads = ["#", "Route", "Dir", "Scheduled", "Trip ID", "Tally", "Total boardings", "DNO"];
   doc.font(BOLD).fontSize(7).fillColor("#000");
   heads.forEach((h, i) => doc.text(h, xs[i] + 2, y + 3, { lineBreak: false }));
@@ -187,7 +193,9 @@ function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): 
     doc.font(BOLD).fontSize(14).text(trip.direction_label ?? "", xs[2] + 2, mid - 7, { lineBreak: false });
     const span = `${clock(trip.scheduled_start_seconds)}-${trip.scheduled_end_seconds === null ? "" : clock(trip.scheduled_end_seconds)}`;
     doc.font(MONO).fontSize(9).text(span, xs[3] + 2, mid - 4, { lineBreak: false });
-    doc.font(MONO).fontSize(7.5).text(trip.trip_id, xs[4] + 2, mid - 3, { width: c.trip - 4, lineBreak: false, ellipsis: true });
+    // Courier is 0.6 em a character: shrink a long id to fit rather than cut it, since OCC reads it.
+    const idSize = Math.min(7.5, (c.trip - 4) / (0.6 * Math.max(1, trip.trip_id.length)));
+    doc.font(MONO).fontSize(idSize).text(trip.trip_id, xs[4] + 2, mid - idSize / 2, { lineBreak: false });
     tallyGuides(doc, xs[5] + 4, y + 4, tallyWidth - 8, TRIP_ROW - 9);
     digitBoxes(doc, xs[6] + 4, mid - (DIGIT + 2) / 2, 3);
     tickBox(doc, xs[7] + 9, mid - 5.5);
@@ -291,6 +299,10 @@ export function renderCountSheets(input: CountSheetInput): Promise<Buffer> {
       if (page === sheet.pages) {
         y = unscheduledRows(doc, y);
         handIn(doc, y);
+      } else {
+        // Every page carries its own code, so every page carries the warning.
+        doc.fillColor("#000").font(FONT).fontSize(8).text(`Continued on page ${page + 1}. `, MARGIN, y + 10, { continued: true });
+        doc.font(BOLD).text("Do not fold through the code.", { lineBreak: false });
       }
       footer(doc, {
         page: `Page ${page} of ${sheet.pages} · pull-out order ${sheet.order} of ${input.stackSize}`,

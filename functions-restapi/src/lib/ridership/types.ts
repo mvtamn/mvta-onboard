@@ -7,6 +7,8 @@ export type CountStatus = "counted" | "not_counted" | "did_not_operate";
 /** An unscheduled trip ran by definition, so it cannot be "did not operate". */
 export type AddedTripStatus = Exclude<CountStatus, "did_not_operate">;
 export type AddedTripReason = "tripper" | "extra_service" | "occ_directed" | "other";
+/** What one print covered: a garage's whole stack, or a reprint of some of its blocks. */
+export type PrintScope = "garage" | "blocks";
 
 export const COUNT_STATUSES: readonly CountStatus[] = ["counted", "not_counted", "did_not_operate"];
 export const ADDED_TRIP_STATUSES: readonly AddedTripStatus[] = ["counted", "not_counted"];

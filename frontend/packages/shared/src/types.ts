@@ -2829,6 +2829,8 @@ export interface RidershipBlockGarageSave {
 
 /** Where a Count Sheet stands against the print log. */
 export type RidershipPrintState = "not_printed" | "printed" | "changed";
+/** What one print covered: a garage's whole stack, or a reprint of some of its blocks. */
+export type RidershipPrintScope = "garage" | "blocks";
 
 export interface RidershipPrintStatusSheet {
   block: string;
@@ -2846,7 +2848,7 @@ export interface RidershipPrintStatusSheet {
 export interface RidershipPrintRun {
   printed_at: string;
   printed_by: string;
-  scope: "garage" | "blocks";
+  scope: RidershipPrintScope;
   sheets: number;
   pages: number;
   blank_backs: boolean;
@@ -2862,6 +2864,8 @@ export interface RidershipPrintStatus {
   prints: RidershipPrintRun[];
   not_printed: number;
   changed: number;
+  /** Blocks this garage printed that the Dispatch Log no longer runs on the date. */
+  dropped: { block: string; printed_at: string; printed_by: string }[];
 }
 
 export interface RidershipPrintRequest {

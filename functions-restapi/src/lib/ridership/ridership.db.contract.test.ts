@@ -21,7 +21,8 @@ import { buildWorklist, listBlockGarages, loadPrintStatus, loadSheet, printCount
 //   Planning's block -> garage rows dated by service change;
 //   a garage's print logged with each block's fingerprint, a block the
 //   Dispatch Log changed since flagged, and a reprint of just that block
-//   clearing it (migration 157).
+//   clearing it, and a printed block the day no longer runs reported as
+//   dropped (migration 157).
 //
 // Ridership's tables come from the real migration 153; Avail's pull-out from
 // the real migration 013; the Dispatch Log and missed-trip cases are reduced
@@ -272,6 +273,12 @@ test("ridership against real SQL", { skip: !connectionString && "DECISION_MATRIX
 
       const none = await printCountSheets(pool, { service_date: DAY, garage: null, blank_backs: false, link_base: "https://console.example.test" }, PLANNING);
       assert.equal(none.kind, "nothing", "no block is Unassigned on the day");
+
+      // The block is withdrawn from the day after its sheet went out.
+      await pool.request().query(`DELETE dbo.TripStartLog WHERE service_date = '${DAY}' AND block_id = '24-v64'`);
+      const gone = await loadPrintStatus(pool, DAY, "Burnsville");
+      assert.deepEqual(gone.dropped.map((d) => d.block), ["024"]);
+      assert.equal(gone.sheets.length, 0);
     });
   } finally {
     await pool.close();

@@ -18,7 +18,7 @@ import type { Executor } from "../otpMonth";
 import { renderCountSheets } from "./countSheetPdf";
 import { garageOn } from "./rules";
 import { loadBlockGarages, loadLoggedTrips, loadPrintLog, writePrintRun, type StoredPrintRun, type StoredPrintedSheet } from "./store";
-import type { LoggedTrip } from "./types";
+import type { LoggedTrip, PrintScope } from "./types";
 
 /** Spec §3: a block with more trips continues on page 2. */
 export const TRIPS_PER_PAGE = 14;
@@ -47,6 +47,11 @@ export interface PrintSheet {
  * Unassigned blocks, which print like any garage so none goes missing.
  */
 export type GarageChoice = string | null | undefined;
+
+/** The items for the chosen garage; every item when every garage is chosen. */
+export function inGarage<T extends { garage: string | null }>(items: readonly T[], garage: GarageChoice): T[] {
+  return garage === undefined ? [...items] : items.filter((item) => item.garage === garage);
+}
 
 export const pageCount = (trips: number) => Math.max(1, Math.ceil(trips / TRIPS_PER_PAGE));
 
@@ -92,7 +97,7 @@ export function sheetsToPrint(
       order: 0,
     };
   });
-  const chosen = garage === undefined ? sheets : sheets.filter((s) => s.garage === garage);
+  const chosen = inGarage(sheets, garage);
   // Pull-out order within each garage; with every garage chosen, garages read
   // by name with Unassigned last, as the worklist shows them.
   chosen.sort((a, b) =>
@@ -106,13 +111,6 @@ export function sheetsToPrint(
     sheet.order = n;
   }
   return chosen;
-}
-
-/** The garage's stack size, for "pull-out order n of N". */
-export function stackSizes(sheets: readonly PrintSheet[]): Map<string | null, number> {
-  const sizes = new Map<string | null, number>();
-  for (const s of sheets) sizes.set(s.garage, (sizes.get(s.garage) ?? 0) + 1);
-  return sizes;
 }
 
 /**
@@ -143,9 +141,25 @@ export function normalizeLinkBase(raw: unknown): string | null {
   return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
 }
 
-/** Where the QR link points: the configured operator app, else the console that printed. */
-export function linkBaseFor(requested: unknown, configured: string | undefined = process.env.RIDERSHIP_SHEET_LINK_BASE): string | null {
-  return normalizeLinkBase(configured) ?? normalizeLinkBase(requested);
+/**
+ * Where the QR link points: the configured operator app, else the console that
+ * printed. The console's address is taken only when it is the origin the
+ * request came from, so a print can't point the codes at some other site.
+ */
+export function linkBaseFor(
+  requested: unknown,
+  requestOrigin: string | null,
+  configured: string | undefined = process.env.RIDERSHIP_SHEET_LINK_BASE,
+): string | null {
+  const fixed = normalizeLinkBase(configured);
+  if (fixed) return fixed;
+  const base = normalizeLinkBase(requested);
+  if (!base || !requestOrigin) return null;
+  try {
+    return new URL(base).origin === new URL(requestOrigin).origin ? base : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- the print log
@@ -173,7 +187,7 @@ export interface PrintStatusSheet {
 export interface PrintRunView {
   printed_at: string;
   printed_by: string;
-  scope: "garage" | "blocks";
+  scope: PrintScope;
   sheets: number;
   pages: number;
   blank_backs: boolean;
@@ -192,6 +206,11 @@ export interface PrintStatus {
   prints: PrintRunView[];
   not_printed: number;
   changed: number;
+  /**
+   * Blocks this garage printed that the Dispatch Log no longer runs on the
+   * date: the desk handed out a sheet for a block that is gone.
+   */
+  dropped: { block: string; printed_at: string; printed_by: string }[];
 }
 
 const runView = (run: StoredPrintRun): PrintRunView => ({
@@ -213,8 +232,7 @@ export function printStatus(
   const latest = new Map<string, StoredPrintedSheet>();
   for (const row of log.sheets) if (!latest.has(row.block)) latest.set(row.block, row);
 
-  const chosen = garage === undefined ? allSheets : allSheets.filter((s) => s.garage === garage);
-  const sheets = chosen.map((s): PrintStatusSheet => {
+  const sheets = inGarage(allSheets, garage).map((s): PrintStatusSheet => {
     const printed = latest.get(s.block);
     return {
       block: s.block,
@@ -228,7 +246,12 @@ export function printStatus(
       printed_by: printed?.printed_by ?? null,
     };
   });
-  const runs = garage === undefined ? log.runs : log.runs.filter((r) => r.garage === garage);
+  const runs = inGarage(log.runs, garage);
+  const running = new Set(allSheets.map((s) => s.block));
+  const dropped = inGarage([...latest.values()], garage)
+    .filter((row) => !running.has(row.block))
+    .sort((a, b) => a.block.localeCompare(b.block))
+    .map((row) => ({ block: row.block, printed_at: row.printed_at.toISOString(), printed_by: row.printed_by }));
   const lastStack = runs.find((r) => r.scope === "garage");
   const garages = [...new Set(allSheets.map((s) => s.garage))];
   return {
@@ -240,6 +263,7 @@ export function printStatus(
     prints: runs.map(runView),
     not_printed: sheets.filter((s) => s.state === "not_printed").length,
     changed: sheets.filter((s) => s.state === "changed").length,
+    dropped,
   };
 }
 
@@ -281,7 +305,7 @@ const fileSafe = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-"
  */
 export async function printCountSheets(pool: sql.ConnectionPool, input: PrintRequest, actor: string, now: Date = new Date()): Promise<PrintResult> {
   const all = await sheetsFor(pool, input.service_date);
-  const stack = all.filter((s) => s.garage === input.garage);
+  const stack = inGarage(all, input.garage);
   const label = input.garage ?? "Unassigned";
   if (stack.length === 0) return { kind: "nothing", message: `No blocks are assigned to ${label} on ${input.service_date}.` };
 
