@@ -5,6 +5,32 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.56] - 2026-11-01
+
+- **The console Ridership page (PR 3 of Increment 1 in `plans/ridership-build-plan.md`).** Specialist Operations › Ridership (`/ridership`, `ridership.view`) is the Enter sheets flow chosen from the prototype (spec §4): the worklist, opening the sheet form full-width. A user with no other workspace lands on it. No API change; it reads PR 2's endpoints and says so when migration 153 is missing.
+- **Worklist (`routes/modules/ridership/RidershipEntry.tsx`):**
+  - It shows the API's order (late, then in progress, then not entered), completeness cards by garage that filter the list, and Unassigned shown.
+  - Ranges are the last 8 or 32 service dates, because a late sheet stays late until it is keyed.
+  - The box reads a Count Sheet QR link (`…/r/<YYYYMMDD>/<block>`, `?p=N` ignored) or a typed block number.
+  - ↑/↓/Enter work on the list.
+- **Sheet form (`SheetForm.tsx`):**
+  - Each trip takes a number, `N` (Not counted) or `D` (Did not operate), as one box (`cellFromInput` in `lib/ridership.ts`). A letter replaces the box, and `D` is refused on unscheduled trips.
+  - Enter walks the trips and then lands on Save; Ctrl/⌘+Enter saves from anywhere. Save refuses blank required trips client-side and focuses the first one, then goes to the next sheet in a queue snapshotted when the first sheet opened.
+  - Esc returns to the worklist, and takes a second press when there are unsaved changes.
+  - The operator and bus are skipped by Enter unless Avail had no pull-out. Relief runs are offered as one-click fills, and the override pill uses the same comparison as the API.
+  - On 409 the form offers Reload.
+- **Speed:** the next sheet in the queue is fetched while the current one is keyed, so Save opens it at once. The Save button stays focusable while saving (`aria-disabled`), so a key typed during the save is not sent elsewhere.
+- **Administration › Ridership setup (`/admin/ridership`, `ridership.configure`):**
+  - Listed once in `adminNav.ts` under Service Setup, beside Service Configuration.
+  - Each block shows its garage in force on the chosen service-change day.
+  - Save sends only the blocks that change (`garageChanges`), so earlier service dates keep their garage.
+- **Dev:** mock sign-in presets for Ridership (recorder) and Planning (manager).
+- **Shared:** `Ridership*` types mirror `functions-restapi/src/lib/ridership/types.ts`, and the API client gains five methods.
+- **Tests:**
+  - `lib/ridership.test.ts`: cells, clock, draft and save, scan, garages.
+  - `Ridership.test.tsx`: keyboard flow, blank-trip refusal, Esc guard, 409 reload, relief fill, QR open, fetching ahead, read-only without `ridership.enter`, setup visible only with `ridership.configure`.
+  - `RidershipSetupAdmin.test.tsx`.
+
 ## [1.6.52] - 2026-11-01
 
 - **A case's first-stop record counted no-shows the evidence could not judge.** 1.6.27's stop record (`readCaseEvidence`, `caseEvidence.ts`) counted every silent no-show at a stop, including the 1,244 retired by migration 148 and those held as `unknown_data_gap`. Both show "no start" because the feed was down, not because of the stop, so they dragged real dead zones under the 80% bar. Seen live on dev 2026-10-22: Savage Park & Ride read "38 of 82 other no-shows here turned out to have run", though all 27 of its cases since the 2026-09-16 guards ran. The record now leaves out `legacy_unverified` and `unknown_data_gap` cases.

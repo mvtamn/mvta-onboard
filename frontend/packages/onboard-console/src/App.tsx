@@ -42,6 +42,8 @@ import { EventWorkspaceProvider } from "./context/EventWorkspaceContext.js";
 import { AppDialogProvider } from "./components/AppDialog.js";
 import { Compliance } from "./routes/Compliance.js";
 import { ScheduleReview } from "./routes/ScheduleReview.js";
+import { Ridership } from "./routes/Ridership.js";
+import { RidershipSetupAdmin } from "./routes/RidershipSetupAdmin.js";
 import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
 import { DetourReports } from "./routes/DetourReports.js";
@@ -96,6 +98,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     title: "OCC Tools",
     sub: "Service-risk prediction, procedure guidance, and vehicle monitoring",
   },
+  { match: (p) => p === "/ridership", title: "Ridership", sub: "Key Count Sheets from the garages, with completeness by garage and the deadline in front" },
   {
     match: (p) => p === "/schedule-review",
     title: "Schedule Review",
@@ -288,6 +291,7 @@ function AuthenticatedApp({ account, signOut }: {
   const canSeeCompliance = can("compliance-review.view");
   const canSeePerformanceAssessment = can("performance-assessment.view");
   const canSeeDetours = can("detours.view");
+  const canSeeRidership = can("ridership.view");
   const canSeeDetourIntake = can("detours.intake");
   // Detour requests waiting on OCC. Nothing notifies them when one arrives, so
   // the number has to be visible from wherever they are.
@@ -301,6 +305,7 @@ function AuthenticatedApp({ account, signOut }: {
     : canSeeDispatchLog ? "/service-operations/dispatch-log"
     : canSeeCompliance ? "/compliance"
     : canSeeDetours ? "/detours"
+    : canSeeRidership ? "/ridership"
     : null;
   const stats = useLiveStats();
   const location = useLocation();
@@ -380,6 +385,7 @@ function AuthenticatedApp({ account, signOut }: {
         canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour />, count: pendingIntakeCount },
         canSeeDetours && { to: "/detour-reports", label: "Detour Register", desc: "Every detour, active and past — search, filter and export, read-only", icon: <IconClock /> },
         canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
+        canSeeRidership && { to: "/ridership", label: "Ridership", desc: "Key Count Sheets, with completeness by garage", icon: <IconBus /> },
         // Analysis of the published schedule, not compliance; schedule data only, so every signed-in role sees it.
         { to: "/schedule-review", label: "Schedule Review", desc: "What in the published schedule makes predictions worse, with the evidence", icon: <IconClock /> },
       ),
@@ -646,6 +652,7 @@ function AuthenticatedApp({ account, signOut }: {
               <Route path="/audit" element={<RequireAccess action="governance-audit.view"><AuditLog /></RequireAccess>} />
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/schedule-review" element={<ScheduleReview />} />
+              <Route path="/ridership" element={<RequireAccess action="ridership.view"><Ridership /></RequireAccess>} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireAccess anyOf={[...ADMIN_ACTIONS]}><AdminLayout /></RequireAccess>}>
                 <Route index element={<AdminHome />} />
@@ -665,6 +672,7 @@ function AuthenticatedApp({ account, signOut }: {
                 </Route>
                 <Route path="events" element={<RequireAccess action="service-configuration.edit"><AdminEventAdministration /></RequireAccess>} />
                 <Route path="service" element={<RequireAccess action="service-configuration.edit"><AdminServiceConfiguration /></RequireAccess>} />
+                <Route path="ridership" element={<RequireAccess action="ridership.configure"><RidershipSetupAdmin /></RequireAccess>} />
                 <Route path="integrations" element={<RequireAccess action="integrations-health.view"><AdminIntegrations /></RequireAccess>} />
                 <Route path="service-standards" element={<RequireAccess action="service-configuration.edit"><OnDemandServiceStandardsAdmin /></RequireAccess>} />
                 <Route path="decision-matrix" element={<RequireAccess action="decision-matrix.manage"><DecisionMatrixAdmin /></RequireAccess>} />

@@ -67,6 +67,7 @@ export const ADMIN_AREAS: readonly AdminArea[] = [
     icon: "sliders",
     pages: [
       { to: "/admin/service", label: "Service Configuration", desc: "Routes, feeds, and service-day configuration", icon: "sliders", action: "service-configuration.edit" },
+      { to: "/admin/ridership", label: "Ridership setup", desc: "Which garage runs each block, for ridership completeness", icon: "clipboard", action: "ridership.configure" },
       { to: "/admin/events", label: "Event Administration", desc: "The event catalog and the resources behind it", icon: "calendar", action: "service-configuration.edit" },
       { to: "/admin/decision-matrix", label: "Decision Matrix", desc: "The thresholds behind suggested alerts", icon: "grid", action: "decision-matrix.manage" },
     ],
