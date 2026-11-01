@@ -5,11 +5,37 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.54] - 2026-11-01
+## [1.6.58] - 2026-11-01
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+
+## [1.6.56] - 2026-11-01
+
+- **The console Ridership page (PR 3 of Increment 1 in `plans/ridership-build-plan.md`).** Specialist Operations › Ridership (`/ridership`, `ridership.view`) is the Enter sheets flow chosen from the prototype (spec §4): the worklist, opening the sheet form full-width. A user with no other workspace lands on it. No API change; it reads PR 2's endpoints and says so when migration 153 is missing.
+- **Worklist (`routes/modules/ridership/RidershipEntry.tsx`):**
+  - It shows the API's order (late, then in progress, then not entered), completeness cards by garage that filter the list, and Unassigned shown.
+  - Ranges are the last 8 or 32 service dates, because a late sheet stays late until it is keyed.
+  - The box reads a Count Sheet QR link (`…/r/<YYYYMMDD>/<block>`, `?p=N` ignored) or a typed block number.
+  - ↑/↓/Enter work on the list.
+- **Sheet form (`SheetForm.tsx`):**
+  - Each trip takes a number, `N` (Not counted) or `D` (Did not operate), as one box (`cellFromInput` in `lib/ridership.ts`). A letter replaces the box, and `D` is refused on unscheduled trips.
+  - Enter walks the trips and then lands on Save; Ctrl/⌘+Enter saves from anywhere. Save refuses blank required trips client-side and focuses the first one, then goes to the next sheet in a queue snapshotted when the first sheet opened.
+  - Esc returns to the worklist, and takes a second press when there are unsaved changes.
+  - The operator and bus are skipped by Enter unless Avail had no pull-out. Relief runs are offered as one-click fills, and the override pill uses the same comparison as the API.
+  - On 409 the form offers Reload.
+- **Speed:** the next sheet in the queue is fetched while the current one is keyed, so Save opens it at once. The Save button stays focusable while saving (`aria-disabled`), so a key typed during the save is not sent elsewhere.
+- **Administration › Ridership setup (`/admin/ridership`, `ridership.configure`):**
+  - Listed once in `adminNav.ts` under Service Setup, beside Service Configuration.
+  - Each block shows its garage in force on the chosen service-change day.
+  - Save sends only the blocks that change (`garageChanges`), so earlier service dates keep their garage.
+- **Dev:** mock sign-in presets for Ridership (recorder) and Planning (manager).
+- **Shared:** `Ridership*` types mirror `functions-restapi/src/lib/ridership/types.ts`, and the API client gains five methods.
+- **Tests:**
+  - `lib/ridership.test.ts`: cells, clock, draft and save, scan, garages.
+  - `Ridership.test.tsx`: keyboard flow, blank-trip refusal, Esc guard, 409 reload, relief fill, QR open, fetching ahead, read-only without `ridership.enter`, setup visible only with `ridership.configure`.
+  - `RidershipSetupAdmin.test.tsx`.
 
 ## [1.6.52] - 2026-11-01
 

@@ -30,6 +30,10 @@ const ROLE_PRESETS: { label: string; keys: string[] }[] = [
   // log and records verifications, nothing else - worth a preset because it
   // is the first role held by people outside MVTA's own OCC.
   { label: "SST OCS", keys: ["trip-start-verifier"] },
+  // Ridership: the contractor OCC desk that keys Count Sheets, and Planning,
+  // which also keeps the block -> garage list (an Administration page).
+  { label: "Ridership", keys: ["ridership-recorder"] },
+  { label: "Planning", keys: ["ridership-manager"] },
   { label: "Access Admin", keys: ["access-administrator"] },
   { label: "No roles", keys: [] },
 ];
