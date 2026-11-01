@@ -29,6 +29,7 @@ function row(overrides: Partial<CaseEvidenceRow> = {}): CaseEvidenceRow {
     origin_stop_name: "Savage Park & Ride",
     origin_cases: 27,
     origin_cases_ran: 27,
+    counted_in_origin: true,
     ...overrides,
   };
 }
@@ -111,4 +112,13 @@ test("the stop's history leaves this case out, so a stop's first case has none",
 
 test("a trip with no origin stop in the Dispatch Log carries none", () => {
   assert.equal(caseEvidence(row({ origin_stop_id: null, origin_stop_name: null, origin_cases: null, origin_cases_ran: null })).origin_stop, null);
+});
+
+test("a case the stop's record leaves out is not taken off it", () => {
+  // A retired or data-gap case is not in origin_cases, so subtracting it
+  // would undercount the stop by one.
+  const evidence = caseEvidence(row({ counted_in_origin: false, origin_cases: 26, origin_cases_ran: 26 }));
+  assert.equal(evidence.origin_stop?.other_cases, 26);
+  assert.equal(evidence.origin_stop?.other_cases_ran, 26);
+  assert.equal(evidence.origin_stop?.likely_dead_zone, true);
 });
