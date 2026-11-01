@@ -17,6 +17,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Scorecard**: `backlogText` says when later weeks' unreviewed cases hold the verdict on an older week. The recall lines are full sentences ("Recall None not observed" is gone), and no migration numbers remain in user copy (scorecard, dead-zone panel).
 - **Migration 156** (data only, re-runnable) relabels reason code `DETECTION_ERROR` to "Detection error — the trip ran", only where the label is still the migration 023 seed. Until it is applied, the old label shows, and nothing else depends on it.
 - Backend change: merging redeploys and restarts the REST app.
+
 ## [1.6.64] - 2026-11-01
 
 - **The Schedule Review page tests wait for the route fetch.** `ScheduleReview.test.tsx` asserted `getGtfsPredictionRiskRoute` was called synchronously right after `findByRole` found the route list, but the page fetches the route in an effect after that list renders, so under CI load the assertion could run first ("Number of calls: 0") and fail an unrelated PR. The four route-fetch assertions now sit in `waitFor`. Test-only; the page is unchanged.
