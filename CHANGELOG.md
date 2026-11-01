@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.65] - 2026-11-01
+## [1.6.67] - 2026-11-01
 
 - **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0044 is that decision, and this is it built.
 - **The symptom that matters is not the figures, it is the list.** ADR 0042 derives "months measured under a different standard" from the stamps, so those 11 unstampable rows would have held 2026-05, 2026-08 and 2026-09 on the re-pull list permanently, each with a Re-pull button that could not clear them. A list that cannot reach empty stops being read, which is the one thing it was built not to be. The figures move by 0.014 points in 2026-05 (87.560% → 87.574%), 0.001 in 2026-08 and 0.005 in 2026-09.
@@ -16,6 +16,10 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The daily table is left alone**, deliberately: `OtpDailyRouteStopHour` keys on a date and an hour, the re-pull list does not read it, and no stranded row has been seen there. `OtpMonthlyRestatements` keeps pointing at retired keys, also deliberately — migration 141's ledger carries no foreign key precisely so history outlives the figure it describes.
 - Proved against real SQL: nothing is deleted that is not archived in the same transaction, a short payload removes nothing, only the named month is at risk, a returning key is stored again with both lives on the record, and the migration's one-off repair spares a month that has not been re-polled since 151.
 - Apply migration 152 after this deploys. It archives and removes the 11 stranded rows; nothing else in the table changes.
+## [1.6.64] - 2026-11-01
+
+- **The Schedule Review page tests wait for the route fetch.** `ScheduleReview.test.tsx` asserted `getGtfsPredictionRiskRoute` was called synchronously right after `findByRole` found the route list, but the page fetches the route in an effect after that list renders, so under CI load the assertion could run first ("Number of calls: 0") and fail an unrelated PR. The four route-fetch assertions now sit in `waitFor`. Test-only; the page is unchanged.
+
 ## [1.6.62] - 2026-11-01
 
 - **The OTP historical backfill stopped reporting success as failure.** `otpHistoricalBackfill.ts` ran OTP Monthly (13-30 s for a month) and then the Missed Trips reload inside one invocation, so the 200 carrying `otp_monthly.upserted` was not written until the second phase finished. The gateway timed the request out mid-reload and the console rendered a 504 with a zero count: on dev 2026-10-28 both 202605 and 202606 reported `OTP Monthly - Request failed (504)` and `0 OTP Monthly rows upserted` for months that had been written in full (confirmed against `OtpMonthlyRestatements.detected_at` and the month totals reconciling exactly to the ledger deltas). This was structural, not a slow month: any month whose Missed Trips reload outran the gateway reported failure however well the OTP half had gone.
