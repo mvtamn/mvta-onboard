@@ -11,6 +11,8 @@ vi.mock("../config.js", () => ({ api: {
   getMissedTripDetectorPromotions: (...args: unknown[]) => getMissedTripDetectorPromotions(...args),
   recordMissedTripDetectorPromotion: (...args: unknown[]) => recordMissedTripDetectorPromotion(...args),
   getMissedTripDetectorScorecard: (...args: unknown[]) => getMissedTripDetectorScorecard(...args),
+  // The GPS dead-zone panel on the same page; DeadZoneBarPanel.test.tsx covers it.
+  getMissedTripDeadZones: () => new Promise(() => {}),
 } }));
 
 const figures = (detector: string, overrides: Record<string, unknown> = {}) => ({

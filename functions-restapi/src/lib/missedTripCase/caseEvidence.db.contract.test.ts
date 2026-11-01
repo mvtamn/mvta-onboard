@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import { parseConnectionString, sql } from "../db";
 import { operatedSql, operatedStartAt } from "./adapters/gtfs";
 import { readCaseEvidence } from "./caseEvidence";
+import { readDeadZoneBar, readFirstStopRecords } from "./deadZone";
 
 // The case evidence read against a real SQL Server. caseEvidence.test.ts covers
 // what the readings mean; this covers what only the database can show:
@@ -22,6 +23,7 @@ const DROP = `
 IF OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL DROP TABLE dbo.MonitoredMissedTrips;
 IF OBJECT_ID('dbo.TripStartLog','U') IS NOT NULL DROP TABLE dbo.TripStartLog;
 IF OBJECT_ID('dbo.GtfsTripOperationalEvidence','U') IS NOT NULL DROP TABLE dbo.GtfsTripOperationalEvidence;
+IF OBJECT_ID('dbo.AppSettings','U') IS NOT NULL DROP TABLE dbo.AppSettings;
 `;
 
 const CREATE = `
@@ -163,6 +165,30 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
     await t.test("a retired case is judged against the stop's whole record, not one short of it", async () => {
       const evidence = await readCaseEvidence(pool, [{ trip_id: "RETIRED", service_date: "20260909", scheduled_departure_at: at("22:30:00", "2026-09-09"), grace_deadline_at: at("23:00:00", "2026-09-09") }]);
       assert.deepEqual(evidence.get("RETIRED|20260909")?.origin_stop, { stop_id: "S1", name: "Savage Park & Ride", other_cases: 9, other_cases_ran: 4, likely_dead_zone: false });
+    });
+
+    await t.test("every first stop's record counts its judged cases, most first", async () => {
+      const stops = await readFirstStopRecords(pool);
+      // S1: nine judged cases, four ran (RETIRED and FEEDGAP left out).
+      // S2: ELSEWHERE, which never started; BLOCKMATE is not a case.
+      assert.deepEqual(stops, [
+        { stop_id: "S1", name: "Savage Park & Ride", cases: 9, ran: 4 },
+        { stop_id: "S2", name: "Savage Park & Ride", cases: 1, ran: 0 },
+      ]);
+    });
+
+    await t.test("the bar is the default until migration 155's settings exist, then theirs", async () => {
+      assert.deepEqual(await readDeadZoneBar(pool), { ran_percent: 80, min_cases: 5, configured: false });
+      await pool.request().batch(`
+        CREATE TABLE dbo.AppSettings (module NVARCHAR(50) NOT NULL, setting_key NVARCHAR(100) NOT NULL, setting_value NVARCHAR(500) NOT NULL);
+        INSERT dbo.AppSettings VALUES (N'missed_trip', N'dead_zone_ran_percent', N'50'), (N'missed_trip', N'dead_zone_min_cases', N'3'),
+                                      (N'detour', N'dead_zone_ran_percent', N'99');`);
+      assert.deepEqual(await readDeadZoneBar(pool), { ran_percent: 50, min_cases: 3, configured: true });
+      // And the case read uses it: a retired case at S1 sees 4 of 9 ran, under 50%.
+      const evidence = await readCaseEvidence(pool, [{ trip_id: "RETIRED", service_date: "20260909", scheduled_departure_at: at("22:30:00", "2026-09-09"), grace_deadline_at: at("23:00:00", "2026-09-09") }]);
+      assert.equal(evidence.get("RETIRED|20260909")?.origin_stop?.likely_dead_zone, false);
+      await pool.request().query("UPDATE dbo.AppSettings SET setting_value = N'40' WHERE module = N'missed_trip' AND setting_key = N'dead_zone_ran_percent'");
+      assert.equal((await readDeadZoneBar(pool)).ran_percent, 80, "a value outside the declared range is not trusted");
     });
 
     await t.test("a case the Dispatch Log never logged comes back with nothing to say", async () => {

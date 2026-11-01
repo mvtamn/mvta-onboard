@@ -22,20 +22,8 @@
 // do not match GTFS's ("Burnsville Center"), so its missed-stop records cannot
 // be joined to a trip's stop by name.
 import { sql } from "../db";
-import { dispatchReading, operatedSql, operatedStartAt, type DispatchReadingKind } from "./adapters/gtfs";
-
-/** Fewest other silent no-shows at a stop before its record says anything. */
-export const DEAD_ZONE_MIN_CASES = 5;
-/** Share of them that ran for the stop to read as a likely dead zone. */
-export const DEAD_ZONE_RAN_SHARE = 0.8;
-
-// Cases a stop's record leaves out, because the evidence could not judge them.
-// Retired cases (migration 148) were raised before the guards, many on days
-// the feeds were down; data-gap cases were raised while the position feed was
-// not current. Either shows "no start" because of the feed, not the stop. Seen
-// live 2026-10-22: counting them put Savage Park & Ride at 38 of 82 ran, when
-// every one of its 27 cases since the guards had run.
-const UNJUDGEABLE_QUALITY = "N'legacy_unverified', N'unknown_data_gap'";
+import { dispatchReading, operatedStartAt, type DispatchReadingKind } from "./adapters/gtfs";
+import { DEFAULT_DEAD_ZONE_BAR, isLikelyDeadZone, readDeadZoneBar, stopRecordsSql, UNJUDGEABLE_QUALITY, type DeadZoneBar } from "./deadZone";
 
 /** One case's raw readings, as readCaseEvidence's query returns them. */
 export interface CaseEvidenceRow {
@@ -84,7 +72,7 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
-export function caseEvidence(r: CaseEvidenceRow): GtfsCaseEvidence {
+export function caseEvidence(r: CaseEvidenceRow, bar: DeadZoneBar = DEFAULT_DEAD_ZONE_BAR): GtfsCaseEvidence {
   const reading = dispatchReading(r);
   const started = operatedStartAt(r);
   // Whole minutes, toward zero: 19 min 42 s late reads as 19, as a dispatcher
@@ -103,7 +91,7 @@ export function caseEvidence(r: CaseEvidenceRow): GtfsCaseEvidence {
       name: r.origin_stop_name,
       other_cases: otherCases,
       other_cases_ran: otherRan,
-      likely_dead_zone: otherCases >= DEAD_ZONE_MIN_CASES && otherRan / otherCases >= DEAD_ZONE_RAN_SHARE,
+      likely_dead_zone: isLikelyDeadZone(otherCases, otherRan, bar),
     };
   }
 
@@ -155,17 +143,7 @@ export async function readCaseEvidence(
         LEFT JOIN TripStartLog dl ON dl.trip_id = p.trip_id AND CAST(dl.service_date AS NVARCHAR(20)) = p.service_date
         LEFT JOIN GtfsTripOperationalEvidence e ON e.trip_id = p.trip_id AND e.service_date = p.service_date
       ),
-      stops AS (
-        SELECT hl.origin_stop_id,
-               COUNT(*) AS origin_cases,
-               SUM(CASE WHEN ${operatedSql("he", "hl")} THEN 1 ELSE 0 END) AS origin_cases_ran
-        FROM MonitoredMissedTrips hm
-        JOIN TripStartLog hl ON hl.trip_id = hm.trip_id AND CAST(hl.service_date AS NVARCHAR(20)) = hm.service_date
-        LEFT JOIN GtfsTripOperationalEvidence he ON he.trip_id = hm.trip_id AND he.service_date = hm.service_date
-        WHERE hm.detection_type = N'silent_no_show'
-          AND hm.data_quality_status NOT IN (${UNJUDGEABLE_QUALITY})
-          AND hl.origin_stop_id IN (SELECT origin_stop_id FROM info WHERE origin_stop_id IS NOT NULL)
-        GROUP BY hl.origin_stop_id
+      stops AS (${stopRecordsSql("hl.origin_stop_id IN (SELECT origin_stop_id FROM info WHERE origin_stop_id IS NOT NULL)")}
       )
       SELECT i.*, blk.block_trips, blk.block_trips_reported, s.origin_cases, s.origin_cases_ran
       FROM info i
@@ -179,6 +157,7 @@ export async function readCaseEvidence(
         WHERE i.block_id IS NOT NULL AND b.block_id = i.block_id
           AND CAST(b.service_date AS NVARCHAR(20)) = i.service_date
       ) blk`);
-  for (const row of result.recordset) byKey.set(`${row.trip_id}|${row.service_date}`, caseEvidence(row));
+  const bar = await readDeadZoneBar(pool);
+  for (const row of result.recordset) byKey.set(`${row.trip_id}|${row.service_date}`, caseEvidence(row, bar));
   return byKey;
 }
