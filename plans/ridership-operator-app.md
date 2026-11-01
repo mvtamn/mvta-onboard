@@ -11,9 +11,10 @@ differ. Section numbers below (§2, §5 …) refer to that spec.
 A mobile-friendly responsive website where an operator signs in, picks their
 run (block), enters each trip's boardings total and submits. It is used on a
 **driver kiosk** at the garage, or on the operator's **own phone** once OPR-038
-allows it. It supplements the paper Count Sheet first and then replaces it:
-once a run is submitted, the submission is the record and OCC no longer keys
-that sheet.
+allows it. It supplements the paper Count Sheet first and then replaces it
+as the record: once a run is submitted, the submission is the record and OCC
+no longer keys that sheet. The paper is still handed in and scanned as
+evidence that verifies the submission (decision 20, changed 2026-10-31).
 
 What it is for: near real-time reporting (same day instead of next day),
 simpler reporting, and removing OCC's re-keying of paper.
@@ -102,12 +103,34 @@ simpler reporting, and removing OCC's re-keying of paper.
 
 ### Paper
 
-20. **The submission is the record; paper is a tally card.** For a run
-    submitted on the kiosk or phone, the paper sheet is not handed in, kept
-    or keyed by OCC, and §8's retention rule no longer applies to it. Paper
-    and app are **not** run in parallel as two records, except during the
-    pilot (decision 24). A run with no submission falls back to the paper
-    process unchanged.
+20. **The submission is the record; the scanned paper verifies it.**
+    *(Changed 2026-10-31; this replaces "paper is a tally card, not handed
+    in". See `plans/ridership-counting-spec.md` §15.)*
+    - For a run submitted on the kiosk or phone, the submission is the count
+      of record.
+    - The paper sheet is **still handed in** to the contractor's operations
+      management at the garage, batch-scanned on the garage multifunction
+      printer, and stored in OnBoard under MVTA's records retention schedule.
+      Scans are locked against early deletion.
+    - OnBoard reads each scan:
+      - It **compares** the scan with the submission and flags every trip
+        where they differ, as a §6 flag for OCC with both figures and the
+        page image.
+      - It **checks** the sheet: a sheet that is missing or unreadable, blank
+        trips, an operator or bus that disagrees with Avail.
+      - Neither copy silently overwrites the other.
+    - OCC does **not** re-key a submitted run, so the saving in decision 21
+      stands.
+    - A run with **no** submission falls back to OCC entry. Totals read from
+      the scan are pre-filled as proposed values for OCC to confirm; a
+      handwritten number is never stored as a count without a person
+      confirming it.
+    - The sheet's QR code is a **link** to this app at that run
+      (`https://<operator app>/r/<YYYYMMDD>/<block>`). It opens the run
+      only **after** the normal sign-in (decision 7), so the link alone
+      submits nothing.
+    - Scanning, storage and reading arrive with the kiosk pilot (decision
+      24).
 
 ### OCC and reporting
 
@@ -172,7 +195,8 @@ simpler reporting, and removing OCC's re-keying of paper.
 
 | Term | Meaning |
 |---|---|
-| **Operator submission** | An operator's own entry of a run's counts in the operator app. Replaces the Count Sheet as the record for that run. |
+| **Operator submission** | An operator's own entry of a run's counts in the operator app. Replaces the Count Sheet as the record for that run; the scanned sheet is kept as evidence that verifies it. |
+| **Sheet scan** | The garage's scan of a handed-in Count Sheet, stored under the records retention schedule and read to verify the submission, or to pre-fill OCC entry when there is none. |
 | **Count source** | Where a sheet's counts came from: kiosk, phone, OCC from paper, OCC from draft. |
 | **Driver kiosk** | A shared screen at a garage, locked to the operator app. |
 | **Operator PIN** | The 6-digit secret that, with the Avail logon ID, signs an operator in to the operator app. |
