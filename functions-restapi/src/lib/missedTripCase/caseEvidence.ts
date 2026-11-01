@@ -22,6 +22,7 @@
 // do not match GTFS's ("Burnsville Center"), so its missed-stop records cannot
 // be joined to a trip's stop by name.
 import { sql } from "../db";
+import { workbookBlock } from "../tripStartLogRead";
 import { dispatchReading, operatedStartAt, type DispatchReadingKind } from "./adapters/gtfs";
 import { DEFAULT_DEAD_ZONE_BAR, isLikelyDeadZone, readDeadZoneBar, stopRecordsSql, UNJUDGEABLE_QUALITY, type DeadZoneBar } from "./deadZone";
 
@@ -101,7 +102,9 @@ export function caseEvidence(r: CaseEvidenceRow, bar: DeadZoneBar = DEFAULT_DEAD
     started_late_minutes: lateMinutes,
     started_inside_grace: started ? started.getTime() <= r.grace_deadline_at.getTime() : null,
     vehicle: { reported_at: iso(r.first_vehicle_position_at), underway_at: iso(r.first_underway_at), vehicle_id: r.vehicle_id },
-    block: r.block_id ? { block_id: r.block_id, trips: r.block_trips ?? 0, trips_reported: r.block_trips_reported ?? 0 } : null,
+    // The workbook's Block ("515"), not the feed's versioned id ("515-v64"):
+    // CONTEXT.md's Block, the number a dispatcher knows.
+    block: r.block_id ? { block_id: workbookBlock(r.block_id) ?? r.block_id, trips: r.block_trips ?? 0, trips_reported: r.block_trips_reported ?? 0 } : null,
     origin_stop: originStop,
   };
 }
