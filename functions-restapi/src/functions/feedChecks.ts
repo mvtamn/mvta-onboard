@@ -8,6 +8,11 @@ import { ledgerFeedChecks, summarizeFeedResponse, type FeedCheck } from "../lib/
 import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import { missedTripDetectionSettings } from "../lib/missedTripCase";
+import {
+  DEFAULT_OTP_MEASUREMENT_PARAMETERS,
+  parameterSegments,
+  readParametersInForce,
+} from "../lib/otpMeasurementParameters";
 import { schemaDriftChecks } from "../lib/schemaDrift";
 import { fetchSparePage, type SpareRequestRecord } from "../lib/spareApi";
 import { predictionCaptureAccount, PREDICTION_CAPTURE_ACCOUNT_SETTING } from "../lib/predictionAccuracy/captureStore";
@@ -104,6 +109,17 @@ async function predictionScoreCheck(): Promise<FeedCheck> {
   }
 }
 
+// A connection check must not fail because the register could not be read, so
+// an unreachable database answers with the compiled default rather than
+// throwing. That is the same fallback the pollers take.
+async function otpParametersForProbe(): Promise<string> {
+  try {
+    return (await readParametersInForce(await getPool())).segments;
+  } catch {
+    return parameterSegments(DEFAULT_OTP_MEASUREMENT_PARAMETERS);
+  }
+}
+
 app.http("feedChecks", {
   route: "feed-checks",
   methods: ["GET"],
@@ -120,6 +136,12 @@ app.http("feedChecks", {
     const avlStart = new Date(now.getTime() - 10 * 60_000);
     const nowSeconds = Math.floor(now.getTime() / 1000);
 
+    // The OTP probes have to send the measurement standard the polls send, or a
+    // passing check would be testing a different request than the one that
+    // matters (ADR 0042). A database that cannot answer falls back to the
+    // compiled default, as the polls do.
+    const otpParameters = await otpParametersForProbe();
+
     const [checks, sparePipelineChecks, schemaChecks, captureCheck] = await Promise.all([
       Promise.all([
       // Through the reader the polls use: same setting, timeout and body checks.
@@ -131,8 +153,8 @@ app.http("feedChecks", {
       // request: same URL (including the /MVTA handling), auth and timeout.
       probeAvail("avl", { start: avlStart, end: now }),
       probeAvail("pullout", {}),
-      probeAvail("otp_monthly", { month: now }),
-      probeAvail("otp_daily", { start: yesterday, end: yesterday }),
+      probeAvail("otp_monthly", { month: now, parameters: otpParameters }),
+      probeAvail("otp_daily", { start: yesterday, end: yesterday, parameters: otpParameters }),
       probeAvail("missed_trips", { start: weekAgo, end: now }),
       checkSpareRequests(nowSeconds),
       ]),

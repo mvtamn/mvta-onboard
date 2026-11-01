@@ -30,7 +30,17 @@ import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateOtpHistoricalBackfill } from "../lib/validation";
 import { availConfig, fetchAvail } from "../lib/availClient";
-import { mapOtpMonthlyReport, restatementLedgerReady, serviceMonthOf, upsertOtpMonthlyReport } from "../lib/otpMonthlyFeed";
+import {
+  collapseOtpMonthlyReports,
+  describeOtpMonthlyCollision,
+  mapOtpMonthlyReport,
+  measurementStampReady,
+  restatementLedgerReady,
+  serviceMonthOf,
+  upsertOtpMonthlyReport,
+  type OtpMonthlyCandidate,
+} from "../lib/otpMonthlyFeed";
+import { readParametersInForce } from "../lib/otpMeasurementParameters";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
@@ -76,22 +86,63 @@ app.http("otpHistoricalBackfill", {
 
     const pool = await getPool();
     const ledgerReady = await restatementLedgerReady(pool);
+    const stampReady = await measurementStampReady(pool);
     const currentServiceMonth = serviceMonthOf(new Date());
+    // This is the one action that restates a closed month on purpose, which is
+    // why ADR 0042 leaves re-pulling to a human rather than doing it on a
+    // declaration: the month comes back measured at whatever is in force now,
+    // and that is what the rows will say they were measured at.
+    const parameters = await readParametersInForce(pool);
 
-    let otpResult: { reports_seen: number; upserted: number; error?: string };
+    let otpResult: {
+      reports_seen: number;
+      upserted: number;
+      duplicate_keys?: number;
+      duplicate_key_detail?: string[];
+      measurement_parameters?: string;
+      error?: string;
+    };
     try {
-      const reports = await fetchAvail("otp_monthly", { month: monthToDate(month) }, otp.config);
-      let upserted = 0;
+      const reports = await fetchAvail("otp_monthly", { month: monthToDate(month), parameters: parameters.segments }, otp.config);
+      const candidates: OtpMonthlyCandidate[] = [];
       for (const report of reports) {
         const mapped = mapOtpMonthlyReport(report, month);
         if (!mapped) continue;
+        candidates.push({ mapped, source: report });
+      }
+      // A month that holds two schedule patterns comes back as two records on
+      // one key. Summing them before the upsert is the only way the backfill
+      // stores the month Avail published rather than whichever half of it the
+      // MERGE happened to write last - 2026-03 lost 855 departures this way.
+      const { rows, collisions } = collapseOtpMonthlyReports(candidates);
+      const duplicateKeyDetail = collisions.map((collision) => describeOtpMonthlyCollision(collision));
+      for (const line of duplicateKeyDetail) context.warn(`OTP Monthly backfill: ${line}`);
+      let upserted = 0;
+      for (const { row } of rows) {
         // A backfill that changes an already-ingested past month is a
         // restatement like any other, and is recorded as one.
-        await upsertOtpMonthlyReport(pool, mapped, { ledgerReady, currentServiceMonth });
+        await upsertOtpMonthlyReport(pool, row, {
+          ledgerReady,
+          currentServiceMonth,
+          measurementParameters: parameters.segments,
+          stampReady,
+        });
         upserted++;
       }
-      otpResult = { reports_seen: reports.length, upserted };
-      context.log(`OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}.`);
+      otpResult = {
+        reports_seen: reports.length,
+        upserted,
+        duplicate_keys: collisions.length,
+        // Returned, not only logged: the console's backfill panel is where an
+        // admin watches a month come back, and "1,108 records became 1,081
+        // rows" is a fact about that month worth seeing there.
+        duplicate_key_detail: duplicateKeyDetail,
+        measurement_parameters: parameters.segments,
+      };
+      context.log(
+        `OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}` +
+          `${collisions.length > 0 ? ` (${collisions.length} keys carried more than one record)` : ""}.`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       otpResult = { reports_seen: 0, upserted: 0, error: message };
