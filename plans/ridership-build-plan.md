@@ -63,18 +63,38 @@ are backend merges, which restart the REST app, so merge them outside
 - Administration → Ridership setup (block → garage), listed once in `adminNav.ts`.
 - Vitest tests for the keyboard flow and gating.
 
-**PR 4 · Count Sheet printing**
-- A server-rendered HTML sheet per block for a service date, letter size, one block per page, in the style of `renderAssessmentReport`.
-- `GET /api/ridership/print?date=&garage=` (`ridership.print`), opened from the Print sheets tab. The contractor prints it from the browser, so no nightly job is needed: tomorrow's trips already exist.
-- QR code: see decision 2. The page layout is spec §3's sheet design, already
-  built as the prototype's print preview.
+**PR 4 · Count Sheet printing** (migration 157; changed 2026-10-31 by the
+bulk-printing evaluation, which replaced browser printing with a PDF)
+- **A PDF per garage**, not browser printing. A browser's margins, "background
+  graphics" setting and fit-to-page differ by PC, so the sheets would come out
+  different at each garage. OnBoard renders the PDF itself:
+  - one block per US Letter page, continued past 14 trips, in spec §3's design;
+  - the garage's blocks in **pull-out order** (first trip, then block number),
+    so the stack comes off the printer in the order sheets are handed out;
+  - drawn with lines only, always black on white;
+  - optionally a **blank back** on each page, so a printer that defaults to
+    double-sided never puts two blocks on one piece of paper.
+- `GET /api/ridership/print?date=&garage=` (`ridership.print`): the date's
+  sheets for the garage, each Not printed / Printed / Changed since printed.
+  `POST` the same path returns the PDF and logs it. The Print sheets tab
+  defaults to tomorrow, and any date reprints.
+- **A print log**: who printed which garage and date, and when. Each printed
+  block stores a fingerprint of its trips, so a block the Dispatch Log changed
+  after printing (a late tripper, a schedule fix) is **flagged, with a reprint
+  of just those blocks**.
+- QR code: see decision 2. Until the operator app has an address, the link
+  points at the console that printed (`/r/<date>/<block>` opens the sheet);
+  `RIDERSHIP_SHEET_LINK_BASE` switches it to the operator app.
+- **PR 4b, optional: email the PDF to each garage's printer every evening.**
+  Not in PR 4: the REST app has no email sender (ACS email is in the dispatch
+  app), and each garage printer's email address is needed first.
 
 **PR 5 · Parallel-run comparison for December**
 - A daily totals CSV by route, direction and day, so Planning can compare December against Access.
 - This needs a simple day type (weekday / Sat / Sun from the GTFS services). The full day-type rule is in Increment 2.
 
 **Steps outside the code**, in order (spec §11 lists the owners):
-1. Apply migration 153 to dev, then to prod.
+1. Apply migrations 153, 154 and 157 (the print log) to dev, then to prod.
 2. Assign `ridership-manager` to the named Planning staff in Access & Identity.
 3. Create Entra B2B guest accounts for Keolis OCC staff and assign `ridership-recorder`.
 4. Planning enters the block → garage list.
