@@ -607,6 +607,9 @@ scanned even when the run was submitted digitally.
   - A link makes the code denser. At about 25 mm with error correction Q it
     is still about 0.75 mm per module, which office printers and phone
     cameras handle, but test it at the OCC rehearsal.
+  - **Built (PR 4, 2026-11-01):** a longer link (a console on a long
+    hostname, or `?p=2`) grows the code past 25 mm so a module stays about
+    0.7 mm, up to 30 mm. Prod's console link fits at 25 mm (about 0.71 mm).
 - **The submission is the record; the scan is evidence that verifies it.**
   - A kiosk or web submission stays the count of record (#458 decision 16).
   - The scanned paper is kept and compared with it. Differences become

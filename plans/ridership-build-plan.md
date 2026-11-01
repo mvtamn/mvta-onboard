@@ -157,7 +157,8 @@ Spec §15, alongside the operator app (PR #458):
      never goes out of date.
    - **How it prints** (agreed 2026-10-31 from the prototype, commit
      `5bf7e950` on `claude/ridership-ui-0aa433`):
-     - In the sheet header, top right, about **25 mm** square.
+     - In the sheet header, top right, about **25 mm** square (larger, up to
+       30 mm, for a long link: spec §15).
      - Error correction level **Q**, so it still reads with about a quarter of
        it damaged (a crease, a coffee ring).
      - A one-module quiet zone, with nothing else printed within it.
