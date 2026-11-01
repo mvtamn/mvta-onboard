@@ -5,6 +5,25 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.51] - 2026-10-31
+
+- **The ridership API (`lib/ridership/`, PR 2 of Increment 1 in `plans/ridership-build-plan.md`).** It is one module that owns the rules. The handlers in `functions/ridership.ts` only check access and translate results into HTTP. No migration; it reads migration 153's tables and answers 503 until they exist.
+- **Endpoints:**
+  - `GET /ridership/worklist?from=&to=` (`ridership.view`): every sheet with Dispatch Log trips in the range, late first, plus completeness by garage. The default range is the last eight service dates and the limit is 62 days. Trips with no workbook block are counted as `trips_without_block`, so they don't drop out of sight.
+  - `GET /ridership/sheets/{date}/{block}` (`ridership.view`): the block's trips, which of them need a count and why, Avail's pull-out pre-fill with the relief runs as a hint, what has been saved, and the sheet's history.
+  - `PUT` on the same path (`ridership.enter`) saves the whole sheet in one transaction. It returns 400 unless every required trip has an entry, and 409 when the sheet was saved again after the editor loaded its `version`. A future service date is refused.
+  - `GET` / `PUT /ridership/block-garages` (`PUT` needs `ridership.configure`): one service change's rows, from `effective_from`.
+- **Which trips need a count (spec §5, ADR 0043):** every Dispatch Log trip on the block, unless the log calls it `missed` or `canceled`, or a missed-trip case counts as missed. That uses the shared classification (`missedTripCaseSql`), not a WHERE clause of ridership's own. An `unknown` trip still needs a count. Excused trips can still be keyed.
+- **Sheet state:**
+  - Entered means every required trip has an entry now and the sheet has been saved.
+  - The deadline is midnight Central at the start of the second day after service, and is correct across daylight-saving changes.
+  - `entered_at` is set by the first complete save and never moved, so lateness is judged on it.
+  - An entered sheet that gains a required trip is open again until that trip is keyed.
+- **Pre-fill and override:** the first run is the earliest committed pull-out. Avail's midnight placeholder counts as a relief run (migration 139). The server sets `operator_overridden` by comparing the saved header with that run, ignoring case and spacing; the client doesn't send it.
+- **History (P6):** one `RidershipCountHistory` row per field that changed, with who and when. A first save records every field it sets, a removed unscheduled trip is soft-removed and recorded, and saving an unchanged sheet writes nothing.
+- **Schema drift:** migration 153's five tables and `TripStartLog.scheduled_end_seconds` are declared in `SCHEMA_REQUIREMENTS`.
+- **Tests:** `rules.test.ts` covers the rules: excuses, the deadline across the fall-back night, state, progress, pre-fill order, override, garage in force, parsing and history. `ridership.db.contract.test.ts` runs the real migrations 013 and 153 to cover the GTFS → workbook block read, confirmed and unreviewed cases, a refused incomplete save, history, a stale editor, a late correction, a no-op save and a late sheet.
+
 ## [1.6.50] - 2026-10-30
 
 - **Ridership counting's schema, roles and access (ADR 0043, migrations 153 and 154).** This is the first of five PRs in Increment 1 of `plans/ridership-build-plan.md`, which replaces the paper Count Sheet's Access entry by 2026-12-01. Nothing reads the new tables yet; the API (PR 2) and console (PR 3) follow.
