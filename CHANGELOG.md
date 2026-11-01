@@ -5,6 +5,10 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.64] - 2026-11-01
+
+- **The Schedule Review page tests wait for the route fetch.** `ScheduleReview.test.tsx` asserted `getGtfsPredictionRiskRoute` was called synchronously right after `findByRole` found the route list, but the page fetches the route in an effect after that list renders, so under CI load the assertion could run first ("Number of calls: 0") and fail an unrelated PR. The four route-fetch assertions now sit in `waitFor`. Test-only; the page is unchanged.
+
 ## [1.6.62] - 2026-11-01
 
 - **The OTP historical backfill stopped reporting success as failure.** `otpHistoricalBackfill.ts` ran OTP Monthly (13-30 s for a month) and then the Missed Trips reload inside one invocation, so the 200 carrying `otp_monthly.upserted` was not written until the second phase finished. The gateway timed the request out mid-reload and the console rendered a 504 with a zero count: on dev 2026-10-28 both 202605 and 202606 reported `OTP Monthly - Request failed (504)` and `0 OTP Monthly rows upserted` for months that had been written in full (confirmed against `OtpMonthlyRestatements.detected_at` and the month totals reconciling exactly to the ledger deltas). This was structural, not a slow month: any month whose Missed Trips reload outran the gateway reported failure however well the OTP half had gone.
