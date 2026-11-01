@@ -348,25 +348,33 @@ export function monthsBetween(fromYyyymm: string, toYyyymm: string): string[] {
 // rows upserted" because every overwrite is a successful upsert. 855 departures
 // and 805 on-time departures were dropped on the floor, and nothing said so.
 //
-// What the pairs are, established on dev 2026-10-30: they partition the month.
-// Route 425 at stop 30435 came back as 28 and 41 Monday departures; the same
-// route's other side of that intersection (stop 30451, one record) reports 70.
-// Route 497 at stop 31768 came back as 30 and 48; the terminal every one of
-// those trips passes (31723) reports 78. Across all 27 keys the two values sum
-// to the neighbouring stop's own total, day by day, and the split follows the
-// count of each weekday before and after about 18 March - three Mondays and two
-// Mondays, two Wednesdays and two Wednesdays - which is what a mid-month
-// schedule change looks like when the month is aggregated per day of week.
+// What the pairs are, established on dev 2026-10-30 and then confirmed by the
+// first live collision report that same evening: they partition the month, and
+// what divides them is the stop's NAME. Each pair differs in exactly one
+// delivered field, StopInternetName - "Marschall Rd at 4 Av NW corner" against
+// "Marschall Rd at 4th Ave NW Corner", "Scott County Government Center at
+// Atwood" against "Scott County Government Center SB". 202602 returns only the
+// old spelling, 202604 onward only the new one, and 202603 returns both, so
+// Avail's monthly aggregate groups by the stop RECORD rather than by StopID,
+// and any mid-month rename divides that month between the two names. The
+// arithmetic agrees: across all 27 keys the two values sum to the neighbouring
+// stop's own total day by day (route 497 at stop 31768 came back as 30 and 48
+// Monday departures, and the terminal every one of those trips passes reports
+// 78), and the 3:2 weekday split dates the rename to on or about 18 March - it
+// dates the rename, not a schedule.
 //
 // So the month's figure is the SUM of the records sharing a key, and that is
-// what is stored. Keying on a discriminator instead would be preferable, except
-// that the operation's published record shape (OTP-Feed-Evaluation-and-
-// Recommendation.md) carries nothing to key on - no direction, no pattern, no
-// effective date - which is why `describeOtpMonthlyCollision` names the raw
-// fields that actually differ between the records. If a future collision turns
-// out to differ by a field we do not map, that log line says so, and widening
-// the key the way migration 123 widened the daily table's becomes the better
-// fix.
+// what is stored. The name is the wrong thing to key on: keying on it would
+// scatter one stop's month across two half-rows filed under two spellings of
+// one place, which reads worse in a compliance figure than the overwrite did.
+// The operation's published record shape (OTP-Feed-Evaluation-and-
+// Recommendation.md) offers no stable alternative either - no stop-record id,
+// no effective date - so summing is the fix, and it is a permanent one rather
+// than a patch for one month: the next mid-month rename does this again.
+// `describeOtpMonthlyCollision` is what named StopInternetName here, so a
+// collision that turns out to differ by some other field says so in the log,
+// and widening the key the way migration 123 widened the daily table's stays
+// available without a deploy to go looking.
 //
 // Two records identical in their counts are not summed. Identical records carry
 // no new information, and summing them would double a figure to describe a
