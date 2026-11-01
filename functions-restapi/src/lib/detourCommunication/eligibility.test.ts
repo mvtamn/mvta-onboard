@@ -37,6 +37,16 @@ test("the refusal names the one thing to fix first", () => {
   }
 });
 
+test("an overlap is called an overlap, not a likely duplicate (an intake term)", () => {
+  const sentence = communicationEligibility({ ...fulfilled, conflict_status: "unresolved" }, toRiders).refusal?.sentence ?? "";
+  assert.match(sentence, /overlaps another open detour/);
+  assert.doesNotMatch(sentence, /duplicate/i);
+  // No refusal speaks in the glossary's "fulfil-" words.
+  for (const overrides of [{ lifecycle_state: "awaiting_fulfillment" as const }, { lifecycle_state: "fulfillment_failed" as const }]) {
+    assert.doesNotMatch(communicationEligibility({ ...fulfilled, ...overrides }, toRiders).refusal?.sentence ?? "", /fulfil/i);
+  }
+});
+
 test("wording may be prepared before a Detour is in place, but not after it closes", () => {
   assert.equal(communicationEligibility({ ...fulfilled, lifecycle_state: "awaiting_fulfillment" }, toRiders).may_draft, true);
   assert.equal(communicationEligibility({ ...fulfilled, lifecycle_state: "closed" }, toRiders).may_draft, false);

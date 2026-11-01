@@ -112,7 +112,7 @@ interface SendInput {
  */
 export async function sendCommunication(input: SendInput): Promise<SendOutcome> {
   const hasDelivery = await deliveryColumnsReady(input.pool);
-  if (!hasDelivery) return { ok: false, status: 503, refusal: refusal("delivery_not_configured", "Server-side delivery is not configured (migration 092)") };
+  if (!hasDelivery) return { ok: false, status: 503, refusal: refusal("delivery_not_configured", "Server-side delivery is not set up yet. Send it yourself and mark it published.") };
   const row = await load(input.pool, input.detourId, input.communicationId, hasDelivery);
   if (!row) return { ok: false, status: 404, refusal: refusal("not_found", "Communication not found") };
   const current = classifyCommunication(row, hasDelivery);

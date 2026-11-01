@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { type CreateDetourIntakeInput, type DetourChannelOption, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
+import { DETOUR_FULFILLMENT_MODE_LABELS, DETOUR_TIME_WINDOW_LABELS, type CreateDetourIntakeInput, type DetourChannelOption, type DetourFulfillmentMode, type DetourImage, type DetourIntake, type DetourIntakeStatus, type DetourLikelyDuplicate, type DetourSegmentInput } from "@mvta/shared";
 import { channelChips, retiredHint, toggleChannel } from "../lib/detourIntakeChannels.js";
 import { api } from "../config.js";
 import { dateTimeLabel } from "../lib/detourDates.js";
+import { apiErrorText } from "../lib/apiErrorText.js";
+import { otherRecordStatusLabel } from "../lib/detourLabels.js";
 import { AttachmentDropzone, isImageAttachment, pasteFilesHandler } from "../components/DetourAttachments.js";
 import { DetourMap } from "../components/DetourMap.js";
 
+// One name per mode, the same one the worklist and Register use.
 const MODES: { value: DetourFulfillmentMode; label: string; help: string }[] = [
-  { value: "fixed_route_manual", label: "Manual fixed-route exception", help: "Operations and operators carry out the reviewed instructions manually." },
-  { value: "mobility_manual", label: "Manual mobility communication", help: "Mobility Operations and operators receive the reviewed service-area instructions." },
-  { value: "avail", label: "Enter in Avail", help: "A human will enter the reviewed fixed-route Detour into Avail; OnBoard never writes it automatically." },
+  { value: "fixed_route_manual", label: DETOUR_FULFILLMENT_MODE_LABELS.fixed_route_manual, help: "Operations and operators carry out the reviewed instructions without Avail." },
+  { value: "mobility_manual", label: DETOUR_FULFILLMENT_MODE_LABELS.mobility_manual, help: "Mobility Operations and operators receive the reviewed service-area instructions." },
+  { value: "avail", label: DETOUR_FULFILLMENT_MODE_LABELS.avail, help: "A person builds the reviewed fixed-route detour in Avail; OnBoard never writes it automatically." },
 ];
 
 type ReviewAction = "accept" | "needs_information" | "duplicate" | "rejected" | "withdrawn";
@@ -117,7 +120,7 @@ export function DetourIntake() {
       // The channels a communication can go out on, named by the server rather
       // than by this form (see ChannelChips).
       if (result.channels) setChannels(result.channels);
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not load intake"); }
+    } catch (err) { setError(apiErrorText(err, "Could not load intake")); }
   }
   useEffect(() => { void load(); }, []);
 
@@ -185,7 +188,7 @@ export function DetourIntake() {
       resetForm(); await load();
     } catch (err) {
       if (intakeId) { setSavedIntakeId(intakeId); await load(); }
-      setError(intakeId ? `Intake saved, but its supporting files were not all uploaded. Correct the issue and retry; a second intake will not be created. ${err instanceof Error ? err.message : ""}` : err instanceof Error ? err.message : "Could not save intake");
+      setError(intakeId ? `Intake saved, but its supporting files were not all uploaded. Correct the issue and retry; a second intake will not be created. ${apiErrorText(err, "")}` : apiErrorText(err, "Could not save intake"));
     }
     finally { setBusy(false); }
   }
@@ -203,7 +206,7 @@ export function DetourIntake() {
     try {
       if (action === "accept") {
         const mode = row.proposed_fulfillment_mode;
-        if (!mode || !MODES.some((item) => item.value === mode)) throw new Error("Choose a valid fulfillment path before accepting.");
+        if (!mode || !MODES.some((item) => item.value === mode)) throw new Error("This report does not say how it will be run. Edit it to choose, then accept it.");
         await api.promoteDetourIntake(row.id, mode, { start_date: row.proposed_start_date, end_date: row.proposed_end_date });
       } else {
         await api.reviewDetourIntake(row.id, {
@@ -213,7 +216,7 @@ export function DetourIntake() {
         });
       }
       setReviewing(null); await load();
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not save review decision"); }
+    } catch (err) { setError(apiErrorText(err, "Could not save review decision")); }
     finally { setBusy(false); }
   }
 
@@ -229,7 +232,7 @@ export function DetourIntake() {
   return <section className="panel">
     <div className="panel-header">Detour Intake</div>
     <div className="panel-body">
-      <p className="panel-desc">Create the complete operational Detour once. OCC review, fulfillment, communication, and reporting stay connected to this record.</p>
+      <p className="panel-desc">Report a closure or detour for OCC review. When OCC accepts it, a Detour is created from it and carries the same facts, files and drawing.</p>
       {error && <p className="error-text" role="alert">{error}</p>}
       {notice && <p className="muted" role="status">{notice}</p>}
       <div className="intake-layout">
@@ -238,7 +241,7 @@ export function DetourIntake() {
             <div>
               <span className="eyebrow">{editing ? (resubmitting ? "UPDATE AND RESUBMIT" : "UPDATE DETOUR INTAKE") : "NEW DETOUR INTAKE"}</span>
               <h3>Capture the closure once, completely</h3>
-              <p>OCC review, fulfillment, communications, and reporting all read from this record. Fields marked <span className="req" style={{ color: "var(--danger-text)" }}>*</span> must be present before submission; everything else can be added after OCC returns the report.</p>
+              <p>OCC reviews this report before anything is built or sent. Fields marked <span className="req" style={{ color: "var(--danger-text)" }}>*</span> must be present before submission; everything else can be added after OCC returns the report.</p>
               {resubmitting && editing ? <div className="intake-returned" style={{ marginTop: 10 }}><strong>Information OCC asked for</strong>{editing.decision_notes || "No specific request was recorded."}<br /><span className="td-subtle">Returned by {editing.reviewed_by || "OCC"}{editing.reviewed_at ? ` · ${dateTimeLabel(editing.reviewed_at)}` : ""}</span></div> : null}
             </div>
             <div className="intake-intro-actions">
@@ -273,7 +276,7 @@ export function DetourIntake() {
                 <div className="intake-window-head">
                   <span id="intake-window-title">Proposed operating window</span>
                   <div className="seg" role="group" aria-label="Window status">
-                    {(["pending", "estimated", "confirmed"] as const).map((status) => <button key={status} type="button" aria-pressed={form.windowStatus === status} onClick={() => set("windowStatus", status)}>{status === "pending" ? "Pending" : status === "estimated" ? "Estimated" : "Confirmed"}</button>)}
+                    {(["pending", "estimated", "confirmed"] as const).map((status) => <button key={status} type="button" aria-pressed={form.windowStatus === status} onClick={() => set("windowStatus", status)}>{DETOUR_TIME_WINDOW_LABELS[status]}</button>)}
                   </div>
                 </div>
                 <div className="intake-window-grid">
@@ -282,7 +285,7 @@ export function DetourIntake() {
                   <label className="intake-field">End date<input type="date" value={form.end} onChange={(e) => set("end", e.target.value)} /></label>
                   <label className="intake-field">End time<input type="time" value={form.endTime} onChange={(e) => set("endTime", e.target.value)} /></label>
                 </div>
-                <span className="intake-help">Leave the end date blank for until-further-notice. A <b>Confirmed</b> window requires a start date and time.</span>
+                <span className="intake-help">Leave the end date blank for until-further-notice. <b>{DETOUR_TIME_WINDOW_LABELS.confirmed}</b> requires a start date and time.</span>
               </div>
             </div>
           </section>
@@ -317,7 +320,7 @@ export function DetourIntake() {
           <section className="intake-section" id="intake-service" aria-labelledby="intake-service-title">
             <div className="intake-section-head">
               <span className="intake-section-num" aria-hidden="true">3</span>
-              <div><h4 id="intake-service-title">Affected service</h4><p>The service type decides which details are asked for and which fulfillment paths apply.</p></div>
+              <div><h4 id="intake-service-title">Affected service</h4><p>The service type decides which details are asked for and how the detour can be run.</p></div>
               <span className={`pill-sm intake-section-status ${sectionStatus("service").cls}`}>{sectionStatus("service").label}</span>
             </div>
             <div className="intake-section-body">
@@ -329,7 +332,7 @@ export function DetourIntake() {
                 </div>
               </div>
               <label className="intake-field">
-                <span className="intake-field-label"><span>Proposed fulfillment <span className="req">*</span></span></span>
+                <span className="intake-field-label"><span>How it will be run <span className="req">*</span></span></span>
                 <select value={form.fulfillment} onChange={(e) => set("fulfillment", e.target.value as DetourFulfillmentMode)}>{MODES.filter((mode) => form.impact === "mobility" ? mode.value === "mobility_manual" : mode.value !== "mobility_manual").map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select>
                 <span className="intake-help">{selectedMode?.help}</span>
               </label>
@@ -398,7 +401,7 @@ export function DetourIntake() {
               <div className={`intake-field intake-field-wide ${invalid("channels") ? "is-invalid" : ""}`}>
                 <span className="intake-field-label"><span>Required channels <span className="req">*</span></span></span>
                 <ChannelChips values={form.channels} available={channels} onChange={(values) => set("channels", values)} />
-                <span className={`intake-help ${invalid("channels") ? "is-error" : ""}`}>{invalid("channels") ? <><IconAlert />Pick at least one channel.</> : "Email and Teams can be sent from OnBoard; radio and the dispatch board are recorded when done."}</span>
+                <span className={`intake-help ${invalid("channels") ? "is-error" : ""}`}>{invalid("channels") ? <><IconAlert />Pick at least one channel.</> : "Email and Teams can be sent from OnBoard. Text messages, digital signage and AVL messaging go out elsewhere and are recorded here when done."}</span>
               </div>
             </div>
           </section>
@@ -432,9 +435,9 @@ export function DetourIntake() {
           </section>
         </div>
 
-        <aside className="intake-rail" aria-label="Readiness">
+        <aside className="intake-rail" aria-label="Required facts">
           <div className="intake-rail-card" aria-live="polite">
-            <div className="readiness-head"><h4>Readiness</h4><span>{doneCount} of {requirements.length} required</span></div>
+            <div className="readiness-head"><h4>Required facts</h4><span>{doneCount} of {requirements.length} required</span></div>
             <div className="readiness-bar" role="progressbar" aria-valuemin={0} aria-valuemax={requirements.length} aria-valuenow={doneCount}><div style={{ width: `${requirements.length ? Math.round((doneCount / requirements.length) * 100) : 0}%` }} /></div>
             <ul className="readiness-list">
               {requirements.map((r) => <li key={r.key} className={r.done ? "is-done" : ""}>{r.done ? <><IconCheck />{r.label}</> : <a href={`#intake-${r.section}`}><span className="readiness-dot" aria-hidden="true"></span>{r.label}</a>}</li>)}
@@ -446,8 +449,8 @@ export function DetourIntake() {
           <div className="intake-rail-card">
             <h4 style={{ fontSize: 12 }}>What acceptance does</h4>
             <div className="intake-steps">
-              <div><i>1</i><span>This same record becomes the authoritative Detour, with a new internal reference.</span></div>
-              <div><i>2</i><span>The fulfillment path you proposed is assigned. Nothing is entered in Avail and nothing is published.</span></div>
+              <div><i>1</i><span>OCC creates a Detour from this report, with a new internal reference. The report stays as the record of what was asked.</span></div>
+              <div><i>2</i><span>The Detour is run the way you chose. Nothing is entered in Avail and nothing is published.</span></div>
               <div><i>3</i><span>Supporting files, the drawing, and the stops move with it.</span></div>
             </div>
           </div>
@@ -483,7 +486,7 @@ export function DetourIntake() {
         </table></div>
       )}
     </div>
-    {reviewing ? <div className="modal-overlay" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="detour-review-title"><div className="modal-card-header"><div><span className="eyebrow">Review Detour Intake</span><h2 id="detour-review-title">{reviewing.row.description}</h2></div><button className="btn-icon" aria-label="Close review" onClick={() => setReviewing(null)}>×</button></div><p className="muted">{reviewing.row.location || "Location not recorded"} · {reviewing.row.proposed_start_date || "No start date"} {reviewing.row.proposed_start_time || ""} → {reviewing.row.proposed_end_date || "open"} {reviewing.row.proposed_end_time || ""} · {reviewing.row.time_window_status || "pending"}</p><div className="intake-checklist"><strong>Operational details</strong><ul><li>{reviewing.row.affected_stops_and_stations || "No affected stops or stations recorded."}</li><li>{reviewing.row.operational_impacts || "No additional operational impacts recorded."}</li><li>{reviewing.row.confirmation_contact || "No confirmation contact recorded."}</li></ul></div><IntakeImages intakeId={reviewing.row.id} />{reviewing.row.geometry_json ? <DetourMap value={reviewing.row.geometry_json} onChange={() => undefined} readOnly height={240} /> : null}<LikelyDuplicates row={reviewing.row} onPick={(match) => { setReviewing({ row: reviewing.row, action: "duplicate" }); setDuplicateTarget(match.id); setDuplicateKind(match.kind); }} />{reviewing.action === "accept" ? <div className="event-next-action"><div><span className="event-next-action-label">Acceptance boundary</span><strong>Make this same record authoritative</strong><p>Acceptance assigns the next fulfillment step. It does not enter Avail or publish communications.</p></div></div> : <>{reviewing.action === "duplicate" ? <label className="modal-field">Existing {duplicateKind === "intake" ? "intake" : "Detour"} ID<input value={duplicateTarget} onChange={(e) => { setDuplicateTarget(e.target.value); setDuplicateKind("detour"); }} placeholder="Pick a likely duplicate above, or paste the GUID of the existing Detour" autoFocus /></label> : null}<label className="modal-field">{reviewing.action === "needs_information" ? "Information still needed" : reviewing.action === "duplicate" ? "Why is this a duplicate?" : reviewing.action === "withdrawn" ? "Why is this report being withdrawn?" : "Rejection reason"}<textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Record the reason for this decision" autoFocus={reviewing.action !== "duplicate"} /></label></>}<div className="modal-actions"><button className="btn-sm" onClick={() => setReviewing(null)}>Cancel</button><button className="btn-primary" disabled={busy || (reviewing.action !== "accept" && !reviewNotes.trim()) || (reviewing.action === "duplicate" && !duplicateTarget.trim())} onClick={() => void submitReview()}>{reviewing.action === "accept" ? "Accept record" : reviewing.action === "needs_information" ? "Return for information" : reviewing.action === "duplicate" ? "Mark duplicate" : reviewing.action === "withdrawn" ? "Withdraw record" : "Reject record"}</button></div></section></div> : null}
+    {reviewing ? <div className="modal-overlay" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="detour-review-title"><div className="modal-card-header"><div><span className="eyebrow">Review Detour Intake</span><h2 id="detour-review-title">{reviewing.row.description}</h2></div><button className="btn-icon" aria-label="Close review" onClick={() => setReviewing(null)}>×</button></div><p className="muted">{reviewing.row.location || "Location not recorded"} · {reviewing.row.proposed_start_date || "No start date"} {reviewing.row.proposed_start_time || ""} → {reviewing.row.proposed_end_date || "open"} {reviewing.row.proposed_end_time || ""} · {DETOUR_TIME_WINDOW_LABELS[reviewing.row.time_window_status || "pending"]}</p><div className="intake-checklist"><strong>Operational details</strong><ul><li>{reviewing.row.affected_stops_and_stations || "No affected stops or stations recorded."}</li><li>{reviewing.row.operational_impacts || "No additional operational impacts recorded."}</li><li>{reviewing.row.confirmation_contact || "No confirmation contact recorded."}</li></ul></div><IntakeImages intakeId={reviewing.row.id} />{reviewing.row.geometry_json ? <DetourMap value={reviewing.row.geometry_json} onChange={() => undefined} readOnly height={240} /> : null}<LikelyDuplicates row={reviewing.row} onPick={(match) => { setReviewing({ row: reviewing.row, action: "duplicate" }); setDuplicateTarget(match.id); setDuplicateKind(match.kind); }} />{reviewing.action === "accept" ? <div className="event-next-action"><div><span className="event-next-action-label">Acceptance boundary</span><strong>Create the Detour from this report</strong><p>{reviewing.row.proposed_fulfillment_mode ? `It will be run as: ${DETOUR_FULFILLMENT_MODE_LABELS[reviewing.row.proposed_fulfillment_mode]}. ` : ""}Accepting does not enter Avail or publish communications.</p></div></div> : <>{reviewing.action === "duplicate" ? <label className="modal-field">Existing {duplicateKind === "intake" ? "intake" : "Detour"} ID<input value={duplicateTarget} onChange={(e) => { setDuplicateTarget(e.target.value); setDuplicateKind("detour"); }} placeholder="Pick a likely duplicate above, or paste the GUID of the existing Detour" autoFocus /></label> : null}<label className="modal-field">{reviewing.action === "needs_information" ? "Information still needed" : reviewing.action === "duplicate" ? "Why is this a duplicate?" : reviewing.action === "withdrawn" ? "Why is this report being withdrawn?" : "Rejection reason"}<textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Record the reason for this decision" autoFocus={reviewing.action !== "duplicate"} /></label></>}<div className="modal-actions"><button className="btn-sm" onClick={() => setReviewing(null)}>Cancel</button><button className="btn-primary" disabled={busy || (reviewing.action !== "accept" && !reviewNotes.trim()) || (reviewing.action === "duplicate" && !duplicateTarget.trim())} onClick={() => void submitReview()}>{reviewing.action === "accept" ? "Accept record" : reviewing.action === "needs_information" ? "Return for information" : reviewing.action === "duplicate" ? "Mark duplicate" : reviewing.action === "withdrawn" ? "Withdraw record" : "Reject record"}</button></div></section></div> : null}
   </section>;
 }
 
@@ -497,7 +500,7 @@ function LikelyDuplicates({ row, onPick }: { row: DetourIntake; onPick: (match: 
     <strong>⚠ {matches.length} likely duplicate{matches.length === 1 ? "" : "s"}</strong>
     <p className="td-subtle">Same {matches.some((m) => m.reasons.includes("geometry")) ? "place on the map" : matches.some((m) => m.reasons.includes("stops")) ? "stops" : matches.some((m) => m.reasons.includes("routes")) ? "routes" : "location"} in an overlapping window. This is a warning for review; nothing is merged or rejected automatically.</p>
     <ul>{matches.map((match) => <li key={`${match.kind}-${match.id}`}>
-      <strong>{match.label}</strong> <span className="td-subtle">({match.kind === "detour" ? "Detour" : "Intake"} · {match.status.replace(/_/g, " ")} · {match.start_date || "open"} → {match.end_date || "open"})</span>
+      <strong>{match.label}</strong> <span className="td-subtle">({match.kind === "detour" ? "Detour" : "Intake"} · {otherRecordStatusLabel(match, STATUS_LABELS)} · {match.start_date || "open"} → {match.end_date || "open"})</span>
       <br /><span className="td-subtle">Shares {match.reasons.map((r) => r === "geometry" ? "map location" : r === "stops" ? "stops" : r === "routes" ? "routes" : "location").join(" and ")}: {match.shared.join(", ")}</span>
       {" "}<button type="button" className="btn-sm" onClick={() => onPick(match)}>Mark duplicate of this</button>
     </li>)}</ul>
