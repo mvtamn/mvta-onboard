@@ -195,3 +195,63 @@
 .rp-primary:disabled { opacity: 0.45; cursor: default; }
 .rp-thresholds { display: flex; gap: 14px; flex-wrap: wrap; }
 .rp-thresholds input { width: 70px; }
+
+/* PROTOTYPE — the printed Count Sheet (US Letter). Always black on white, in any theme. */
+.cs-pages { flex-direction: column; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
+.cs-page { position: relative; box-sizing: border-box; width: 8.5in; min-height: 11in; padding: 0.45in 0.5in 0.4in; background: #fff; color: #000; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; box-shadow: 0 1px 6px rgba(0,0,0,0.18); display: flex; flex-direction: column; gap: 10px; flex: none; }
+.cs-mark { position: absolute; width: 0.18in; height: 0.18in; background: #000; }
+.cs-mark.tl { top: 0.2in; left: 0.2in; } .cs-mark.tr { top: 0.2in; right: 0.2in; }
+.cs-mark.bl { bottom: 0.2in; left: 0.2in; } .cs-mark.br { bottom: 0.2in; right: 0.2in; }
+.cs-head { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; align-items: center; border-bottom: 2.5px solid #000; padding-bottom: 8px; }
+.cs-agency { font-size: 7.5pt; letter-spacing: 0.12em; font-weight: 700; }
+.cs-title h1 { margin: 2px 0; font-size: 20pt; font-weight: 800; letter-spacing: 0.01em; color: #000; }
+.cs-sub { font-size: 9pt; }
+.cs-id { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cs-block { display: flex; flex-direction: column; align-items: center; border: 2.5px solid #000; padding: 2px 12px; line-height: 1; }
+.cs-block span { font-size: 7.5pt; letter-spacing: 0.15em; font-weight: 700; }
+.cs-block strong { font-size: 30pt; font-family: ui-monospace, Menlo, monospace; }
+.cs-date { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.cs-date strong { font-size: 12pt; font-family: ui-monospace, Menlo, monospace; }
+.cs-date span { font-size: 8.5pt; }
+.cs-qr-box { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.cs-qr { width: 1in; height: 1in; }
+.cs-qr svg { width: 100%; height: 100%; display: block; }
+.cs-qr-note { font-size: 6.5pt; text-align: center; line-height: 1.2; }
+.cs-who { display: grid; grid-template-columns: 2fr auto auto auto; gap: 14px; align-items: end; }
+.rp label.cs-field { display: flex; flex-direction: column; gap: 3px; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; color: #000; }
+.cs-line { display: block; border-bottom: 1.5px solid #000; height: 22px; }
+.cs-box-initials { display: block; width: 0.55in; height: 0.3in; border: 1.5px solid #000; }
+.cs-digits { display: inline-flex; }
+.cs-digit { width: 0.24in; height: 0.3in; border: 1.5px solid #000; margin-left: -1.5px; background: #fff; }
+.cs-digit:first-child { margin-left: 0; }
+.cs-how { font-size: 8.5pt; line-height: 1.4; border: 1px solid #000; padding: 5px 8px; background: #f2f2f2; }
+.cs-eg { display: inline-block; width: 12px; height: 14px; border: 1px solid #000; text-align: center; line-height: 14px; font-size: 8pt; margin: 0 1px; background: #fff; font-family: "Bradley Hand", "Segoe Print", cursive; }
+.cs-trips { width: 100%; border-collapse: collapse; }
+.cs-trips th { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; text-align: left; border-bottom: 2px solid #000; padding: 3px 4px; color: #000; background: none; }
+.cs-trips td { border-bottom: 1px solid #000; padding: 4px; height: 0.36in; vertical-align: middle; color: #000; }
+.cs-n { width: 0.25in; font-size: 8pt; }
+.cs-route { font-size: 13pt; font-weight: 800; }
+.cs-dir { font-size: 12pt; font-weight: 700; }
+.cs-tripid { font-size: 7.5pt; color: #333; }
+.cs-tally-h { width: 2.1in; }
+.cs-tally { background: repeating-linear-gradient(90deg, transparent 0 0.3in, #ddd 0.3in calc(0.3in + 1px)); border-left: 1px solid #000; border-right: 1px solid #000; }
+.cs-check { display: inline-block; width: 0.2in; height: 0.2in; border: 1.5px solid #000; vertical-align: middle; margin-right: 4px; background: #fff; }
+.cs-section { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; border-top: 2.5px solid #000; padding-top: 6px; margin-top: 4px; }
+.cs-extra td { height: 0.4in; }
+.cs-dirs { font-weight: 700; letter-spacing: 0.35em; font-size: 9pt; }
+.cs-colon { margin: 0 2px; }
+.cs-why { font-size: 7.5pt; white-space: nowrap; }
+.cs-why .cs-check { width: 0.15in; height: 0.15in; margin: 0 2px 0 6px; }
+.cs-foot { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; font-size: 8.5pt; margin-top: 4px; }
+.rp label.cs-recon { flex-direction: row; display: flex; align-items: center; gap: 4px; font-size: 9pt; color: #000; }
+.cs-handin { max-width: 3.6in; text-align: right; }
+.cs-meta { margin-top: auto; display: flex; justify-content: space-between; font-size: 7pt; color: #333; border-top: 1px solid #000; padding-top: 4px; }
+
+@media print {
+  @page { size: letter; margin: 0; }
+  .cs-pages { overflow: visible; padding: 0; gap: 0; }
+  .cs-page { box-shadow: none; page-break-after: always; break-after: page; }
+}
+.cs-extra td { white-space: nowrap; }
+.cs-extra th.cs-tally-h { width: 1.3in; }
+.cs-extra .cs-dirs { letter-spacing: 0.25em; }

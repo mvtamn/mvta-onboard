@@ -1011,33 +1011,134 @@ function DatasheetVariant({ entries, update, garages }: VariantProps) {
 
 // ---------------------------------------------------------------- Sheet QR (PROTOTYPE)
 
-// Build plan decision 2 (2026-10-30): one code per sheet naming the block and
-// service date - nothing else, so a lost sheet leaks nothing and the code never
-// goes stale. A USB scanner types it into the worklist's box like a keyboard.
-const QR_PREFIX = "MVTA-RIDERSHIP";
-const sheetPayload = (date: string, block: string) => `${QR_PREFIX}:${date.replace(/-/g, "")}:${block}`;
+// Spec §15 (2026-10-31): the code is a LINK to the operator app at that run -
+// block and date only, no secret. Opening it still needs the operator's logon
+// ID + PIN, so a photo of a sheet submits nothing. The address is a placeholder
+// (.example is reserved) until the operator app has one. `p` numbers the pages
+// of a long block so the garage batch-scan can put a sheet back together.
+const OPERATOR_APP = "https://operator.onboard.example";
+const sheetLink = (date: string, block: string, page = 1) =>
+  `${OPERATOR_APP}/r/${date.replace(/-/g, "")}/${block}${page > 1 ? `?p=${page}` : ""}`;
 
-/** A scanned payload, or a typed block number ("24" → 024) with no date. */
+/** A scanned link (or the earlier MVTA-RIDERSHIP: code), or a typed block number with no date. */
 function parseSheetScan(raw: string): { date: string | null; block: string } | null {
-  const text = raw.trim().toUpperCase();
-  const m = text.match(/^MVTA-RIDERSHIP:(\d{4})(\d{2})(\d{2}):(\d{3})$/);
+  const text = raw.trim();
+  const m = text.match(/\/r\/(\d{4})(\d{2})(\d{2})\/(\d{3})(?:[?#].*)?$/i) ?? text.match(/^MVTA-RIDERSHIP:(\d{4})(\d{2})(\d{2}):(\d{3})$/i);
   if (m) return { date: `${m[1]}-${m[2]}-${m[3]}`, block: m[4] };
   if (/^\d{1,3}$/.test(text)) return { date: null, block: text.padStart(3, "0") };
   return null;
 }
 
-function SheetQr({ date, block }: { date: string; block: string }) {
-  const payload = sheetPayload(date, block);
+function QrSvg({ text, className }: { text: string; className?: string }) {
   const [svg, setSvg] = useState("");
   useEffect(() => {
     // Q (25%) error correction: a creased or coffee-ringed sheet should still scan.
-    QRCode.toString(payload, { type: "svg", errorCorrectionLevel: "Q", margin: 1 }).then(setSvg, () => setSvg(""));
-  }, [payload]);
+    QRCode.toString(text, { type: "svg", errorCorrectionLevel: "Q", margin: 1 }).then(setSvg, () => setSvg(""));
+  }, [text]);
+  return <div className={className ?? "rp-qr"} role="img" aria-label={`QR code ${text}`} data-payload={text} dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+
+// ---------------------------------------------------------------- The printed Count Sheet (PROTOTYPE)
+
+// Designed to be written on with a pen on a moving bus, and read twice: by OCC
+// today, and by the scan reader with the kiosk pilot (spec §15). So:
+//   * totals go in one-digit boxes, which handwriting recognition reads far
+//     better than free text, and DNO is a box to tick, not a word to write;
+//   * four corner marks and the QR let a scan be straightened and matched to
+//     its block, date and page;
+//   * nothing needs the operator to know a code - the trips are printed.
+const ROWS_PER_PAGE = 14;
+const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const dayName = (date: string) => DOW[new Date(`${date}T12:00:00`).getDay()];
+
+function DigitBoxes({ n, label }: { n: number; label?: string }) {
+  return <span className="cs-digits" aria-label={label}>{Array.from({ length: n }, (_, i) => <span key={i} className="cs-digit" />)}</span>;
+}
+
+function CountSheetPage({ b, date, garage, page, pages, trips, printedAt }: {
+  b: Block; date: string; garage: Garage; page: number; pages: number; trips: Trip[]; printedAt: string;
+}) {
+  const last = page === pages;
+  const link = sheetLink(date, b.block, page);
   return (
-    <div className="rp-qr-wrap">
-      <div className="rp-qr" role="img" aria-label={`QR code ${payload}`} data-payload={payload} dangerouslySetInnerHTML={{ __html: svg }} />
-      <div className="rp-qr-text"><span>BLOCK</span><strong>{block}</strong><span>{date}</span></div>
-    </div>
+    <section className="cs-page" aria-label={`Count Sheet block ${b.block} ${date} page ${page} of ${pages}`}>
+      <span className="cs-mark tl" /><span className="cs-mark tr" /><span className="cs-mark bl" /><span className="cs-mark br" />
+
+      <header className="cs-head">
+        <div className="cs-title">
+          <div className="cs-agency">MINNESOTA VALLEY TRANSIT AUTHORITY</div>
+          <h1>Passenger Count Sheet</h1>
+          <div className="cs-sub">Fixed route · {garage ?? "Unassigned"} garage</div>
+        </div>
+        <div className="cs-id">
+          <div className="cs-block"><span>BLOCK</span><strong>{b.block}</strong></div>
+          <div className="cs-date"><strong>{date}</strong><span>{dayName(date)}</span></div>
+        </div>
+        <div className="cs-qr-box">
+          <QrSvg text={link} className="cs-qr" />
+          <div className="cs-qr-note">Scan to enter counts<br />on the kiosk or web<br /><b>Sign-in required</b></div>
+        </div>
+      </header>
+
+      <div className="cs-who">
+        <label className="cs-field wide"><span>Operator name</span><span className="cs-line" /></label>
+        <label className="cs-field"><span>Operator ID</span><DigitBoxes n={5} label="Operator ID boxes" /></label>
+        <label className="cs-field"><span>Bus #</span><DigitBoxes n={4} label="Bus number boxes" /></label>
+        <label className="cs-field"><span>Initials</span><span className="cs-box-initials" /></label>
+      </div>
+
+      <div className="cs-how">
+        <b>How to count:</b> make one stroke in <i>Tally</i> for every boarding, including transfers and fare-free riders.
+        At the end of the trip write the total, one digit per box (e.g. <span className="cs-eg">0</span><span className="cs-eg">2</span><span className="cs-eg">7</span>).
+        Trip did not run? Tick <b>DNO</b> and leave the total blank. Zero riders? Write <span className="cs-eg">0</span>.
+      </div>
+
+      <table className="cs-trips">
+        <thead>
+          <tr><th>#</th><th>Route</th><th>Dir</th><th>Scheduled</th><th>Trip ID</th><th className="cs-tally-h">Tally</th><th>Total boardings</th><th>DNO</th></tr>
+        </thead>
+        <tbody>
+          {trips.map((t, i) => (
+            <tr key={t.tripId}>
+              <td className="cs-n">{(page - 1) * ROWS_PER_PAGE + i + 1}</td>
+              <td className="cs-route">{t.route}</td><td className="cs-dir">{t.dir}</td>
+              <td className="mono">{t.start}–{t.end}</td><td className="mono cs-tripid">{t.tripId}</td>
+              <td className="cs-tally" /><td><DigitBoxes n={3} label={`Total trip ${t.tripId}`} /></td><td><span className="cs-check" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {last && (
+        <>
+          <div className="cs-section">Unscheduled trips — trippers, extras, OCC-directed (leave blank if none)</div>
+          <table className="cs-trips cs-extra">
+            <thead><tr><th>Route</th><th>Dir</th><th>Start (24 h)</th><th>Why</th><th className="cs-tally-h">Tally</th><th>Total boardings</th></tr></thead>
+            <tbody>
+              {[0, 1, 2].map((i) => (
+                <tr key={i}>
+                  <td><DigitBoxes n={3} label="Route" /></td>
+                  <td className="cs-dirs">N S E W</td>
+                  <td><DigitBoxes n={2} /><b className="cs-colon">:</b><DigitBoxes n={2} /></td>
+                  <td className="cs-why"><span className="cs-check" />Tripper <span className="cs-check" />Extra <span className="cs-check" />OCC</td>
+                  <td className="cs-tally" /><td><DigitBoxes n={3} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="cs-foot">
+            <label className="cs-recon"><span className="cs-check" /> <b>Reconstructed</b> — original sheet lost or damaged (OPR-038)</label>
+            <div className="cs-handin">Hand in at pull-in to operations management. <b>Do not fold through the code.</b> Entering on the kiosk does not replace handing this in.</div>
+          </div>
+        </>
+      )}
+
+      <footer className="cs-meta">
+        <span>Page {page} of {pages}</span>
+        <span className="mono">{link.replace(/^https:\/\//, "")}</span>
+        <span>Printed {printedAt} from the Dispatch Log · PROTOTYPE</span>
+      </footer>
+    </section>
   );
 }
 
@@ -1045,7 +1146,23 @@ function SheetQr({ date, block }: { date: string; block: string }) {
 
 function PrintSheets({ garages }: { garages: Record<string, Garage> }) {
   const [date, setDate] = useState("2026-10-31");
-  const blocks = blocksFor(date);
+  const [only, setOnly] = useState<string>("All");
+  const blocks = blocksFor(date).filter((b) => only === "All" || b.block === only);
+  // Long blocks overflow onto more pages; the fixtures are short, so 418 is padded to show one.
+  // The console has no print stylesheet and scrolls inside a clipped frame, so
+  // printing the page would bring the sidebar and cut the sheets off. Print
+  // the sheets alone in a window of their own, with the app's styles copied in.
+  function printSheets() {
+    const pages = document.getElementById("cs-pages");
+    const w = window.open("", "_blank", "width=900,height=1000");
+    if (!pages || !w) return;
+    const styles = [...document.querySelectorAll('style, link[rel="stylesheet"]')].map((n) => n.outerHTML).join("");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Count Sheets</title>${styles}<style>body{margin:0;background:#fff}.cs-pages{display:block}.cs-page{box-shadow:none;margin:0 auto}</style></head><body><div class="rp"><div class="cs-pages">${pages.innerHTML}</div></div></body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  }
+  const tripsFor = (b: Block) => b.block === "418" ? [...b.trips, ...b.trips.map((t, i) => ({ ...t, tripId: `${Number(t.tripId) + 100 + i}`, start: t.start, end: t.end })), ...Array.from({ length: 10 }, (_, i) => ({ ...b.trips[0], tripId: `${1436900 + i}` }))] : b.trips;
   return (
     <div className="rp-print">
       <div className="rp-print-bar">
@@ -1055,31 +1172,24 @@ function PrintSheets({ garages }: { garages: Record<string, Garage> }) {
             {SERVICE_DATES.map((d) => <option key={d} value={d}>{d} · reprint a lost sheet</option>)}
           </select>
         </label>
-        <span>{blocks.length} sheets · printed the evening before, once the Dispatch Log has the day</span>
-        <button className="rp-primary" onClick={() => window.print()}>Print</button>
+        <label className="rp-print-date">Block
+          <select value={only} onChange={(e) => setOnly(e.target.value)}>
+            <option>All</option>
+            {blocksFor(date).map((b) => <option key={b.block}>{b.block}</option>)}
+          </select>
+        </label>
+        <span>US Letter, one block per page · printed the evening before, once the Dispatch Log has the day</span>
+        <button className="rp-primary" onClick={printSheets}>Print</button>
       </div>
-      <div className="rp-print-pages">
-        {blocks.slice(0, 3).map((b) => (
-          <div key={b.block} className="rp-sheet">
-            <div className="rp-sheet-head">
-              <div><div className="rp-sheet-title">PASSENGER COUNT SHEET</div><div className="rp-dim">{garages[b.block] ?? "Unassigned"} garage</div></div>
-              <SheetQr date={date} block={b.block} />
-            </div>
-            <div className="rp-sheet-fields">
-              <div>Service date <strong>{date}</strong></div><div>Block <strong>{b.block}</strong></div>
-              <div>Operator ________________________</div><div>ID ________</div><div>Bus # ________</div>
-            </div>
-            <table>
-              <thead><tr><th>Trip</th><th>Route</th><th>Dir</th><th>Time</th><th>Tally</th><th>Total boardings</th></tr></thead>
-              <tbody>
-                {b.trips.map((t) => <tr key={t.tripId}><td className="mono">{t.tripId}</td><td>{t.route}</td><td>{t.dir}</td><td className="mono">{t.start}–{t.end}</td><td /><td /></tr>)}
-                <tr className="rp-sheet-section"><td colSpan={6}>Unscheduled trips (route · direction · start)</td></tr>
-                <tr><td colSpan={4} /><td /><td /></tr><tr><td colSpan={4} /><td /><td /></tr><tr><td colSpan={4} /><td /><td /></tr>
-              </tbody>
-            </table>
-            <div className="rp-sheet-foot">☐ Reconstructed (sheet lost or damaged) · Write DNO in Total for a trip that did not operate · Hand in at pull-in — do not fold through the code</div>
-          </div>
-        ))}
+      <div className="rp-print-pages cs-pages" id="cs-pages">
+        {blocks.flatMap((b) => {
+          const trips = tripsFor(b);
+          const pages = Math.max(1, Math.ceil(trips.length / ROWS_PER_PAGE));
+          return Array.from({ length: pages }, (_, i) => (
+            <CountSheetPage key={`${b.block}-${i}`} b={b} date={date} garage={garages[b.block] ?? null} page={i + 1} pages={pages}
+              trips={trips.slice(i * ROWS_PER_PAGE, (i + 1) * ROWS_PER_PAGE)} printedAt={`${TODAY} 21:05`} />
+          ));
+        })}
       </div>
     </div>
   );
