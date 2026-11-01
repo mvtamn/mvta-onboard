@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.57] - 2026-11-01
+## [1.6.60] - 2026-11-01
 
 - **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0044 is that decision, and this is it built.
 - **The symptom that matters is not the figures, it is the list.** ADR 0042 derives "months measured under a different standard" from the stamps, so those 11 unstampable rows would have held 2026-05, 2026-08 and 2026-09 on the re-pull list permanently, each with a Re-pull button that could not clear them. A list that cannot reach empty stops being read, which is the one thing it was built not to be. The figures move by 0.014 points in 2026-05 (87.560% → 87.574%), 0.001 in 2026-08 and 0.005 in 2026-09.
@@ -16,6 +16,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **The daily table is left alone**, deliberately: `OtpDailyRouteStopHour` keys on a date and an hour, the re-pull list does not read it, and no stranded row has been seen there. `OtpMonthlyRestatements` keeps pointing at retired keys, also deliberately — migration 141's ledger carries no foreign key precisely so history outlives the figure it describes.
 - Proved against real SQL: nothing is deleted that is not archived in the same transaction, a short payload removes nothing, only the named month is at risk, a returning key is stored again with both lives on the record, and the migration's one-off repair spares a month that has not been re-polled since 151.
 - Apply migration 152 after this deploys. It archives and removes the 11 stranded rows; nothing else in the table changes.
+## [1.6.59] - 2026-11-01
+
+- **The GPS dead-zone bar is editable, with every first stop's record beside it.** A missed-trip case is marked "likely GPS dead zone" when at least 5 other judged silent no-shows at its first stop exist and at least 80% of them ran (1.6.27, 1.6.52). Those were constants. They are now two `AppSettings` rows, module `missed_trip`: `dead_zone_ran_percent` (50-100) and `dead_zone_min_cases` (3-50), seeded by **migration 155** at today's values, so applying it changes nothing a reviewer sees. They are saved through the existing `PATCH /app-settings`, which already refuses an integer outside its declared range. A whole percent rather than 0.80, because that endpoint does not range-check decimals.
+- **`lib/missedTripCase/deadZone.ts`** now holds the bar (`isLikelyDeadZone`, `readDeadZoneBar`, defaults and limits), the judged-cases rule (`UNJUDGEABLE_QUALITY`) and the per-stop SQL (`stopRecordsSql`). The case detail and the admin table therefore cannot disagree about which stops a bar flags. `caseEvidence.ts` uses it. A setting missing, unreadable or outside its range falls back to its default.
+- **`GET /missed-trip-dead-zones`** (Service Configuration) returns the bar, whether migration 155's rows exist, the limits, and every first stop with judged cases and how many ran, most cases first.
+- **Missed-trip Detectors → GPS dead zones** shows the bar's two inputs over that table. Moving them previews the result before saving, like the OTP Threshold Tuner: "5 of 22 stops would be flagged, up from 3", with each stop the draft adds or drops tinted. Only the setting that changed is written. Before migration 155 the inputs are locked and the panel says why. The bar only labels a case; it opens, holds and closes nothing, so `updated_by`/`updated_at` is the history it keeps.
+- Tests: `deadZone.test.ts` (5), `caseEvidence.test.ts` (+1), `deadZoneBar.test.ts` (5), `DeadZoneBarPanel.test.tsx` (4). `caseEvidence.db.contract.test.ts` now checks the per-stop read, and the bar before and after migration 155's rows, including that an out-of-range value is not trusted. Seen in the mock console against a stub serving dev's real 22 stop records.
 
 ## [1.6.56] - 2026-11-01
 

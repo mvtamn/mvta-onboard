@@ -1622,6 +1622,33 @@ export const ROUTE_CATEGORY_LABELS: Record<RouteCategory, string> = {
   NonRevenue: "Non-revenue",
 };
 
+// The bar that marks a missed-trip case's first stop as a likely GPS dead zone
+// (functions-restapi lib/missedTripCase/deadZone.ts), and every first stop's
+// record against it. GET /missed-trip-dead-zones; the bar is saved through
+// PATCH /app-settings?module=missed_trip.
+export interface DeadZoneBar {
+  /** Share of a stop's judged cases that ran, as a whole percent. */
+  ran_percent: number;
+  /** Fewest judged cases before a stop can be flagged. */
+  min_cases: number;
+}
+
+export interface FirstStopRecord {
+  stop_id: string;
+  name: string | null;
+  /** Silent no-shows at the stop the evidence could judge (retired and feed-outage cases left out). */
+  cases: number;
+  ran: number;
+}
+
+export interface MissedTripDeadZones {
+  bar: DeadZoneBar;
+  /** False until migration 155's settings exist; the bar shown is then the default and cannot be saved. */
+  configured: boolean;
+  limits: { ran_percent: { min: number; max: number }; min_cases: { min: number; max: number } };
+  stops: FirstStopRecord[];
+}
+
 export interface AppSettingRow {
   module: string;
   setting_key: string;
@@ -1999,7 +2026,7 @@ export interface OtpHistoricalBackfillResponse {
     duplicate_key_detail?: string[];
     // Keys the month held that Avail did not return, archived to
     // OtpMonthlyRetiredKeys and removed from the figure (ADR 0044). Before
-    // 1.6.57 they stayed, unreachable by any poll and - since the measurement
+    // 1.6.60 they stayed, unreachable by any poll and - since the measurement
     // stamp - unstampable, which kept their month on the re-pull list for good.
     retired_keys?: number;
     retired_key_detail?: string[];
