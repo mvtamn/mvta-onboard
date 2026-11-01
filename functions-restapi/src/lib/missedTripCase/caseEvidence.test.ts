@@ -4,7 +4,10 @@
 // drove, and a stop where nearly every earlier no-show turned out to have run.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { caseEvidence, DEAD_ZONE_MIN_CASES, type CaseEvidenceRow } from "./caseEvidence";
+import { caseEvidence, type CaseEvidenceRow } from "./caseEvidence";
+import { DEFAULT_DEAD_ZONE_BAR } from "./deadZone";
+
+const DEAD_ZONE_MIN_CASES = DEFAULT_DEAD_ZONE_BAR.min_cases;
 
 const SCHEDULED = new Date("2026-10-16T22:30:00.000Z");
 const DEADLINE = new Date("2026-10-16T23:00:00.000Z");
@@ -121,4 +124,10 @@ test("a case the stop's record leaves out is not taken off it", () => {
   assert.equal(evidence.origin_stop?.other_cases, 26);
   assert.equal(evidence.origin_stop?.other_cases_ran, 26);
   assert.equal(evidence.origin_stop?.likely_dead_zone, true);
+});
+
+test("the stop is judged against the bar it is given", () => {
+  const evidence = caseEvidence(row({ origin_cases: 25, origin_cases_ran: 18 }), { ran_percent: 70, min_cases: 5 });
+  assert.equal(evidence.origin_stop?.likely_dead_zone, true, "17 of 24 others is 71%, over a 70% bar");
+  assert.equal(caseEvidence(row({ origin_cases: 25, origin_cases_ran: 18 })).origin_stop?.likely_dead_zone, false, "and under the default 80%");
 });

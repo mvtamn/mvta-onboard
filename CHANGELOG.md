@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.59] - 2026-11-01
+
+- **The GPS dead-zone bar is editable, with every first stop's record beside it.** A missed-trip case is marked "likely GPS dead zone" when at least 5 other judged silent no-shows at its first stop exist and at least 80% of them ran (1.6.27, 1.6.52). Those were constants. They are now two `AppSettings` rows, module `missed_trip`: `dead_zone_ran_percent` (50-100) and `dead_zone_min_cases` (3-50), seeded by **migration 155** at today's values, so applying it changes nothing a reviewer sees. They are saved through the existing `PATCH /app-settings`, which already refuses an integer outside its declared range. A whole percent rather than 0.80, because that endpoint does not range-check decimals.
+- **`lib/missedTripCase/deadZone.ts`** now holds the bar (`isLikelyDeadZone`, `readDeadZoneBar`, defaults and limits), the judged-cases rule (`UNJUDGEABLE_QUALITY`) and the per-stop SQL (`stopRecordsSql`). The case detail and the admin table therefore cannot disagree about which stops a bar flags. `caseEvidence.ts` uses it. A setting missing, unreadable or outside its range falls back to its default.
+- **`GET /missed-trip-dead-zones`** (Service Configuration) returns the bar, whether migration 155's rows exist, the limits, and every first stop with judged cases and how many ran, most cases first.
+- **Missed-trip Detectors → GPS dead zones** shows the bar's two inputs over that table. Moving them previews the result before saving, like the OTP Threshold Tuner: "5 of 22 stops would be flagged, up from 3", with each stop the draft adds or drops tinted. Only the setting that changed is written. Before migration 155 the inputs are locked and the panel says why. The bar only labels a case; it opens, holds and closes nothing, so `updated_by`/`updated_at` is the history it keeps.
+- Tests: `deadZone.test.ts` (5), `caseEvidence.test.ts` (+1), `deadZoneBar.test.ts` (5), `DeadZoneBarPanel.test.tsx` (4). `caseEvidence.db.contract.test.ts` now checks the per-stop read, and the bar before and after migration 155's rows, including that an out-of-range value is not trusted. Seen in the mock console against a stub serving dev's real 22 stop records.
+
 ## [1.6.56] - 2026-11-01
 
 - **The console Ridership page (PR 3 of Increment 1 in `plans/ridership-build-plan.md`).** Specialist Operations › Ridership (`/ridership`, `ridership.view`) is the Enter sheets flow chosen from the prototype (spec §4): the worklist, opening the sheet form full-width. A user with no other workspace lands on it. No API change; it reads PR 2's endpoints and says so when migration 153 is missing.
