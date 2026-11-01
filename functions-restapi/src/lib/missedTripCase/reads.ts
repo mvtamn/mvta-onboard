@@ -160,16 +160,22 @@ export interface CaseTablesReady {
    * columns rather than failing.
    */
   occurrences: boolean;
+  /**
+   * SpareMissedTripSource exists, so a Spare case carries its promised and
+   * actual times. Absent, spare_times is null rather than the read failing.
+   */
+  spareSource: boolean;
 }
 
 // Both probes in one round trip. Each handler used to ask separately.
 export async function caseTablesReady(pool: sql.ConnectionPool): Promise<CaseTablesReady> {
-  const result = await pool.request().query<{ cases: number; occurrences: number }>(`
+  const result = await pool.request().query<{ cases: number; occurrences: number; spare_source: number }>(`
     SELECT CASE WHEN OBJECT_ID('dbo.MonitoredMissedTrips', 'U') IS NULL THEN 0 ELSE 1 END AS cases,
-           CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences', 'U') IS NULL THEN 0 ELSE 1 END AS occurrences
+           CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences', 'U') IS NULL THEN 0 ELSE 1 END AS occurrences,
+           CASE WHEN OBJECT_ID('dbo.SpareMissedTripSource', 'U') IS NULL THEN 0 ELSE 1 END AS spare_source
   `);
   const row = result.recordset[0];
-  return { cases: row?.cases === 1, occurrences: row?.occurrences === 1 };
+  return { cases: row?.cases === 1, occurrences: row?.occurrences === 1, spareSource: row?.spare_source === 1 };
 }
 
 export type CaseReadResult =
@@ -209,6 +215,22 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
       ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
     : "";
 
+  // A Spare case's times, where this environment has the table that holds them.
+  const spareColumns = ready.spareSource
+    ? `sms.original_scheduled_pickup_at AS spare_original_pickup_at,
+           sms.scheduled_pickup_at AS spare_scheduled_pickup_at,
+           sms.pickup_arrived_at AS spare_pickup_arrived_at,
+           sms.original_scheduled_dropoff_at AS spare_original_dropoff_at,
+           sms.scheduled_dropoff_at AS spare_scheduled_dropoff_at,
+           sms.dropoff_arrived_at AS spare_dropoff_arrived_at`
+    : ["original_pickup_at", "scheduled_pickup_at", "pickup_arrived_at", "original_dropoff_at", "scheduled_dropoff_at", "dropoff_arrived_at"]
+      .map((c) => `CAST(NULL AS DATETIME2) AS spare_${c}`).join(", ");
+  const spareJoin = ready.spareSource
+    ? `
+    LEFT JOIN SpareMissedTripSource sms
+      ON mmt.source_system = 'spare' AND sms.request_id = mmt.source_record_id`
+    : "";
+
   const listReq = pool.request();
   listReq.input("offset", sql.Int, query.offset);
   listReq.input("limit", sql.Int, query.limit);
@@ -224,19 +246,12 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
            mmt.source_system, mmt.source_record_id,
            sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
            sme.start_delay_seconds, sme.arrival_delay_seconds,
-           sms.original_scheduled_pickup_at AS spare_original_pickup_at,
-           sms.scheduled_pickup_at AS spare_scheduled_pickup_at,
-           sms.pickup_arrived_at AS spare_pickup_arrived_at,
-           sms.original_scheduled_dropoff_at AS spare_original_dropoff_at,
-           sms.scheduled_dropoff_at AS spare_scheduled_dropoff_at,
-           sms.dropoff_arrived_at AS spare_dropoff_arrived_at,
+           ${spareColumns},
            td.direction_label${occurrenceColumns}
     FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
     LEFT JOIN GtfsTripDirections td ON td.trip_id = mmt.trip_id
     LEFT JOIN SpareMissedTripEvaluations sme
-      ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id
-    LEFT JOIN SpareMissedTripSource sms
-      ON mmt.source_system = 'spare' AND sms.request_id = mmt.source_record_id${occurrenceJoin}
+      ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id${spareJoin}${occurrenceJoin}
     ${viewFilter(query.view)}
     ORDER BY
       CASE mmt.validation_status WHEN 'unreviewed' THEN 0 ELSE 1 END,
