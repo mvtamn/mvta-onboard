@@ -637,6 +637,21 @@ export interface MissedTrip {
   // lib/missedTripCase/caseEvidence.ts). Null on a Spare case and where the
   // evidence could not be read; absent from an API older than 1.6.27.
   gtfs_evidence?: GtfsCaseEvidence | null;
+  /** Whether the case's detector had left Shadow detection on its service date. Absent before 1.6.66. */
+  detector_promoted?: boolean;
+  /** A Spare case's promised, last-scheduled and actual times. Null on GTFS; absent before 1.6.66. */
+  spare_times?: SpareCaseTimes | null;
+}
+
+export interface SpareCaseTimes {
+  /** Promised at booking. */
+  original_pickup_at: string | null;
+  /** Spare's last schedule, after any re-plan. */
+  scheduled_pickup_at: string | null;
+  pickup_arrived_at: string | null;
+  original_dropoff_at: string | null;
+  scheduled_dropoff_at: string | null;
+  dropoff_arrived_at: string | null;
 }
 
 // Why a Dispatch Log time is or is not the trip's departure. Only "departed"
@@ -718,6 +733,8 @@ export interface MissedTripsDiagnostics {
   limit: number;
   offset: number;
   returned_count: number;
+  /** The page's start evidence could not be read; absent from an API older than 1.6.66. */
+  case_evidence_unavailable?: boolean;
   view_count: number;
   total_count: number;
   active_count: number;

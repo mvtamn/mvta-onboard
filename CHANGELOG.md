@@ -5,6 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.66] - 2026-11-01
+
+- **One case header for both sources** (review `docs/reviews/evidence-and-detours-review.md`, items 1, 2, 4 and 6). The detail's seven fact rows and "Grace deadline" hero box are replaced by Scheduled/Booked → What we saw → Looks like → Counting (`routes/modules/missedTripCaseHeader.ts`, a pure function with tests), with Source, Raised because, Data, Detector version, Flagged and Ref folded under Technical details. "Flagged" now gives its reference point: minutes after the 30-minute deadline, or after the dropoff for an on-demand ride.
+- **"Looks like" is display only.** It reads the Start evidence (started inside/past 30, bus signed in but never past the first stop, no bus on the trip or the block, block's bus working, likely dead zone) and never changes a lifecycle or a review.
+- **Spare cases carry their times.** `GET /missed-trips` returns `spare_times` (original and last-scheduled pickup and dropoff, and both arrivals) from `SpareMissedTripSource`, which has held them since migration 028 and nothing showed. The late-dropoff case used to show only the pickup arrival and a pickup + 30 deadline. When Spare's `dropoff_lateness_seconds` matches neither scheduled dropoff to within two minutes, the header warns. On dev, every late-dropoff case does: what Spare measures against is an open question for the Spare data owner.
+- **Each case says whether its detector is promoted.** `detector_promoted` is computed in the case read from the promotion history. It is deliberately not added to `missedTripCaseSql`, whose CROSS APPLY must stay verbatim with `vw_MissedTrip` (migration 137). The attribution help states Shadow detection as a fact when the API says so.
+- **`case_evidence_unavailable`** in the diagnostics: when the evidence read fails, the case says "could not be read" instead of falling back to "Not observed".
+- **The Block on a case is the workbook's** (`515`, not `515-v64`), through `workbookBlock`, as the Dispatch Log already does.
+- **Labels follow the glossary**: Ready for review, Closed by evidence, Suspected no-shows, Advance cancellations, "passed the first stop", "signed in", and Timely service in the stat row. The likely-dead-zone note gets the accent tone instead of amber, and position-sourced Dispatch Log times say so in words.
+- **Scorecard**: `backlogText` says when later weeks' unreviewed cases hold the verdict on an older week. The recall lines are full sentences ("Recall None not observed" is gone), and no migration numbers remain in user copy (scorecard, dead-zone panel).
+- **Migration 156** (data only, re-runnable) relabels reason code `DETECTION_ERROR` to "Detection error — the trip ran", only where the label is still the migration 023 seed. Until it is applied, the old label shows, and nothing else depends on it.
+- Backend change: merging redeploys and restarts the REST app.
 ## [1.6.64] - 2026-11-01
 
 - **The Schedule Review page tests wait for the route fetch.** `ScheduleReview.test.tsx` asserted `getGtfsPredictionRiskRoute` was called synchronously right after `findByRole` found the route list, but the page fetches the route in an effect after that list renders, so under CI load the assertion could run first ("Number of calls: 0") and fail an unrelated PR. The four route-fetch assertions now sit in `waitFor`. Test-only; the page is unchanged.

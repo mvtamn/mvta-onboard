@@ -1142,8 +1142,8 @@ _Avoid_: missed-trip candidate, unresolved alert
 **First observed progress**:
 The earliest trustworthy observation that a run advanced beyond its first
 scheduled public stop. It bounds when Trip start occurred but is not itself the
-measured Trip start.
-_Avoid_: actual start, first arrival
+measured Trip start. On screen: "passed the first stop".
+_Avoid_: actual start, first arrival, underway
 
 **Indeterminate trip**:
 A scheduled run whose outcome cannot be classified because the available
@@ -1251,6 +1251,19 @@ standards. It remains available for explicit rereview but is excluded from
 compliance totals by default.
 _Avoid_: corrected history, confirmed missed trip
 
+**Likely GPS dead zone**:
+A first stop where most of the Suspected no-shows that the evidence could
+check turned out to have run, by the bar an administrator sets. It is a note
+for the reviewer of a case starting there. It opens, holds and closes nothing.
+_Avoid_: dead-zone exclusion, known bad stop
+
+**Dispatch Log departure**:
+The Dispatch Log's first-stop time for a run, and what that time is. Only a
+realised departure on a trip a bus reported against is a start. A repeated
+schedule, the last prediction, a time on a trip no bus reported against, or a
+time taken from bus positions is shown as what it is, not as a departure.
+_Avoid_: actual start, trip update time
+
 **Shadow detection**:
 Operation of a candidate detector for evaluation without automatic contractual
 promotion. A detector leaves Shadow detection only after a complete service
@@ -1259,7 +1272,7 @@ and unmatched cases separately; on-demand service-quality additionally requires
 two complete service weeks, dispatcher agreement, and no unresolved feed-health
 issue. Cases from a detector in Shadow detection can be reviewed but never
 reach Assessment promotion.
-_Avoid_: production truth, enabled detector
+_Avoid_: production truth, enabled detector, experimental detector
 
 **Detector promotion**:
 A dated decision that a detector family leaves Shadow detection, recorded with

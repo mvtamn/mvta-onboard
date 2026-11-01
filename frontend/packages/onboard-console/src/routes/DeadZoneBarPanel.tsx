@@ -63,7 +63,7 @@ export function DeadZoneBarPanel() {
     </p>
 
     {data && !data.configured && <p className="detector-warning" role="status">
-      The bar is at its default and cannot be changed until migration 155 is applied.
+      The bar is at its default. Changes are turned off on this database until an administrator enables them.
     </p>}
 
     {data && <>
