@@ -114,6 +114,8 @@ import type {
   PrepareSuggestedAlertResult,
   ProcedureDraft,
   ProcedureDraftInput,
+  QrgSeedInput,
+  QrgSeedResult,
   ProcedureDraftSaveResult,
   PutStopExclusionInput,
   ReasonCodeAppliesTo,
@@ -1200,6 +1202,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getDecisionMatrixLegacyCandidates() {
       return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }>; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/legacy-candidates", {}, true);
+    },
+
+    seedDecisionMatrixDraftFromQrg(input: QrgSeedInput) {
+      return request<QrgSeedResult>(
+        "/api/manage/decision-matrix/procedures/seed-from-qrg",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
     },
 
     createDecisionMatrixProcedureDraft(input: ProcedureDraftInput) {
