@@ -14,6 +14,7 @@ import {
   cellMeaning,
   clock,
   DIRECTIONS,
+  directionLetter,
   draftFromSheet,
   dueLabel,
   EXCUSED_LABEL,
@@ -23,6 +24,7 @@ import {
   isOverridden,
   REASON_LABEL,
   saveFromDraft,
+  timeSpan,
   START_STATUS_LABEL,
   STATE_LABEL,
   STATE_TONE,
@@ -186,7 +188,7 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
 
       <div className="ridership-scroll"><table className="ridership-trips">
         <thead>
-          <tr><th>Trip</th><th>Route</th><th>Dir</th><th>Time</th><th>Dispatch Log</th><th className="num">Boardings</th><th /></tr>
+          <tr><th>Trip</th><th>Route</th><th>Dir</th><th>Dispatch Log</th><th className="num">Boardings</th><th /></tr>
         </thead>
         <tbody>
           {sheet.trips.map((trip) => {
@@ -194,13 +196,16 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
             const meaning = cellMeaning(cell);
             return (
               <tr key={trip.trip_id} className={trip.required ? undefined : "is-excused"}>
-                <td className="mono">{trip.trip_id}</td>
-                <td>{trip.route_short_name ?? "-"}</td>
-                <td>{trip.direction_label ?? "-"}</td>
-                <td className="mono">{clock(trip.scheduled_start_seconds)}{trip.scheduled_end_seconds !== null && `–${clock(trip.scheduled_end_seconds)}`}</td>
+                {/* Named as the paper sheet and Access name it; the GTFS id is the key underneath. */}
+                <td className="ridership-trip">
+                  <span className="ridership-trip-time">{timeSpan(trip.scheduled_start_seconds, trip.scheduled_end_seconds)}</span>
+                  <span className="ridership-trip-id mono" title="GTFS trip ID">{trip.trip_id}</span>
+                </td>
+                <td title={trip.route_short_name && trip.route_short_name !== trip.route_label ? trip.route_short_name : undefined}>{trip.route_label ?? "-"}</td>
+                <td>{directionLetter(trip.direction_label)}</td>
                 <td>{trip.excused_reason ? EXCUSED_LABEL[trip.excused_reason] : START_STATUS_LABEL[trip.start_status]}</td>
                 <td className="num">
-                  <input data-flow data-trip={trip.trip_id} aria-label={`Boardings, trip ${trip.trip_id}`} inputMode="numeric" autoComplete="off"
+                  <input data-flow data-trip={trip.trip_id} aria-label={`Boardings, ${trip.route_label ?? "route ?"} ${directionLetter(trip.direction_label)} ${clock(trip.scheduled_start_seconds)}`} inputMode="numeric" autoComplete="off"
                     className={meaning ? "is-letter" : undefined} value={cell} disabled={readOnly}
                     placeholder={trip.required ? "" : "-"} onKeyDown={onFlowKey} onChange={(e) => setCell(trip.trip_id, e.target.value)} />
                 </td>
@@ -210,14 +215,16 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
           })}
           {draft.added.map((row) => (
             <tr key={row.key} className="is-added">
-              <td><span className="ridership-pill is-accent">Unscheduled</span></td>
+              <td>
+                <span className="ridership-pill is-accent">Unscheduled</span>
+                <input aria-label="Start time" className="ridership-short" value={row.start} disabled={readOnly} onChange={(e) => setAdded(row.key, { start: e.target.value })} />
+              </td>
               <td><input aria-label="Route" className="ridership-short" value={row.route} disabled={readOnly} onChange={(e) => setAdded(row.key, { route: e.target.value })} /></td>
               <td>
                 <select aria-label="Direction" value={row.direction} disabled={readOnly} onChange={(e) => setAdded(row.key, { direction: e.target.value })}>
                   {DIRECTIONS.map((d) => <option key={d}>{d}</option>)}
                 </select>
               </td>
-              <td><input aria-label="Start time" className="ridership-short mono" value={row.start} disabled={readOnly} onChange={(e) => setAdded(row.key, { start: e.target.value })} /></td>
               <td>
                 <select aria-label="Reason" value={row.reason} disabled={readOnly} onChange={(e) => setAdded(row.key, { reason: e.target.value as RidershipAddedTripReason })}>
                   {REASONS.map((r) => <option key={r} value={r}>{REASON_LABEL[r]}</option>)}
@@ -244,7 +251,7 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
               {DIRECTIONS.map((d) => <option key={d}>{d}</option>)}
             </select>
           </label>
-          <label>Start<input className="ridership-short mono" placeholder="HH:MM" value={adding.start} onChange={(e) => setAdding({ ...adding, start: e.target.value })} /></label>
+          <label>Start<input className="ridership-short" placeholder="7:30 PM" value={adding.start} onChange={(e) => setAdding({ ...adding, start: e.target.value })} /></label>
           <label>Reason
             <select value={adding.reason} onChange={(e) => setAdding({ ...adding, reason: e.target.value as RidershipAddedTripReason })}>
               {REASONS.map((r) => <option key={r} value={r}>{REASON_LABEL[r]}</option>)}

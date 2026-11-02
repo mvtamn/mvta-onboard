@@ -189,6 +189,59 @@ describe("OTP compliance administration", () => {
     expect(screen.getByText(/route 497 stop 31780 Mon/)).toBeInTheDocument();
   });
 
+  // A key Avail stopped returning leaves the month's figure, which is a move
+  // nobody asked for and will ask about. The panel that caused it says so.
+  it("says which keys left the month, and when none were retired", async () => {
+    const { api } = (await import("../config.js")) as unknown as {
+      api: { runOtpHistoricalBackfill: ReturnType<typeof vi.fn> };
+    };
+    // Keyed on the phase, not queued per call: since 1.6.62 each month is two
+    // requests, so a pair of one-shot mocks would hand the second month's
+    // answer to the first month's Missed Trips phase.
+    api.runOtpHistoricalBackfill.mockClear();
+    api.runOtpHistoricalBackfill.mockImplementation(({ month, phase }: { month: string; phase?: string }) => {
+      if (phase === "missed_trips") {
+        return Promise.resolve({ service_month: month, missed_trips: { reports_seen: 0, rows_inserted: 0 } });
+      }
+      return Promise.resolve(
+        month === "202609"
+          ? {
+              service_month: month,
+              otp_monthly: {
+                reports_seen: 860,
+                upserted: 859,
+                retired_keys: 1,
+                retired_key_detail: [
+                  "202609: route 499 at Shakopee Walmart (stop 31967) on Thur - 17 departures, 17 on time, measured under no recorded standard - retired, Avail no longer returns it",
+                ],
+              },
+            }
+          : {
+              service_month: month,
+              otp_monthly: {
+                reports_seen: 120,
+                upserted: 120,
+                retired_keys: 0,
+                retirement_note:
+                  "758 of 878 stored keys were absent, but the payload accounted for only 13.7% of the month (needs 90%) - too short a delivery to tell a shrunken month from a bad response, so nothing was retired",
+              },
+            },
+      );
+    });
+    render(<OtpComplianceAdmin />);
+
+    expect(await screen.findByText("Historical data backfill")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-09" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run backfill" }));
+
+    expect(await screen.findByText(/1 key Avail no longer returns was retired/)).toBeInTheDocument();
+    expect(screen.getByText(/route 499 at Shakopee Walmart/)).toBeInTheDocument();
+    // The refusal is the one an admin has to act on, so it says what to do.
+    expect(screen.getByText(/too short a delivery/)).toBeInTheDocument();
+    expect(screen.getByText(/checking with Avail/)).toBeInTheDocument();
+  });
+
   // The hazard the ADR is answering: an admin control that silently restates
   // years of contractual performance. Declaring takes a stated source and a
   // confirmation that spells the consequence out first.

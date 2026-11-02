@@ -5,6 +5,7 @@ import {
   checkSheetSave,
   excusedReason,
   garageOn,
+  guideRoute,
   isOperatorOverridden,
   normalizeBlock,
   orderPulloutRuns,
@@ -233,4 +234,14 @@ test("history records only what changed, and a first save records what it sets",
     [{ subject: "trip", subject_ref: "t2", field: "count_status", previous_value: null, new_value: "not_counted" }],
   );
   assert.deepEqual(changesBetween("sheet", null, { reconstructed: false }, { reconstructed: false }), []);
+});
+
+// --- the route as the guide names it -----------------------------------------------
+
+test("a route prints as its number: Orange LINK is route 425", () => {
+  assert.equal(guideRoute("460", "460"), "460");
+  assert.equal(guideRoute("Orange LINK", "425"), "425");
+  assert.equal(guideRoute("Orange LINK", "ORANGE"), "Orange LINK", "no number to fall back on");
+  assert.equal(guideRoute(null, "425"), "425");
+  assert.equal(guideRoute(null, null), null);
 });

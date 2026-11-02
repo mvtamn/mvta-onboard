@@ -1,17 +1,27 @@
 import { describe, expect, it } from "vitest";
 import type { RidershipSheet } from "@mvta/shared";
 import {
+  blocksToPrint,
   cellFromInput,
+  centralDay,
   clock,
+  directionLetter,
+  editableClock,
   draftFromSheet,
   dueLabel,
   garageChanges,
+  garageFromValue,
   garagePercent,
+  garageValue,
   isOverridden,
+  normalizeBlock,
   parseClock,
   parseSheetScan,
+  printedTime,
   rowInForce,
   saveFromDraft,
+  sheetLinkBase,
+  timeSpan,
 } from "./ridership.js";
 
 const sheet = (overrides: Partial<RidershipSheet> = {}): RidershipSheet => ({
@@ -24,9 +34,9 @@ const sheet = (overrides: Partial<RidershipSheet> = {}): RidershipSheet => ({
   header: null,
   version: null,
   trips: [
-    { trip_id: "t1", route_short_name: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
-    { trip_id: "t2", route_short_name: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: null, start_status: "unknown", required: true, excused_reason: null, entry: null },
-    { trip_id: "t3", route_short_name: "460", direction_label: "N", scheduled_start_seconds: 28800, scheduled_end_seconds: null, start_status: "canceled", required: false, excused_reason: "dispatch_log_canceled", entry: null },
+    { trip_id: "t1", route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
+    { trip_id: "t2", route_short_name: "460", route_label: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: null, start_status: "unknown", required: true, excused_reason: null, entry: null },
+    { trip_id: "t3", route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 28800, scheduled_end_seconds: null, start_status: "canceled", required: false, excused_reason: "dispatch_log_canceled", entry: null },
   ],
   added_trips: [],
   progress: { trips: 3, required: 2, keyed: 0, counted: 0, not_counted: 0, did_not_operate: 0, added_trips: 0, boardings: 0 },
@@ -53,9 +63,23 @@ describe("a trip's box", () => {
 });
 
 describe("times and dates", () => {
-  it("prints GTFS seconds as the sheet's clock and reads typed starts", () => {
-    expect(clock(21600)).toBe("06:00");
-    expect(clock(88_800)).toBe("00:40");
+  it("shows GTFS seconds as the guide's 12-hour clock and reads typed starts", () => {
+    expect(clock(21600)).toBe("6:00 AM");
+    expect(clock(12000)).toBe("3:20 AM");
+    expect(clock(43200)).toBe("12:00 PM");
+    expect(clock(88_800)).toBe("12:40 AM");
+    expect(timeSpan(19200, 24000)).toBe("5:20 AM – 6:40 AM");
+    expect(timeSpan(19200, null)).toBe("5:20 AM");
+    expect(parseClock("7:30 PM")).toBe(70200);
+    expect(parseClock("12:15 am")).toBe(900);
+    expect(parseClock("12:15 PM")).toBe(44100);
+    expect(parseClock("13:15 PM")).toBeNull();
+    expect(editableClock(70200)).toBe("7:30 PM");
+    expect(editableClock(88_800)).toBe("24:40");
+    expect(parseClock(editableClock(88_800))).toBe(88_800);
+    expect(directionLetter("EB")).toBe("E");
+    expect(directionLetter("S")).toBe("S");
+    expect(directionLetter(null)).toBe("-");
     expect(parseClock("7:30")).toBe(27000);
     expect(parseClock("0730")).toBe(27000);
     expect(parseClock("24:40")).toBe(88_800);
@@ -147,5 +171,37 @@ describe("worklist and setup", () => {
       { block: "105", garage: null },
       { block: "212", garage: "Eagan" },
     ]);
+  });
+});
+
+describe("printing", () => {
+  it("tomorrow is the Central day after today, even late in the evening", () => {
+    // 22:30 CST on Dec 1 is already Dec 2 in UTC.
+    expect(centralDay(1, new Date("2026-12-02T04:30:00Z"))).toBe("2026-12-02");
+    expect(centralDay(0, new Date("2026-12-02T04:30:00Z"))).toBe("2026-12-01");
+  });
+
+  it("lists the blocks still to print: never printed or changed since", () => {
+    const row = (block: string, state: "not_printed" | "printed" | "changed") => ({ block, garage: "Burnsville", order: 1, first_start_seconds: 0, trips: 1, pages: 1, state, printed_at: null, printed_by: null });
+    expect(blocksToPrint([row("024", "printed"), row("105", "changed"), row("212", "not_printed")])).toEqual(["105", "212"]);
+  });
+
+  it("points the QR link at this console until the operator app has an address", () => {
+    expect(sheetLinkBase("https://ops.example.test", "/console/")).toBe("https://ops.example.test/console");
+    expect(sheetLinkBase("http://localhost:5173", "/")).toBe("http://localhost:5173");
+  });
+
+  it("shows the print time in Central", () => {
+    expect(printedTime("2026-12-02T03:05:00Z")).toBe("Tue, Dec 1 21:05");
+  });
+
+  it("reads a block as the sheet prints it", () => {
+    expect(normalizeBlock("24")).toBe("024");
+    expect(normalizeBlock("1234")).toBeNull();
+  });
+
+  it("gives Unassigned a select value of its own", () => {
+    expect(garageFromValue(garageValue(null))).toBeNull();
+    expect(garageFromValue(garageValue("Eagan"))).toBe("Eagan");
   });
 });
