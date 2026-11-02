@@ -10,7 +10,7 @@ const DAY = "20261202";
 
 function trip(block: string | null, tripId: string, start: number, extra: Partial<LoggedTrip> = {}): LoggedTrip {
   return {
-    service_date: DAY, trip_id: tripId, block, route_short_name: "460", route_label: "460", direction_label: "N",
+    service_date: DAY, trip_id: tripId, block, route_short_name: "460", route_label: "460", trip_number: null, direction_label: "N",
     scheduled_start_seconds: start, scheduled_end_seconds: start + 2700, start_status: "unknown", ...extra,
   };
 }

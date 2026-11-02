@@ -35,6 +35,8 @@ export interface LoggedTrip {
   route_short_name: string | null;
   /** The route as the guide prints it: 425, not "Orange LINK" (guideRoute). */
   route_label: string | null;
+  /** The trip as Avail and dispatch name it: "320-E" (availTripNumber); null when the id is not in MVTA's form. */
+  trip_number: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;
@@ -146,6 +148,8 @@ export interface SheetTrip {
   route_short_name: string | null;
   /** The route as the guide prints it: 425, not "Orange LINK". */
   route_label: string | null;
+  /** The trip as Avail and dispatch name it: "320-E". */
+  trip_number: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;

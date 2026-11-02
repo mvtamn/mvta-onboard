@@ -196,10 +196,10 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
             const meaning = cellMeaning(cell);
             return (
               <tr key={trip.trip_id} className={trip.required ? undefined : "is-excused"}>
-                {/* Named as the paper sheet and Access name it; the GTFS id is the key underneath. */}
+                {/* Named as the paper sheet and Access name it, and as Avail and dispatch number it; the GTFS id is the key underneath. */}
                 <td className="ridership-trip">
                   <span className="ridership-trip-time">{timeSpan(trip.scheduled_start_seconds, trip.scheduled_end_seconds)}</span>
-                  <span className="ridership-trip-id mono" title="GTFS trip ID">{trip.trip_id}</span>
+                  <span className="ridership-trip-id mono" title={`Avail trip ${trip.trip_number ?? "?"} · GTFS trip ID ${trip.trip_id}`}>{trip.trip_number ? `Trip ${trip.trip_number}` : trip.trip_id}</span>
                 </td>
                 <td title={trip.route_short_name && trip.route_short_name !== trip.route_label ? trip.route_short_name : undefined}>{trip.route_label ?? "-"}</td>
                 <td>{directionLetter(trip.direction_label)}</td>

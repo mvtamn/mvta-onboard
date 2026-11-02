@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.10] - 2026-11-02
+
+The printed Count Sheet's Trip ID column carried the 16-18 character GTFS trip_id (`t140-b1F5-sl1B-v64`), which nobody at the desk or in dispatch uses. Avail's event log and dispatch call the same trip **320-E**. MVTA's GTFS id encodes that number: its first part is the trip number in hexadecimal (0x140 = 320), and the number is the scheduled start as H:MM (3:20 AM). The block part encodes the block the same way (0x1F5 = 501). This held for all 847 Dispatch Log trips on 2026-11-01/02. **The REST app restarts on merge.**
+
+- **`availTripNumber(tripId, directionLabel)`** (`lib/ridership/rules.ts`) decodes the number and adds the direction letter: "320-E", or "320" without a direction. It returns null for an id not in that form. `loadLoggedTrips` sets `trip_number` on every trip, and it is carried on `LoggedTrip`, `SheetTrip`, `PrintTrip` and the shared `RidershipSheetTrip`.
+- **Printed sheet:** the column is headed "Trip" and prints `trip_number` in bold Courier up to 11 pt. With no number it prints the GTFS id as before, shrunk to fit.
+- **Enter sheets:** "Trip 320-E" under the times, with the GTFS id in the tooltip. The GTFS trip_id is still the key for counts, QR codes and the print log.
+- **Print log:** the fingerprint is unchanged, because the number is derived from trip_id and direction, which it already hashes. Sheets already printed stay "Printed"; their copies show the GTFS id.
+- Tests: REST `rules.test.ts` (+1). Console `Ridership.test.tsx` (one updated).
+
 ## [1.7.9] - 2026-11-02
 
 Who prints Count Sheets was an open decision: the spec gave printing to Ridership Recorder, while the SOP draft gives it to the garage check-in desk. Recorder also keys counts, which the desk should not do. Decided 2026-11-02: add a print-only role. **The REST app restarts on merge** (`seeds.ts`).
