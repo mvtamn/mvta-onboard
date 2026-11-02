@@ -51,18 +51,29 @@ type Doc = PDFKit.PDFDocument;
 const dashedDate = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 const weekday = (d: string) => WEEKDAYS[new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(4, 6)) - 1, Number(d.slice(6, 8)))).getUTCDay()];
 
-/** GTFS seconds as the clock reads: a trip after midnight shows 00:40, not 24:40. */
+/**
+ * GTFS seconds as the current guide shows a time (the paper sheet's "Ride
+ * Detail", Access): "3:20 AM". A trip after midnight shows 12:40 AM, not 24:40.
+ */
 export function clock(seconds: number): string {
   const minutes = Math.floor(seconds / 60) % (24 * 60);
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const h = Math.floor(minutes / 60);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(minutes % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** GTFS "EB"/"NB" as the guide writes it: E, N, S, W. Anything else as it is. */
+export function directionLetter(label: string | null): string {
+  if (!label) return "";
+  const match = label.trim().toUpperCase().match(/^([NSEW])(B|BOUND)?$/);
+  return match ? match[1] : label;
 }
 
 /** The print time in Central, as the footer shows it. */
 export function printedLabel(at: Date): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", hourCycle: "h12",
   }).formatToParts(at).map((p) => [p.type, p.value]));
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} CT`;
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${String(parts.dayPeriod).toUpperCase().replace(/\./g, "")} CT`;
 }
 
 function box(doc: Doc, x: number, y: number, w: number, h: number, width = 0.8) {
@@ -171,7 +182,7 @@ function howToCount(doc: Doc) {
 }
 
 // Trip IDs are GTFS ids such as "t1A4-b1F6-sl1B-v63" (16-18 characters); the column fits 18 at 7.4 pt.
-const TRIP_COLUMNS = { n: 18, route: 40, dir: 26, scheduled: 70, trip: 84, total: 3 * DIGIT + 10, dno: 30 };
+const TRIP_COLUMNS = { n: 18, route: 40, dir: 22, scheduled: 92, trip: 84, total: 3 * DIGIT + 10, dno: 30 };
 
 function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): number {
   const c = TRIP_COLUMNS;
@@ -180,7 +191,7 @@ function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): 
   for (const w of [c.n, c.route, c.dir, c.scheduled, c.trip, tallyWidth, c.total]) xs.push(xs[xs.length - 1] + w);
 
   let y = RULE_Y + 76;
-  const heads = ["#", "Route", "Dir", "Scheduled", "Trip ID", "Tally", "Total boardings", "DNO"];
+  const heads = ["#", "Route", "Dir", "Ride", "Trip ID", "Tally", "Total boardings", "DNO"];
   doc.font(BOLD).fontSize(7).fillColor("#000");
   heads.forEach((h, i) => doc.text(h, xs[i] + 2, y + 3, { lineBreak: false }));
   y += 13;
@@ -190,9 +201,10 @@ function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): 
     const mid = y + TRIP_ROW / 2;
     doc.font(FONT).fontSize(8).text(String(firstNumber + i), xs[0] + 2, mid - 4, { lineBreak: false });
     doc.font(BOLD).fontSize(14).text(trip.route_short_name ?? "?", xs[1] + 2, mid - 7, { lineBreak: false });
-    doc.font(BOLD).fontSize(14).text(trip.direction_label ?? "", xs[2] + 2, mid - 7, { lineBreak: false });
-    const span = `${clock(trip.scheduled_start_seconds)}-${trip.scheduled_end_seconds === null ? "" : clock(trip.scheduled_end_seconds)}`;
-    doc.font(MONO).fontSize(9).text(span, xs[3] + 2, mid - 4, { lineBreak: false });
+    doc.font(BOLD).fontSize(14).text(directionLetter(trip.direction_label), xs[2] + 2, mid - 7, { lineBreak: false });
+    // The trip as the current paper sheet names it: "5:20 AM - 6:40 AM".
+    const span = `${clock(trip.scheduled_start_seconds)} - ${trip.scheduled_end_seconds === null ? "" : clock(trip.scheduled_end_seconds)}`;
+    doc.font(BOLD).fontSize(8.5).text(span, xs[3] + 2, mid - 4, { width: c.scheduled - 4, lineBreak: false });
     // Courier is 0.6 em a character: shrink a long id to fit rather than cut it, since OCC reads it.
     const idSize = Math.min(7.5, (c.trip - 4) / (0.6 * Math.max(1, trip.trip_id.length)));
     doc.font(MONO).fontSize(idSize).text(trip.trip_id, xs[4] + 2, mid - idSize / 2, { lineBreak: false });
@@ -209,12 +221,12 @@ function unscheduledRows(doc: Doc, top: number): number {
   let y = top + 10;
   doc.fillColor("#000").font(BOLD).fontSize(8).text("Unscheduled trips - trippers, extras, OCC-directed (leave blank if none)", MARGIN, y, { lineBreak: false });
   y += 13;
-  const widths = [3 * DIGIT + 8, 70, 4 * DIGIT + 16, 120];
+  const widths = [3 * DIGIT + 8, 62, 4 * DIGIT + 62, 112];
   const xs = [MARGIN];
   for (const w of widths) xs.push(xs[xs.length - 1] + w);
   const totalX = RIGHT - (3 * DIGIT + 4);
   doc.font(BOLD).fontSize(7);
-  ["Route", "Dir", "Start (24 h)", "Why", "Tally"].forEach((h, i) => doc.text(h, xs[i] + 2, y, { lineBreak: false }));
+  ["Route", "Dir", "Start", "Why", "Tally"].forEach((h, i) => doc.text(h, xs[i] + 2, y, { lineBreak: false }));
   doc.text("Total boardings", totalX - 6, y, { lineBreak: false });
   y += 10;
   doc.lineWidth(0.8).moveTo(MARGIN, y).lineTo(RIGHT, y).stroke();
@@ -227,6 +239,7 @@ function unscheduledRows(doc: Doc, top: number): number {
     digitBoxes(doc, xs[2] + 2, boxTop, 2);
     doc.font(BOLD).fontSize(12).text(":", xs[2] + 2 * DIGIT + 5, mid - 6, { lineBreak: false });
     digitBoxes(doc, xs[2] + 2 * DIGIT + 12, boxTop, 2);
+    doc.font(BOLD).fontSize(9).text("AM  PM", xs[2] + 4 * DIGIT + 18, mid - 4.5, { lineBreak: false });
     let wx = xs[3] + 2;
     doc.font(FONT).fontSize(7.5);
     for (const why of ["Tripper", "Extra", "OCC"]) {

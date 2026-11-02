@@ -2117,7 +2117,7 @@ export interface OtpHistoricalBackfillResponse {
     duplicate_key_detail?: string[];
     // Keys the month held that Avail did not return, archived to
     // OtpMonthlyRetiredKeys and removed from the figure (ADR 0044). Before
-    // 1.6.71 they stayed, unreachable by any poll and - since the measurement
+    // 1.6.73 they stayed, unreachable by any poll and - since the measurement
     // stamp - unstampable, which kept their month on the re-pull list for good.
     retired_keys?: number;
     retired_key_detail?: string[];

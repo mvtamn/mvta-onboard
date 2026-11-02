@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import QRCode from "qrcode";
-import { clock, printedLabel, qrSide, renderCountSheets } from "./countSheetPdf";
+import { clock, directionLetter, printedLabel, qrSide, renderCountSheets } from "./countSheetPdf";
 import { linkBaseFor, normalizeLinkBase, pageCount, printStatus, sheetFingerprint, sheetLink, sheetsToPrint, type PrintSheet } from "./print";
 import type { StoredPrintRun, StoredPrintedSheet } from "./store";
 import type { LoggedTrip } from "./types";
@@ -161,10 +161,19 @@ test("the code is 25 mm, grown for a long link to keep modules near 0.7 mm, neve
 
 // --- the PDF ------------------------------------------------------------------------
 
-test("the sheet shows clock times, after midnight included, and the print time in Central", () => {
-  assert.equal(clock(18600), "05:10");
-  assert.equal(clock(88800), "00:40");
-  assert.equal(printedLabel(new Date("2026-12-02T03:05:00Z")), "2026-12-01 21:05 CT");
+test("the sheet shows times as the current guide does, after midnight included, and the print time in Central", () => {
+  assert.equal(clock(12000), "3:20 AM");
+  assert.equal(clock(43200), "12:00 PM");
+  assert.equal(clock(66000), "6:20 PM");
+  assert.equal(clock(88800), "12:40 AM");
+  assert.equal(printedLabel(new Date("2026-12-02T03:05:00Z")), "2026-12-01 9:05 PM CT");
+});
+
+test("direction prints as the guide's one letter", () => {
+  assert.equal(directionLetter("EB"), "E");
+  assert.equal(directionLetter("N"), "N");
+  assert.equal(directionLetter("Southbound"), "Southbound");
+  assert.equal(directionLetter(null), "");
 });
 
 const pagesIn = (pdf: Buffer) => (pdf.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length;
