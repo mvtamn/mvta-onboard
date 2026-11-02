@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.74] - 2026-11-01
+## [1.6.77] - 2026-11-01
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,15 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.6.75] - 2026-11-01
+
+The Orange LINK overprinted the Ride column on the printed Count Sheet (Block 009, 2026-11-02). Its GTFS `route_short_name` is "Orange LINK"; its `route_id` is 425, which is what Access and the ridership totals use. The REST app restarts on merge.
+
+- **`guideRoute(short, routeId)`** (`lib/ridership/rules.ts`): a numeric short name as it is, else a numeric `route_id`, else the short name. `loadLoggedTrips` now reads `TripStartLog.route_id`, and every trip carries `route_label` (`LoggedTrip`, `SheetTrip`, `PrintTrip`, the shared `RidershipSheetTrip`).
+- **Printed sheet:** the Route column prints `route_label`, and anything still wider than the column shrinks to fit. The print fingerprint hashes `route_label`, which equals the short name for every numeric route, so sheets already printed for those routes stay "Printed". Orange LINK sheets show "Changed since printed" and want a reprint.
+- **Enter sheets:** the Route column and the boardings label use `route_label`. A GTFS name that differs shows as the cell's tooltip.
+- Tests: REST `rules.test.ts` (+1) and `print.test.ts` (+1); contract test prerequisite gains `route_id`. Console `Ridership.test.tsx` (+1). Dev has one such route: Orange LINK / 425.
 
 ## [1.6.73] - 2026-11-01
 

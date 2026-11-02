@@ -2731,6 +2731,8 @@ export interface RidershipWorklist {
 export interface RidershipSheetTrip {
   trip_id: string;
   route_short_name: string | null;
+  /** The route as the guide prints it: 425, not "Orange LINK". */
+  route_label: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;

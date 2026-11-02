@@ -68,6 +68,7 @@ function sheetTrips(trips: readonly LoggedTrip[], confirmed: ReadonlySet<string>
     return {
       trip_id: trip.trip_id,
       route_short_name: trip.route_short_name,
+      route_label: trip.route_label,
       direction_label: trip.direction_label,
       scheduled_start_seconds: trip.scheduled_start_seconds,
       scheduled_end_seconds: trip.scheduled_end_seconds,

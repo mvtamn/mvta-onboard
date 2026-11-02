@@ -37,6 +37,20 @@ export function normalizeBlock(value: string): string | null {
   return trimmed.padStart(3, "0");
 }
 
+/**
+ * The route as MVTA's guide names it (the paper sheet, Access, the totals):
+ * its number. GTFS gives some routes a name for a short name - Orange LINK is
+ * route 425 - so a short name that is not a number falls back to the route_id
+ * when that one is.
+ */
+export function guideRoute(shortName: string | null, routeId: string | null): string | null {
+  const short = shortName?.trim() || null;
+  const id = routeId?.trim() || null;
+  if (short && /^\d+$/.test(short)) return short;
+  if (id && /^\d+$/.test(id)) return id;
+  return short ?? id;
+}
+
 /** "20261201" -> "2026-12-01", the DATE form RidershipBlockGarages keys on. */
 export function isoDate(serviceDate: string): string {
   return `${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}`;

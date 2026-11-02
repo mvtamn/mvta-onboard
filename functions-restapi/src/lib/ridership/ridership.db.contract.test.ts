@@ -50,7 +50,7 @@ async function ownDatabase(cs: string): Promise<sql.ConnectionPool> {
 
 const PREREQUISITES = `
 CREATE TABLE dbo.TripStartLog (
-  service_date CHAR(8) NOT NULL, trip_id NVARCHAR(100) NOT NULL, block_id NVARCHAR(50) NULL,
+  service_date CHAR(8) NOT NULL, trip_id NVARCHAR(100) NOT NULL, block_id NVARCHAR(50) NULL, route_id NVARCHAR(50) NULL,
   route_short_name NVARCHAR(50) NULL, direction_label NVARCHAR(10) NULL,
   scheduled_start_seconds INT NOT NULL, start_status NVARCHAR(20) NULL,
   PRIMARY KEY (service_date, trip_id));

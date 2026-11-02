@@ -26,6 +26,8 @@ export const TRIPS_PER_PAGE = 14;
 export interface PrintTrip {
   trip_id: string;
   route_short_name: string | null;
+  /** What the sheet prints in the Route column. */
+  route_label: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;
@@ -57,7 +59,7 @@ export const pageCount = (trips: number) => Math.max(1, Math.ceil(trips / TRIPS_
 
 /** What is printed on the sheet, hashed: a change to any of it means the printed copy is stale. */
 export function sheetFingerprint(trips: readonly PrintTrip[]): string {
-  const printed = trips.map((t) => [t.trip_id, t.route_short_name ?? "", t.direction_label ?? "", t.scheduled_start_seconds, t.scheduled_end_seconds ?? ""].join("|"));
+  const printed = trips.map((t) => [t.trip_id, t.route_label ?? "", t.direction_label ?? "", t.scheduled_start_seconds, t.scheduled_end_seconds ?? ""].join("|"));
   return createHash("sha256").update(printed.join("\n")).digest("hex");
 }
 
@@ -79,6 +81,7 @@ export function sheetsToPrint(
     list.push({
       trip_id: trip.trip_id,
       route_short_name: trip.route_short_name,
+      route_label: trip.route_label,
       direction_label: trip.direction_label,
       scheduled_start_seconds: trip.scheduled_start_seconds,
       scheduled_end_seconds: trip.scheduled_end_seconds,

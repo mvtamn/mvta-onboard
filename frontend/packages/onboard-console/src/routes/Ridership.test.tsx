@@ -48,8 +48,8 @@ const sheetFor = (service_date: string, block: string, overrides: Partial<Riders
   pullout: { prefill: { run: 1, operator_name: "Test Operator A", operator_id: "9001", bus: "4401" }, other_runs: [{ run: 2, operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" }] },
   header: null, version: null,
   trips: [
-    { trip_id: `${block}-1`, route_short_name: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
-    { trip_id: `${block}-2`, route_short_name: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: 27000, start_status: "unknown", required: true, excused_reason: null, entry: null },
+    { trip_id: `${block}-1`, route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
+    { trip_id: `${block}-2`, route_short_name: "460", route_label: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: 27000, start_status: "unknown", required: true, excused_reason: null, entry: null },
   ],
   added_trips: [], progress: progress(2), history: [],
   ...overrides,
@@ -131,6 +131,18 @@ describe("Ridership › Enter sheets", () => {
     const row = (await screen.findByLabelText("Boardings, 460 N 6:00 AM")).closest("tr")!;
     expect(within(row).getByText("6:00 AM – 6:40 AM")).toBeTruthy();
     expect(within(row).getByTitle("GTFS trip ID").textContent).toBe("105-1");
+  });
+
+  it("shows a route by the guide's number, with its GTFS name on hover", async () => {
+    getRidershipSheet.mockImplementation(async (date: string, block: string) => {
+      const sheet = sheetFor(date, block);
+      return { ...sheet, trips: sheet.trips.map((t) => ({ ...t, route_short_name: "Orange LINK", route_label: "425" })) };
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "105" }));
+    const row = (await screen.findByLabelText("Boardings, 425 N 6:00 AM")).closest("tr")!;
+    expect(within(row).getByTitle("Orange LINK").textContent).toBe("425");
   });
 
   it("fetches the next sheet while this one is keyed, so Save opens it at once", async () => {

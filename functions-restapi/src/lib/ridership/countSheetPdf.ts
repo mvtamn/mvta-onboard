@@ -200,7 +200,11 @@ function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): 
   trips.forEach((trip, i) => {
     const mid = y + TRIP_ROW / 2;
     doc.font(FONT).fontSize(8).text(String(firstNumber + i), xs[0] + 2, mid - 4, { lineBreak: false });
-    doc.font(BOLD).fontSize(14).text(trip.route_short_name ?? "?", xs[1] + 2, mid - 7, { lineBreak: false });
+    // The guide's route number; anything longer shrinks to its column rather than run into the next.
+    const route = trip.route_label ?? "?";
+    doc.font(BOLD).fontSize(14);
+    const routeSize = Math.min(14, (14 * (c.route - 4)) / Math.max(1, doc.widthOfString(route)));
+    doc.fontSize(routeSize).text(route, xs[1] + 2, mid - routeSize / 2, { lineBreak: false });
     doc.font(BOLD).fontSize(14).text(directionLetter(trip.direction_label), xs[2] + 2, mid - 7, { lineBreak: false });
     // The trip as the current paper sheet names it: "5:20 AM - 6:40 AM".
     const span = `${clock(trip.scheduled_start_seconds)} - ${trip.scheduled_end_seconds === null ? "" : clock(trip.scheduled_end_seconds)}`;
