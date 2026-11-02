@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.76] - 2026-11-01
+## [1.7.3] - 2026-11-02
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,21 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.7.0] - 2026-11-02
+
+Seed a Procedure Draft from a QRG in the Approved Document Library (ADR 0045, migration 158). ADR 0024 rejects importing Decision Matrix content from SharePoint; this does not import it - what the model proposes is a Draft with every field unreviewed, approved only through the existing review, mirroring how `decisionMatrixLegacyMigration.ts` maps a legacy candidate.
+
+- **`lib/qrgDraftSeed.ts` is the module.** `seedDraftFromQrg(input, source, proposer, options?)` reads the QRG, asks for guidance, and RETURNS the Draft to create plus the seeding to record - it writes nothing. Dependencies are injected (`QrgSource`, `GuidanceProposer`), so its 13 tests cover refusals, timeout, and every unusable answer without SharePoint or a model. `MAX_QRG_PAGES` 4, `PROPOSAL_TIMEOUT_MS` 25 s, both overridable for tests only.
+- **A SharePoint refusal refuses the seeding; an unusable model answer does not.** `forbidden`/`unconfigured` → 409, `not_found` → 400, `failed` → 503, a non-PNG/JPEG/PDF QRG → 400, a QRG whose eTag moved since the picker showed it → 409. A model that throws, times out, returns off-schema, or proposes nothing yields an EMPTY Draft with the QRG attached and the reason recorded - the manual path, not worse than no feature.
+- **The author names the governing SOP.** `supportingDocumentReferences.ts:101` refuses any primary that is not an SOP or Reference, and review refuses a Draft with no primary, so a QRG-only Draft could never be submitted. The handler refuses a non-SOP/Reference governing document up front with that reason.
+- **`lib/decisionMatrixGuidance.ts` declares the vocabulary once.** `SEVERITIES`, `CRITERION_KINDS`, `ACTION_KINDS` and `GUIDANCE_LIMITS` moved out of `decisionMatrixDrafts.ts`, which now imports them. The QRG validator holds a proposal to the same rules; two copies would drift and accept different guidance.
+- **Structured outputs, not forced tool use.** `tool_choice` `any`/`tool` is a 400 on `claude-opus-5-5`, so `lib/qrgGuidanceProposer.ts` pins the shape with `output_config.format` (`type: "json_schema"`, no beta header) and parses the JSON out of the returned text block. A strict schema cannot express `maxLength`/`minimum`/`minItems > 1`, so every length is enforced in `qrgDraftSeed.ts` - that truncation is load-bearing. `refusal` and `max_tokens` stop reasons return HTTP 200 and are checked before the parse. Plain `fetch`, matching `anthropic.ts` next door.
+- **Enum casing is folded.** Structured outputs documents that an enum may come back capitalised differently and must be compared case-insensitively; a `"Applies"` or `"STOP SERVICE"` answer was being discarded as unusable. Matched by folded case and stored in OnBoard's spelling.
+- **Migration 158: `DecisionMatrixQrgSeedings`.** Keeps `proposed_json` verbatim beside the Draft it seeded, with the model, `pages_read`, and outcome (`proposed`/`empty` + reason), because neither the Draft nor `ProcedureAuditEvents` can answer what the model proposed versus what the human changed. `UX_..._Item` on (drive_id, item_id, seen_version): a revised QRG may seed again, the same unrevised one may not. Not a foreign key to `ProcedureRevisions` - the record must outlive a Draft discarded because the proposal was wrong.
+- **PDF can be displayed.** New `isInlinePreviewMime` (PNG/JPEG/PDF) governs display, used by `GET /decision-matrix` and the rendition preview endpoint; `isInlineImageMime` is untouched and still decides what a Visual rendition may be. An author has to be able to read the QRG beside the Draft.
+- **`readContent` on the library module** returns an item's bytes with the same four outcomes as `readItem`; `lib/qrgLibrarySource.ts` is the whole adapter between it and `QrgSource`, so neither side learns the other's vocabulary.
+- **Inert until the site grant.** `Sites.Selected` is consented but no per-site grant has ever been issued, so every library read is still `forbidden` (the dev SOP walk, 2026-11-01T06:30Z). Seeding says so with the picker's own reason.
 
 ## [1.6.75] - 2026-11-01
 
