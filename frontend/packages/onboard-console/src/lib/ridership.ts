@@ -9,6 +9,7 @@ import {
   type RidershipExcusedReason,
   type RidershipGarageCompleteness,
   type RidershipPrintState,
+  type RidershipPrintStatus,
   type RidershipPrintStatusSheet,
   type RidershipPulloutRun,
   type RidershipSheet,
@@ -339,6 +340,36 @@ export function parseSheetScan(raw: string): { serviceDate: string | null; block
 
 type GarageRow = { block: string; effective_from: string; garage: string | null };
 
+/**
+ * MVTA's garages. The setup page picks from these rather than taking free
+ * text, so a typo can't start a third print stack. A name already saved that
+ * is not here (an older list) still shows, so nothing is hidden.
+ */
+export const RIDERSHIP_GARAGES = ["Burnsville", "Eagan"] as const;
+
+export function garageOptions(inUse: readonly string[]): string[] {
+  return [...new Set([...RIDERSHIP_GARAGES, ...inUse])];
+}
+
+/**
+ * Block numbers typed as a list of numbers and ranges ("1-69, 306, 309") as
+ * the three-digit blocks they name, or null when any part is not a number or
+ * range. A range runs low to high whichever way it is typed.
+ */
+export function parseBlockSelection(raw: string): string[] | null {
+  const parts = raw.split(/[,\s]+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  const blocks = new Set<string>();
+  for (const part of parts) {
+    const m = part.match(/^(\d{1,3})(?:[-\u2013](\d{1,3}))?$/);
+    if (!m) return null;
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? a : Number(m[2]);
+    for (let n = Math.min(a, b); n <= Math.max(a, b); n++) blocks.add(String(n).padStart(3, "0"));
+  }
+  return [...blocks].sort();
+}
+
 /** The row in force for a block on a day (YYYY-MM-DD): the latest on or before it. None is Unassigned. */
 export function rowInForce<T extends GarageRow>(rows: readonly T[], block: string, day: string): T | null {
   let best: T | null = null;
@@ -394,6 +425,21 @@ export function printedTime(iso: string): string {
 /** The blocks a desk still needs to print: never printed, or changed since. */
 export function blocksToPrint(sheets: readonly RidershipPrintStatusSheet[]): string[] {
   return sheets.filter((s) => s.state !== "printed").map((s) => s.block);
+}
+
+/**
+ * What the morning desk reprints before pull-out: the 03:30 Dispatch Log run
+ * can change a block printed the evening before. A changed sheet, a block new
+ * since its garage printed (a garage with no print yet is not a reprint), and a
+ * printed block that no longer runs. Works on one garage's status or on every
+ * garage's, which is how the Ridership tab counts them.
+ */
+export function reprintsAfterPrinting(status: RidershipPrintStatus): { changed: string[]; added: string[]; dropped: string[]; total: number } {
+  const printedGarages = new Set(status.sheets.filter((s) => s.state !== "not_printed").map((s) => s.garage));
+  const changed = status.sheets.filter((s) => s.state === "changed").map((s) => s.block);
+  const added = status.sheets.filter((s) => s.state === "not_printed" && printedGarages.has(s.garage)).map((s) => s.block);
+  const dropped = status.dropped.map((d) => d.block);
+  return { changed, added, dropped, total: changed.length + added.length + dropped.length };
 }
 
 /**
