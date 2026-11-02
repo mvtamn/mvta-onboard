@@ -191,7 +191,7 @@ export function PrintSheets() {
               <tr key={s.block} className={s.state === "changed" ? "is-changed" : undefined}>
                 <td>{s.order}</td>
                 <td className="mono">{s.block}</td>
-                <td className="mono">{clock(s.first_start_seconds)}</td>
+                <td>{clock(s.first_start_seconds)}</td>
                 <td>{s.trips}</td>
                 <td>{s.pages}</td>
                 <td><span className={`ridership-pill is-${PRINT_STATE_TONE[s.state]}`}>{PRINT_STATE_LABEL[s.state]}</span></td>

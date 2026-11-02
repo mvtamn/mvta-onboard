@@ -5,6 +5,21 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.72] - 2026-11-01
+
+Count Sheets name trips as MVTA's current guide does (request from the Enter sheets screen, Block 501 route 495). Display only: no API, stored value or migration change. The REST app restarts on merge, because the printed sheet is drawn there.
+
+- **Where the trip information comes from.** The Dispatch Log (`TripStartLog`), which is materialized from the GTFS static schedule. The `t140-b1F5-sl1B-v64` labels are GTFS `trip_id`s.
+- **The times were right.** Block 501's first route 495 trip, Oct 25, is scheduled at 12,000 s past the service day's midnight. GTFS `first_departure_seconds` agrees, and `scheduled_start_at` is 08:20 UTC, which is 3:20 AM CDT, from Mystic Lake Casino. The bus actually left at 3:21 AM (`actual_start_at` 08:21:34 UTC). Access shows the same trip at 3:20 AM – 4:40 AM. It is real early service, not a time zone or seconds conversion error.
+- **The guide's identifier.** The paper Count Sheet's "Ride Detail" is the scheduled start and end (`2:26 PM - 3:11 PM`) beside the route. Access keys the row by Route, a one-letter Direction, and Start/End in 12-hour time. Its TripID column is blank for 495 trips, and its rule is still unconfirmed (build plan decision 6). So the visible label is now the time span, and the GTFS `trip_id` stays as the key, shown small beneath (title "GTFS trip ID").
+- **Console** (`lib/ridership.ts`):
+  - `clock()` is 12-hour (`3:20 AM`; 24:40 shows as `12:40 AM`). New helpers: `timeSpan()`, `directionLetter()` (EB → E), and `editableClock()`, which keeps 24:40 for an unscheduled start after midnight so it reads back the same.
+  - `parseClock()` accepts `7:30 PM` / `12:15 am` as well as 24-hour input.
+  - Sheet form: the Trip column shows the time span with the id beneath, and the separate Time column is gone. Boardings boxes are labelled `Boardings, 495 E 3:20 AM`.
+  - Print sheets' first-trip time is 12-hour.
+- **Printed sheet** (`countSheetPdf.ts`): the "Ride" column reads `5:20 AM - 6:40 AM`, the direction is one letter, the unscheduled rows' start has AM / PM to circle, and the footer's print time is 12-hour. A full 14-trip page still fits.
+- Tests: console `ridership.test.ts` (12-hour clock, span, AM/PM parsing, round trip after midnight, direction letter) and `Ridership.test.tsx` (+1: a trip shows `6:00 AM – 6:40 AM` with its GTFS id). REST `print.test.ts` (12-hour clock and print time, direction letter).
+
 ## [1.6.70] - 2026-11-01
 
 Count Sheet printing: PR 4 of Increment 1 in `plans/ridership-build-plan.md` (PR #455), with the bulk-printing changes from the 2026-10-31 evaluation. **Migration 157** adds the print log; the REST app restarts on merge.

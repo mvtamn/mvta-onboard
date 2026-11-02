@@ -83,23 +83,57 @@ export function dueLabel(serviceDate: string): string {
   return `end of ${DATE_FORMAT.format(next)}`;
 }
 
-/** GTFS seconds past the service day's midnight, as the sheet's clock prints them. */
+/**
+ * GTFS seconds past the service day's midnight as the current guide shows a
+ * time (the paper sheet's "Ride Detail" and Access): "3:20 AM". The service
+ * day runs past midnight, so 24:40 shows as 12:40 AM.
+ */
 export function clock(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const h = Math.floor(minutes / 60) % 24;
-  return `${String(h).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60) % (24 * 60);
+  const h = Math.floor(minutes / 60);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(minutes % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** A trip as the guide names it: its scheduled start and end, "5:20 AM – 6:40 AM". */
+export function timeSpan(start: number, end: number | null): string {
+  return end === null ? clock(start) : `${clock(start)} – ${clock(end)}`;
+}
+
+/** GTFS "EB"/"NB" as the guide writes it: E, N, S, W. Anything else as it is. */
+export function directionLetter(label: string | null): string {
+  if (!label) return "-";
+  const match = label.trim().toUpperCase().match(/^([NSEW])(B|BOUND)?$/);
+  return match ? match[1] : label;
 }
 
 /**
- * A start time typed from the sheet: "7:30", "0730" or "730". After midnight
- * the service day runs on, so 00:40 that night is typed 24:40.
+ * A start time as an unscheduled row shows it for editing. Past midnight it
+ * stays 24:40, because "12:40 AM" would read back as the start of the day.
+ */
+export function editableClock(seconds: number): string {
+  if (seconds < 24 * 3600) return clock(seconds);
+  const minutes = Math.floor(seconds / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/**
+ * A start time typed from the sheet: "7:30 PM", "7:30", "0730" or "730".
+ * Without AM or PM it is the 24-hour clock. After midnight the service day
+ * runs on, so 00:40 that night is typed 24:40.
  */
 export function parseClock(text: string): number | null {
-  const match = text.trim().match(/^(\d{1,2}):?(\d{2})$/);
+  const match = text.trim().match(/^(\d{1,2}):?(\d{2})\s*(?:([ap])\.?\s*m?\.?)?$/i);
   if (!match) return null;
-  const h = Number(match[1]);
+  let h = Number(match[1]);
   const m = Number(match[2]);
-  if (h > 29 || m > 59) return null;
+  const half = match[3]?.toLowerCase();
+  if (m > 59) return null;
+  if (half) {
+    if (h < 1 || h > 12) return null;
+    h = (h % 12) + (half === "p" ? 12 : 0);
+  } else if (h > 29) {
+    return null;
+  }
   return h * 3600 + m * 60;
 }
 
@@ -181,7 +215,7 @@ export function draftFromSheet(sheet: RidershipSheet): SheetDraft {
       id: trip.id,
       route: trip.route_short_name,
       direction: trip.direction_label,
-      start: clock(trip.scheduled_start_seconds),
+      start: editableClock(trip.scheduled_start_seconds),
       reason: trip.reason,
       cell: cellFromEntry(trip),
     })),
@@ -236,7 +270,7 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
     const start = parseClock(row.start);
     const entry = entryFromCell(row.cell);
     if (!row.route.trim()) problems.push({ target, message: "An unscheduled trip needs its route." });
-    if (start === null) problems.push({ target, message: "An unscheduled trip's start time is HH:MM (after midnight, 24:40)." });
+    if (start === null) problems.push({ target, message: "An unscheduled trip's start time is like 7:30 PM (after midnight, 24:40)." });
     if (!entry || entry.count_status === "did_not_operate") problems.push({ target, message: "An unscheduled trip takes a number or N (not counted)." });
     if (start !== null && entry && entry.count_status !== "did_not_operate" && row.route.trim()) {
       added.push({

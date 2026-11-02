@@ -91,3 +91,9 @@ kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.
   .ridership-who { grid-template-columns: 1fr; }
   .ridership-trips th:nth-child(1), .ridership-trips td:nth-child(1) { display: none; }
 }
+
+/* A trip named as the paper sheet names it, with the GTFS id it is keyed by beneath. */
+.ridership-trip { display: flex; flex-direction: column; gap: 1px; white-space: nowrap; }
+.ridership-trip-time { font-weight: 600; }
+.ridership-entry .ridership-trip-id { font-size: 0.72rem; color: var(--text-muted); }
+.ridership-trip .ridership-short { margin-top: 3px; }
