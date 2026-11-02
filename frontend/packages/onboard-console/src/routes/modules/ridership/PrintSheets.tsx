@@ -4,15 +4,12 @@
 // optional blank back per page for printers that default to double-sided.
 // The print log says whether the garage has printed, who printed and when,
 // and which blocks the Dispatch Log changed since - with a reprint of just
-<<<<<<< HEAD
 // those. Any date prints, so a lost sheet can be reprinted. A block with no
 // garage is in no garage's stack, so each garage's view says how many there
 // are and which: otherwise no desk prints them and the operator gets no sheet.
-=======
-// those. Any date prints, so a lost sheet can be reprinted. While the desk
-// looks at another date, today's sheets that changed after printing (the
-// 03:30 Dispatch Log run) are called out with a reprint, for the morning check.
->>>>>>> origin/main
+// While the desk looks at another date, today's sheets that changed after
+// printing (the 03:30 Dispatch Log run) are called out with a reprint, for the
+// morning check.
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type RidershipPrintStatus } from "@mvta/shared";
 import { api } from "../../../config.js";
@@ -66,13 +63,10 @@ export function PrintSheets() {
   const [garage, setGarage] = useState<string | null | undefined>(undefined);
   const [blankBacks, setBlankBacks] = useState(() => remembered(BACKS_KEY) === "true");
   const [status, setStatus] = useState<Load<RidershipPrintStatus>>({ state: "loading" });
-<<<<<<< HEAD
   // The date's Unassigned blocks, while a named garage is chosen; null when there are none or they could not be read.
   const [unassigned, setUnassigned] = useState<string[] | null>(null);
-=======
   // The chosen garage's sheets for today, when the date shown is another day.
   const [todayStatus, setTodayStatus] = useState<RidershipPrintStatus | null>(null);
->>>>>>> origin/main
   const [printing, setPrinting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
