@@ -9,6 +9,7 @@ import {
   type RidershipExcusedReason,
   type RidershipGarageCompleteness,
   type RidershipPrintState,
+  type RidershipPrintStatus,
   type RidershipPrintStatusSheet,
   type RidershipPulloutRun,
   type RidershipSheet,
@@ -424,6 +425,21 @@ export function printedTime(iso: string): string {
 /** The blocks a desk still needs to print: never printed, or changed since. */
 export function blocksToPrint(sheets: readonly RidershipPrintStatusSheet[]): string[] {
   return sheets.filter((s) => s.state !== "printed").map((s) => s.block);
+}
+
+/**
+ * What the morning desk reprints before pull-out: the 03:30 Dispatch Log run
+ * can change a block printed the evening before. A changed sheet, a block new
+ * since its garage printed (a garage with no print yet is not a reprint), and a
+ * printed block that no longer runs. Works on one garage's status or on every
+ * garage's, which is how the Ridership tab counts them.
+ */
+export function reprintsAfterPrinting(status: RidershipPrintStatus): { changed: string[]; added: string[]; dropped: string[]; total: number } {
+  const printedGarages = new Set(status.sheets.filter((s) => s.state !== "not_printed").map((s) => s.garage));
+  const changed = status.sheets.filter((s) => s.state === "changed").map((s) => s.block);
+  const added = status.sheets.filter((s) => s.state === "not_printed" && printedGarages.has(s.garage)).map((s) => s.block);
+  const dropped = status.dropped.map((d) => d.block);
+  return { changed, added, dropped, total: changed.length + added.length + dropped.length };
 }
 
 /**
