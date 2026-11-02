@@ -77,6 +77,7 @@ export const MOCK_ROLE_ACTIONS: Record<string, { name: string; actions: string[]
   "trip-start-verifier": { name: "Trip Start Verifier", actions: ["dispatch-log.view", "dispatch-log.verify"] },
   "ridership-recorder": { name: "Ridership Recorder", actions: RIDERSHIP_RECORDER },
   "ridership-manager": { name: "Ridership Manager", actions: [...RIDERSHIP_RECORDER, "ridership.configure"] },
+  "ridership-printer": { name: "Ridership Printer", actions: ["ridership.print"] },
   "access-administrator": {
     name: "Access Administrator",
     actions: ["access-identity.view", "access-identity.manage", "access-identity.approve", "subscribers.view", "governance-audit.view"],

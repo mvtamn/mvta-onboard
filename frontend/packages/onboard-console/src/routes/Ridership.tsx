@@ -1,7 +1,8 @@
 // Specialist Operations › Ridership (ADR 0043, spec §10). Several roles use
 // ridership, so it has its own page rather than a tab of OCC Tools. Each tab is
 // gated by its own action; Flags, Month close and Totals arrive with their
-// increments.
+// increments. The garage check-in desk (Ridership Printer) holds print without
+// view, so it sees Print sheets alone and never the Count Sheets or counts.
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "../auth/AccessContext.js";
 import { normalizeBlock, sheetKey } from "../lib/ridership.js";
@@ -15,8 +16,9 @@ export function Ridership() {
   const { can } = useAccess();
   const canEnter = can("ridership.enter");
   const canPrint = can("ridership.print");
+  const canView = can("ridership.view");
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get("tab") === "print" && canPrint ? "print" : "enter";
+  const tab: Tab = canPrint && (!canView || params.get("tab") === "print") ? "print" : "enter";
   // A printed sheet's QR link arrives as ?sheet=<YYYYMMDD>|<block> (see SheetLink).
   const sheet = tab === "enter" ? params.get("sheet") : null;
   const enterLabel = canEnter ? "Enter sheets" : "Count Sheets";
@@ -29,7 +31,7 @@ export function Ridership() {
     <>
       <div className="panel-header">{tab === "print" ? "Print sheets" : enterLabel}</div>
       <div className="panel-body">
-        {canPrint && (
+        {canPrint && canView && (
           <div className="ridership-tabs" role="tablist" aria-label="Ridership">
             <button type="button" role="tab" aria-selected={tab === "enter"} onClick={() => show("enter")}>{enterLabel}</button>
             <button type="button" role="tab" aria-selected={tab === "print"} onClick={() => show("print")}>Print sheets</button>

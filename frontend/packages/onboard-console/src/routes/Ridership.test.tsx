@@ -317,6 +317,14 @@ describe("Ridership › Print sheets", () => {
     expect((await screen.findByText(/nothing has changed since/)).textContent).toMatch(/desk@example\.test/);
   });
 
+  it("opens straight on Print sheets for the check-in desk, which holds print only", async () => {
+    actions = ["ridership.print"];
+    renderPage();
+    expect(await screen.findByRole("button", { name: "Print 2 sheets · Burnsville" })).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(getRidershipWorklist).not.toHaveBeenCalled();
+  });
+
   it("switches garage, and keeps the desk's garage for next time", async () => {
     const user = userEvent.setup();
     renderPage("/ridership?tab=print");
