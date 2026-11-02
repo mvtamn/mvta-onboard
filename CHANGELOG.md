@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.11] - 2026-11-02
+## [1.7.13] - 2026-11-02
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,14 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.8] - 2026-11-02
+
+A block with no garage is in no garage's stack. Unassigned was printable from the Garage list, but nothing told a Burnsville or Eagan desk that such blocks existed, so in practice nobody printed them and the operator went out without a sheet. Console only: the REST app does not restart.
+
+- **Unassigned warning** (`PrintSheets.tsx`): while a named garage is chosen and the date has Unassigned blocks (`garages` includes `null`), the tab makes one more `GET /ridership/print?garage=` call. It then names the blocks ("3 blocks have no garage … 330, 331 and 340"; past twelve, the first ten and how many more) with an **Unassigned** button that switches to that stack. The Unassigned view says why these blocks are there and that Planning sets their garage in Ridership setup. If that extra call fails, the warning is left out and the page still works.
+- **No-trips-yet note:** `tripStartLogMaterialize` runs at 09:30 UTC, which is 03:30 CST or 04:30 CDT. The note said 04:30, which was right only during daylight saving time.
+- Tests: console `Ridership.test.tsx` (+2); the default print mock now returns distinct Unassigned blocks.
 
 ## [1.7.7] - 2026-11-02
 
