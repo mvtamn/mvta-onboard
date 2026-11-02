@@ -5,6 +5,15 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.75] - 2026-11-01
+
+The Orange LINK overprinted the Ride column on the printed Count Sheet (Block 009, 2026-11-02). Its GTFS `route_short_name` is "Orange LINK"; its `route_id` is 425, which is what Access and the ridership totals use. The REST app restarts on merge.
+
+- **`guideRoute(short, routeId)`** (`lib/ridership/rules.ts`): a numeric short name as it is, else a numeric `route_id`, else the short name. `loadLoggedTrips` now reads `TripStartLog.route_id`, and every trip carries `route_label` (`LoggedTrip`, `SheetTrip`, `PrintTrip`, the shared `RidershipSheetTrip`).
+- **Printed sheet:** the Route column prints `route_label`, and anything still wider than the column shrinks to fit. The print fingerprint hashes `route_label`, which equals the short name for every numeric route, so sheets already printed for those routes stay "Printed". Orange LINK sheets show "Changed since printed" and want a reprint.
+- **Enter sheets:** the Route column and the boardings label use `route_label`. A GTFS name that differs shows as the cell's tooltip.
+- Tests: REST `rules.test.ts` (+1) and `print.test.ts` (+1); contract test prerequisite gains `route_id`. Console `Ridership.test.tsx` (+1). Dev has one such route: Orange LINK / 425.
+
 ## [1.6.73] - 2026-11-01
 
 - **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0044 is that decision, and this is it built.

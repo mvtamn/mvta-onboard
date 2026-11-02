@@ -34,9 +34,9 @@ const sheet = (overrides: Partial<RidershipSheet> = {}): RidershipSheet => ({
   header: null,
   version: null,
   trips: [
-    { trip_id: "t1", route_short_name: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
-    { trip_id: "t2", route_short_name: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: null, start_status: "unknown", required: true, excused_reason: null, entry: null },
-    { trip_id: "t3", route_short_name: "460", direction_label: "N", scheduled_start_seconds: 28800, scheduled_end_seconds: null, start_status: "canceled", required: false, excused_reason: "dispatch_log_canceled", entry: null },
+    { trip_id: "t1", route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
+    { trip_id: "t2", route_short_name: "460", route_label: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: null, start_status: "unknown", required: true, excused_reason: null, entry: null },
+    { trip_id: "t3", route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 28800, scheduled_end_seconds: null, start_status: "canceled", required: false, excused_reason: "dispatch_log_canceled", entry: null },
   ],
   added_trips: [],
   progress: { trips: 3, required: 2, keyed: 0, counted: 0, not_counted: 0, did_not_operate: 0, added_trips: 0, boardings: 0 },

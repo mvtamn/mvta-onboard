@@ -6,7 +6,7 @@ import { missedTripCaseSql } from "../missedTripCase/classify";
 import { workbookBlock } from "../tripStartLogRead";
 import type { TripStartStatus } from "../tripStartTypes";
 import type { Executor } from "../otpMonth";
-import type { FieldChange } from "./rules";
+import { guideRoute, type FieldChange } from "./rules";
 import type {
   AddedTrip,
   AddedTripReason,
@@ -55,6 +55,7 @@ interface LoggedTripRow {
   service_date: string;
   trip_id: string;
   block_id: string | null;
+  route_id: string | null;
   route_short_name: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
@@ -79,7 +80,7 @@ export async function loadLoggedTrips(executor: Executor, range: Range): Promise
   req.input("from", sql.Char(8), range.from);
   req.input("to", sql.Char(8), range.to);
   const result = await req.query<LoggedTripRow>(`
-    SELECT service_date, trip_id, block_id, route_short_name, direction_label,
+    SELECT service_date, trip_id, block_id, route_id, route_short_name, direction_label,
            scheduled_start_seconds, ${end} AS scheduled_end_seconds, start_status
     FROM dbo.TripStartLog
     WHERE service_date BETWEEN @from AND @to
@@ -92,6 +93,7 @@ export async function loadLoggedTrips(executor: Executor, range: Range): Promise
       trip_id: row.trip_id,
       block: block && /^\d{3}$/.test(block) ? block : null,
       route_short_name: row.route_short_name,
+      route_label: guideRoute(row.route_short_name, row.route_id),
       direction_label: row.direction_label,
       scheduled_start_seconds: row.scheduled_start_seconds,
       scheduled_end_seconds: row.scheduled_end_seconds,
