@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.7] - 2026-11-01
+## [1.7.7] - 2026-11-02
 
 Ridership setup showed 180 blocks, every one Unassigned, each with its own free-text Garage box. Each garage prints only its own Count Sheets, so until the list is filled every sheet lands under Unassigned. A block rarely changes garage between service changes, and a row already stays in force until a later one replaces it, so what was missing was a fast way to set many blocks at once. Console only: the REST app does not restart.
 
