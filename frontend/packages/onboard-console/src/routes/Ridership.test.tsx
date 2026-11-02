@@ -6,6 +6,7 @@ import { ApiError, type RidershipPrintStatus, type RidershipSheet, type Ridershi
 import { Ridership, SheetLink } from "./Ridership.js";
 import { visibleAreas } from "../components/adminNav.js";
 import { accessStateWith } from "../auth/AccessContext.js";
+import { centralDay } from "../lib/ridership.js";
 
 let actions: string[] = ["ridership.view", "ridership.enter", "ridership.print"];
 vi.mock("../auth/AccessContext.js", async () => {
@@ -72,6 +73,7 @@ describe("Ridership › Enter sheets", () => {
     getRidershipWorklist.mockReset().mockResolvedValue(WORKLIST);
     getRidershipSheet.mockReset().mockImplementation(async (date: string, block: string) => sheetFor(date, block));
     saveRidershipSheet.mockReset().mockImplementation(async (date: string, block: string) => sheetFor(date, block, { state: "entered", version: "v1" }));
+    getRidershipPrintStatus.mockReset().mockResolvedValue(printStatus(null, []));
   });
   afterEach(cleanup);
 
@@ -311,6 +313,33 @@ describe("Ridership › Print sheets", () => {
     }));
     renderPage("/ridership?tab=print");
     expect((await screen.findByRole("alert")).textContent).toMatch(/Block 330 no longer runs .* Take it back/);
+  });
+
+  it("calls out today's sheets that changed after the evening print, and reprints them for today", async () => {
+    const today = centralDay(0).replace(/-/g, "");
+    getRidershipPrintStatus.mockImplementation(async ({ date, garage }: { date?: string; garage?: string | null }) => date === today
+      ? { ...printStatus(garage ?? "Burnsville", [printRow("024", 1, "printed"), printRow("105", 2, "changed"), printRow("106", 3, "not_printed")], true),
+        dropped: [{ block: "330", printed_at: "2026-12-01T03:05:00Z", printed_by: "desk@example.test" }] }
+      : printStatus("Burnsville", [printRow("024", 1, "not_printed")]));
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=print");
+    // The tab counts every garage's; the note is the chosen garage's.
+    expect(await screen.findByRole("tab", { name: /Print sheets\s*3 to reprint today/ })).toBeTruthy();
+    const note = await screen.findByRole("note");
+    expect(note.textContent).toMatch(/3 sheets changed after printing for Burnsville/);
+    expect(note.textContent).toMatch(/changed block 105/);
+    expect(note.textContent).toMatch(/Block 106 is new since printing/);
+    expect(note.textContent).toMatch(/Take back the sheet for block 330/);
+    await user.click(within(note).getByRole("button", { name: "Reprint today's 2 sheets" }));
+    await waitFor(() => expect(printRidershipSheets).toHaveBeenCalledWith(expect.objectContaining({ date: today, garage: "Burnsville", blocks: ["105", "106"] })));
+  });
+
+  it("shows no morning note when today's printed sheets are current", async () => {
+    getRidershipPrintStatus.mockImplementation(async ({ garage }: { garage?: string | null }) => printStatus(garage ?? "Burnsville", [printRow("024", 1, "printed")], true));
+    renderPage("/ridership?tab=print");
+    await screen.findByText(/nothing has changed since/);
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.getByRole("tab", { name: "Print sheets" })).toBeTruthy();
   });
 
   it("says when everything printed is still current", async () => {

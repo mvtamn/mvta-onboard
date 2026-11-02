@@ -4,9 +4,15 @@
 // optional blank back per page for printers that default to double-sided.
 // The print log says whether the garage has printed, who printed and when,
 // and which blocks the Dispatch Log changed since - with a reprint of just
+<<<<<<< HEAD
 // those. Any date prints, so a lost sheet can be reprinted. A block with no
 // garage is in no garage's stack, so each garage's view says how many there
 // are and which: otherwise no desk prints them and the operator gets no sheet.
+=======
+// those. Any date prints, so a lost sheet can be reprinted. While the desk
+// looks at another date, today's sheets that changed after printing (the
+// 03:30 Dispatch Log run) are called out with a reprint, for the morning check.
+>>>>>>> origin/main
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type RidershipPrintStatus } from "@mvta/shared";
 import { api } from "../../../config.js";
@@ -21,6 +27,7 @@ import {
   garageName,
   garageValue,
   printedTime,
+  reprintsAfterPrinting,
   sheetLinkBase,
 } from "../../../lib/ridership.js";
 
@@ -59,15 +66,22 @@ export function PrintSheets() {
   const [garage, setGarage] = useState<string | null | undefined>(undefined);
   const [blankBacks, setBlankBacks] = useState(() => remembered(BACKS_KEY) === "true");
   const [status, setStatus] = useState<Load<RidershipPrintStatus>>({ state: "loading" });
+<<<<<<< HEAD
   // The date's Unassigned blocks, while a named garage is chosen; null when there are none or they could not be read.
   const [unassigned, setUnassigned] = useState<string[] | null>(null);
+=======
+  // The chosen garage's sheets for today, when the date shown is another day.
+  const [todayStatus, setTodayStatus] = useState<RidershipPrintStatus | null>(null);
+>>>>>>> origin/main
   const [printing, setPrinting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const date = day.replace(/-/g, "");
+  const today = centralDay(0).replace(/-/g, "");
 
   const load = useCallback(async (chosen: string | null | undefined) => {
     setStatus({ state: "loading" });
+    let shown = chosen;
     try {
       let data = await api.getRidershipPrintStatus({ date, garage: chosen });
       if (chosen === undefined || !data.garages.includes(chosen)) {
@@ -76,6 +90,7 @@ export function PrintSheets() {
         if (pick !== undefined) {
           data = await api.getRidershipPrintStatus({ date, garage: pick });
           setGarage(pick);
+          shown = pick;
         }
       }
       const shownGarage = data.garage === undefined ? chosen : data.garage;
@@ -90,7 +105,10 @@ export function PrintSheets() {
     } catch (error) {
       setStatus({ state: "error", message: loadError(error) });
     }
-  }, [date]);
+    // Only a note: if today's list can't be read, the page still prints.
+    setTodayStatus(date === today || shown === undefined ? null
+      : await api.getRidershipPrintStatus({ date: today, garage: shown }).catch(() => null));
+  }, [date, today]);
 
   // The date decides which garages have sheets, so changing it re-picks.
   useEffect(() => { void load(garage); }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -104,7 +122,7 @@ export function PrintSheets() {
     void load(next);
   }
 
-  async function print(blocks?: string[]) {
+  async function print(blocks?: string[], on: string = date) {
     if (printing || garage === undefined) return;
     // Opened before the request, while the click still counts as the user's,
     // so a popup blocker lets the PDF through.
@@ -114,7 +132,7 @@ export function PrintSheets() {
     setProblem(null);
     try {
       const pdf = await api.printRidershipSheets({
-        date, garage, blocks, blank_backs: blankBacks,
+        date: on, garage, blocks, blank_backs: blankBacks,
         link_base: sheetLinkBase(window.location.origin, import.meta.env.BASE_URL),
       });
       const url = URL.createObjectURL(pdf);
@@ -123,12 +141,12 @@ export function PrintSheets() {
       } else {
         const link = document.createElement("a");
         link.href = url;
-        link.download = `count-sheets-${date}.pdf`;
+        link.download = `count-sheets-${on}.pdf`;
         link.click();
       }
       window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
       const what = blocks ? plural(blocks.length, "sheet") : "the stack";
-      setMessage(`Opened ${what} for ${garageName(garage)} as a PDF. Print it at actual size${blankBacks ? "" : ", single-sided"}.`);
+      setMessage(`Opened ${what} for ${garageName(garage)}${on === date ? "" : `, ${formatServiceDate(on)},`} as a PDF. Print it at actual size${blankBacks ? "" : ", single-sided"}.`);
       void load(garage);
     } catch (error) {
       tab?.close();
@@ -144,9 +162,24 @@ export function PrintSheets() {
   const dropped = data?.dropped ?? [];
   const stale = sheets.filter((s) => s.state === "changed");
   const label = garage === undefined ? "" : garageName(garage);
+  const morning = todayStatus ? reprintsAfterPrinting(todayStatus) : null;
+  const morningBlocks = morning ? [...morning.changed, ...morning.added] : [];
 
   return (
     <div className="ridership-print">
+      {morning && morning.total > 0 && (
+        <div className="ridership-print-status is-warn" role="note">
+          <b>Today, {formatServiceDate(today)}: {plural(morning.total, "sheet")} changed after printing</b> for {label}.{" "}
+          {morning.changed.length > 0 && <>The Dispatch Log changed {morning.changed.map((b) => `block ${b}`).join(", ")}. </>}
+          {morning.added.length > 0 && <>{morning.added.map((b) => `Block ${b}`).join(", ")} {morning.added.length === 1 ? "is" : "are"} new since printing. </>}
+          {morning.dropped.length > 0 && <>Take back the sheet for {morning.dropped.map((b) => `block ${b}`).join(", ")}: no longer running today. </>}
+          {morningBlocks.length > 0 && (
+            <button type="button" className="ridership-link" disabled={printing} onClick={() => void print(morningBlocks, today)}>
+              Reprint today's {plural(morningBlocks.length, "sheet")}
+            </button>
+          )}
+        </div>
+      )}
       <div className="ridership-toolbar">
         <label className="ridership-range">
           <span className="ridership-eyebrow">Service date</span>
