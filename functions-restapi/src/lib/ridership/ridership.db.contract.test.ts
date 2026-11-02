@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { parseConnectionString, sql } from "../db";
-import { buildWorklist, listBlockGarages, loadSheet, saveBlockGarages, saveSheet } from "./index";
+import { buildWorklist, listBlockGarages, loadPrintStatus, loadSheet, printCountSheets, saveBlockGarages, saveSheet } from "./index";
 
 // The ridership module against a real SQL Server. rules.test.ts covers the
 // judgements, which are pure; this file covers what only the database can
@@ -18,7 +18,11 @@ import { buildWorklist, listBlockGarages, loadSheet, saveBlockGarages, saveSheet
 //   a second editor's stale version refused rather than overwriting;
 //   an unscheduled row removed by being left out, and kept in the table;
 //   the pull-out pre-fill and the override it records;
-//   Planning's block -> garage rows dated by service change.
+//   Planning's block -> garage rows dated by service change;
+//   a garage's print logged with each block's fingerprint, a block the
+//   Dispatch Log changed since flagged, and a reprint of just that block
+//   clearing it, and a printed block the day no longer runs reported as
+//   dropped (migration 157).
 //
 // Ridership's tables come from the real migration 153; Avail's pull-out from
 // the real migration 013; the Dispatch Log and missed-trip cases are reduced
@@ -87,7 +91,7 @@ test("ridership against real SQL", { skip: !connectionString && "DECISION_MATRIX
   const pool = await ownDatabase(connectionString!);
   try {
     await pool.request().batch(PREREQUISITES);
-    for (const file of ["migration-013-fixed-route-departures.sql", "migration-153-ridership-counting.sql"]) {
+    for (const file of ["migration-013-fixed-route-departures.sql", "migration-153-ridership-counting.sql", "migration-157-ridership-print-log.sql"]) {
       for (const b of batches(readFileSync(join(process.cwd(), "sql", file), "utf8"))) await pool.request().batch(b);
     }
     await pool.request().batch(FIXTURE);
@@ -232,6 +236,49 @@ test("ridership against real SQL", { skip: !connectionString && "DECISION_MATRIX
         assert.equal(late.sheet.header?.operator_overridden, false, "no pull-out, nothing overridden");
         assert.equal(late.sheet.header?.reconstructed, true);
       }
+    });
+
+    await t.test("a garage prints its stack, and a block changed since is flagged until reprinted", async () => {
+      const PRINTED = new Date("2026-12-01T03:05:00Z");
+      const before = await loadPrintStatus(pool, DAY, "Burnsville");
+      assert.deepEqual(before.sheets.map((s) => [s.block, s.state]), [["024", "not_printed"]]);
+      assert.equal(before.last_print, null);
+
+      const stack = await printCountSheets(pool, { service_date: DAY, garage: "Burnsville", blank_backs: true, link_base: "https://console.example.test" }, PLANNING, PRINTED);
+      assert.equal(stack.kind, "printed");
+      if (stack.kind === "printed") {
+        assert.equal(stack.pdf.subarray(0, 5).toString(), "%PDF-");
+        assert.equal(stack.sheets, 1);
+        assert.equal(stack.pages, 2, "one page and its blank back");
+        assert.equal(stack.filename, "count-sheets-20261201-burnsville.pdf");
+      }
+      const printed = await loadPrintStatus(pool, DAY, "Burnsville");
+      assert.deepEqual(printed.sheets.map((s) => [s.block, s.state, s.printed_by]), [["024", "printed", PLANNING]]);
+      assert.equal(printed.last_print?.printed_at, PRINTED.toISOString());
+      assert.equal((await loadPrintStatus(pool, DAY, "Eagan")).sheets[0].state, "not_printed", "another garage's stack is its own");
+
+      // A late tripper lands on block 24 after the desk printed.
+      await pool.request().query(`INSERT dbo.TripStartLog (service_date, trip_id, block_id, route_short_name, direction_label, scheduled_start_seconds, start_status)
+        VALUES ('${DAY}', 'a5', '24-v64', '436', 'S', 36000, 'unknown')`);
+      const changed = await loadPrintStatus(pool, DAY, "Burnsville");
+      assert.equal(changed.changed, 1);
+      assert.equal(changed.sheets[0].state, "changed");
+
+      const reprint = await printCountSheets(pool, { service_date: DAY, garage: "Burnsville", blocks: ["024"], blank_backs: false, link_base: "https://console.example.test" }, PLANNING, new Date("2026-12-01T04:00:00Z"));
+      assert.equal(reprint.kind, "printed");
+      const after = await loadPrintStatus(pool, DAY, "Burnsville");
+      assert.equal(after.sheets[0].state, "printed");
+      assert.equal(after.last_print?.printed_at, PRINTED.toISOString(), "a reprint is not the garage's stack");
+      assert.deepEqual(after.prints.map((p) => p.scope), ["blocks", "garage"]);
+
+      const none = await printCountSheets(pool, { service_date: DAY, garage: null, blank_backs: false, link_base: "https://console.example.test" }, PLANNING);
+      assert.equal(none.kind, "nothing", "no block is Unassigned on the day");
+
+      // The block is withdrawn from the day after its sheet went out.
+      await pool.request().query(`DELETE dbo.TripStartLog WHERE service_date = '${DAY}' AND block_id = '24-v64'`);
+      const gone = await loadPrintStatus(pool, DAY, "Burnsville");
+      assert.deepEqual(gone.dropped.map((d) => d.block), ["024"]);
+      assert.equal(gone.sheets.length, 0);
     });
   } finally {
     await pool.close();

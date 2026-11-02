@@ -2824,3 +2824,58 @@ export interface RidershipBlockGarageSave {
   effective_from: string;
   rows: { block: string; garage: string | null }[];
 }
+
+// ---------------------------------------------------------------- ridership printing (PR 4)
+
+/** Where a Count Sheet stands against the print log. */
+export type RidershipPrintState = "not_printed" | "printed" | "changed";
+/** What one print covered: a garage's whole stack, or a reprint of some of its blocks. */
+export type RidershipPrintScope = "garage" | "blocks";
+
+export interface RidershipPrintStatusSheet {
+  block: string;
+  garage: string | null;
+  /** Place in the garage's stack, pull-out order. */
+  order: number;
+  first_start_seconds: number;
+  trips: number;
+  pages: number;
+  state: RidershipPrintState;
+  printed_at: string | null;
+  printed_by: string | null;
+}
+
+export interface RidershipPrintRun {
+  printed_at: string;
+  printed_by: string;
+  scope: RidershipPrintScope;
+  sheets: number;
+  pages: number;
+  blank_backs: boolean;
+}
+
+export interface RidershipPrintStatus {
+  service_date: string;
+  garage?: string | null;
+  /** Garages with sheets on the date; null is Unassigned. */
+  garages: (string | null)[];
+  sheets: RidershipPrintStatusSheet[];
+  last_print: RidershipPrintRun | null;
+  prints: RidershipPrintRun[];
+  not_printed: number;
+  changed: number;
+  /** Blocks this garage printed that the Dispatch Log no longer runs on the date. */
+  dropped: { block: string; printed_at: string; printed_by: string }[];
+}
+
+export interface RidershipPrintRequest {
+  /** YYYYMMDD. */
+  date: string;
+  /** null is the Unassigned blocks. */
+  garage: string | null;
+  /** Reprint just these; absent prints the garage's whole stack. */
+  blocks?: string[];
+  blank_backs: boolean;
+  /** Where the QR link points until the operator app has its own address. */
+  link_base: string;
+}
