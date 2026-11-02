@@ -4,13 +4,16 @@
 // ?code=<function key>. Handles the subscription-validation handshake, then
 // updates the per-recipient receipt (migration 093) matched by provider
 // message id and recomputes the parent communication's delivery_status.
+// Rider alert emails are matched the same way, on EmailDeliveryLog: a bounced
+// or suppressed report there stops dispatchMessageCreated mailing the address
+// until it is confirmed again.
 //
 // Events for messages this app did not send (other ACS senders on the same
 // resource) match no receipt and are acknowledged without effect.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import sql from "mssql";
 import { getPool } from "../lib/db";
-import { aggregateDelivery, parseEmailReceipts, validationResponse, type ReceiptStatus } from "../lib/emailReceipts";
+import { aggregateDelivery, parseEmailReceipts, riderLogStatus, validationResponse, type ReceiptStatus } from "../lib/emailReceipts";
 
 app.http("acsEmailEvents", {
   route: "acs-email-events",
@@ -27,7 +30,23 @@ app.http("acsEmailEvents", {
     if (receipts.length === 0) return { status: 200, jsonBody: { updated: 0 } };
     const pool = await getPool();
     const touched = new Set<string>();
+    let riderUpdated = 0;
     for (const receipt of receipts) {
+      const riderStatus = riderLogStatus(receipt.status);
+      if (riderStatus) {
+        try {
+          const rider = await pool.request()
+            .input("provider", sql.NVarChar(200), receipt.provider_message_id)
+            .input("status", sql.NVarChar(20), riderStatus)
+            .query("UPDATE EmailDeliveryLog SET delivery_status=@status WHERE provider_message_id=@provider");
+          riderUpdated += rider.rowsAffected[0] ?? 0;
+        } catch (err) {
+          // Until migration 158 widens the CHECK, every status but bounced is
+          // refused. That must not cost the detour receipt below, nor make
+          // Event Grid retry a batch that can never succeed.
+          context.warn(`EmailDeliveryLog receipt not recorded (is migration 158 applied?): ${(err as Error).message}`);
+        }
+      }
       const updated = await pool.request()
         .input("provider", sql.NVarChar(200), receipt.provider_message_id)
         .input("status", sql.NVarChar(30), receipt.status)
@@ -50,7 +69,7 @@ app.http("acsEmailEvents", {
                     outcome = CASE WHEN @status = 'delivered' THEN 'Delivered by email to ' + ISNULL(sent_recipients, '') WHEN @status = 'partially_sent' THEN 'Partially delivered by email; see delivery error' ELSE outcome END
                 WHERE id=@id AND delivery_status IN ('sent', 'delivered', 'partially_sent', 'failed')`);
     }
-    context.log(`ACS email receipts: ${receipts.length} events, ${touched.size} communications updated`);
-    return { status: 200, jsonBody: { updated: touched.size } };
+    context.log(`ACS email receipts: ${receipts.length} events, ${touched.size} communications and ${riderUpdated} rider deliveries updated`);
+    return { status: 200, jsonBody: { updated: touched.size, rider_updated: riderUpdated } };
   },
 });

@@ -5,6 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.79] - 2026-11-01
+
+Follows the email delivery evaluation (2026-11-01): the rider email path was built end to end but had no delivery reports, no one-click unsubscribe, and logged an unconfigured sender as a failure. **Migration 158** widens the delivery-log statuses; the code runs without it (the new statuses are refused and logged, as today). Both Function Apps redeploy on merge, and the REST app restarts.
+
+- **Rider email receipts.** `acsEmailEvents` (dispatch) now also matches ACS `EmailDeliveryReportReceived` events to `EmailDeliveryLog.provider_message_id` and records `delivered` / `bounced` / `suppressed` / `quarantined` / `filtered_spam` / `failed` (`riderLogStatus`, `lib/emailReceipts.ts`). That update sits in its own try, so a refused status cannot cost the detour receipt or make Event Grid retry.
+- **Bounced addresses stop.** `dispatchMessageCreated` computes `email_bounced` per subscriber: a `bounced` or `suppressed` log row since the email channel's last confirmation. It skips the email while that holds, and confirming the address again clears it. It is derived from the log, with no new column, so the query reads the same before and after 158.
+- **One-click unsubscribe (RFC 8058).** Each alert email's log id is chosen before the send. `List-Unsubscribe: <…/api/subscribers/one-click-unsubscribe?d=<log id>>` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` go on the email (`oneClickUnsubscribeUrl`, `unsubscribeHeaders`, `lib/alertEmail.ts`; `sendEmail` gains `headers`). The new anonymous `POST /api/subscribers/one-click-unsubscribe` resolves the log row to its address and calls `optOut(tx, "email", …, "email_link")`, so only the email channel stops. It always answers `{status:"ok"}`. The id is the credential, not the manage key: it reaches access logs, and all it can do is stop email to that address.
+- **`skipped`, not `failed`** (`deliveryLogStatus`, `lib/deliveryChannels.ts`) for SMS and email when ACS is not configured.
+- **Bicep:** `functionapp.bicep` takes `acsResourceName` and, under `manageRoleAssignments`, grants the app identity Contributor on it. The dispatch app passes `acs-mvta-onboard-<env>`. Prod's dispatch identity had no role there, so every prod send would have failed. Routine deploys keep `manageRoleAssignments` false, so prod's grant is still a one-time `az role assignment create`.
+- Tests: dispatch `alertEmail.test.ts` (+3), `deliveryChannels.test.ts` (+1), `emailReceipts.test.ts` (+1); REST `subscribersOneClickUnsubscribe.test.ts` (new, 3).
+
 ## [1.6.75] - 2026-11-01
 
 The Orange LINK overprinted the Ride column on the printed Count Sheet (Block 009, 2026-11-02). Its GTFS `route_short_name` is "Orange LINK"; its `route_id` is 425, which is what Access and the ridership totals use. The REST app restarts on merge.

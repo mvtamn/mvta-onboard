@@ -1,6 +1,7 @@
 // Service Bus trigger: "message-created-events".
 // For each new alert, find confirmed subscribers whose preferences match, send
 // SMS/email via ACS, and record each attempt in SmsDeliveryLog/EmailDeliveryLog.
+// Delivery reports for those emails come back through acsEmailEvents.
 //
 // Matching (POC scope): the subscriber record is 'confirmed', the alert's
 // category is in their categories, and they are in the alert's audience by
@@ -12,12 +13,13 @@
 // was both the record's lifecycle and the SMS channel's state, so confirming
 // an email link would have made an unproven phone number SMS-eligible. A
 // channel may not vouch for the other one; that is what double opt-in is.
+import { randomUUID } from "node:crypto";
 import { app, type InvocationContext } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { sendSms, sendEmail } from "../lib/acs";
-import { channelRequested, teamsTargets } from "../lib/deliveryChannels";
+import { channelRequested, deliveryLogStatus, teamsTargets } from "../lib/deliveryChannels";
 import { parseAudience, routeMatches, zoneMatches } from "../lib/audienceMatch";
-import { buildAlertEmail, manageLinkFor } from "../lib/alertEmail";
+import { buildAlertEmail, manageLinkFor, oneClickUnsubscribeUrl, unsubscribeHeaders } from "../lib/alertEmail";
 import type { ConnectionPool } from "mssql";
 
 interface MessageCreatedEvent {
@@ -41,6 +43,7 @@ interface SubscriberRow {
   routes: string | null;
   zones: string | null;
   manage_key: string | null;
+  email_bounced: number;
 }
 
 async function logDelivery(
@@ -50,15 +53,17 @@ async function logDelivery(
   subscriberId: string,
   status: string,
   providerId?: string,
+  logId: string = randomUUID(),
 ): Promise<void> {
   const req = pool.request();
+  req.input("log_id", sql.UniqueIdentifier, logId);
   req.input("message_id", sql.UniqueIdentifier, messageId);
   req.input("subscriber_id", sql.UniqueIdentifier, subscriberId);
   req.input("delivery_status", sql.NVarChar, status);
   req.input("provider_message_id", sql.NVarChar, providerId || null);
   await req.query(`
-    INSERT INTO ${table} (message_id, subscriber_id, delivery_status, provider_message_id)
-    VALUES (@message_id, @subscriber_id, @delivery_status, @provider_message_id)
+    INSERT INTO ${table} (log_id, message_id, subscriber_id, delivery_status, provider_message_id)
+    VALUES (@log_id, @message_id, @subscriber_id, @delivery_status, @provider_message_id)
   `);
 }
 
@@ -88,11 +93,26 @@ app.serviceBusQueue("dispatchMessageCreated", {
     const pool = await getPool();
     const findSubs = pool.request();
     findSubs.input("category", sql.NVarChar, event.category);
+    // email_bounced: ACS reported this address bounced, or on its suppression
+    // list, since the email channel was last confirmed (acsEmailEvents writes
+    // the report onto the delivery's log row). Mailing it again harms the
+    // sender's reputation for every rider; confirming the address again is
+    // what clears it. Derived from the log rather than stored on the
+    // subscriber, so it reads the same before and after migration 158.
     const { recordset } = await findSubs.query<SubscriberRow>(`
-      SELECT subscriber_id, phone_number, email, sms_status, email_status, routes, zones, manage_key
-      FROM Subscribers
-      WHERE status = 'confirmed'
-        AND EXISTS (SELECT 1 FROM OPENJSON(categories) WHERE value = @category)
+      SELECT s.subscriber_id, s.phone_number, s.email, s.sms_status, s.email_status, s.routes, s.zones, s.manage_key,
+             CASE WHEN EXISTS (
+               SELECT 1 FROM EmailDeliveryLog b
+                WHERE b.subscriber_id = s.subscriber_id
+                  AND b.delivery_status IN ('bounced', 'suppressed')
+                  AND b.sent_at > COALESCE(
+                        (SELECT MAX(c.confirmed_at) FROM SubscriberConfirmations c
+                          WHERE c.subscriber_id = s.subscriber_id AND c.channel = 'email'),
+                        '19000101')
+             ) THEN 1 ELSE 0 END AS email_bounced
+      FROM Subscribers s
+      WHERE s.status = 'confirmed'
+        AND EXISTS (SELECT 1 FROM OPENJSON(s.categories) WHERE value = @category)
     `);
 
     const alertRoutes = event.routes_affected || null;
@@ -125,7 +145,7 @@ app.serviceBusQueue("dispatchMessageCreated", {
             "SmsDeliveryLog",
             event.message_id,
             sub.subscriber_id,
-            res.sent ? "sent" : "failed",
+            deliveryLogStatus(res),
             res.providerId,
           );
           if (res.sent) smsCount++;
@@ -135,7 +155,11 @@ app.serviceBusQueue("dispatchMessageCreated", {
         }
       }
 
-      if (sendEmailChannel && sub.email && sub.email_status === "confirmed") {
+      if (sendEmailChannel && sub.email && sub.email_status === "confirmed" && sub.email_bounced) {
+        context.log(`Email to subscriber ${sub.subscriber_id} skipped: the address bounced since it was confirmed.`);
+      } else if (sendEmailChannel && sub.email && sub.email_status === "confirmed") {
+        // Chosen before the send so the one-click header can name it.
+        const logId = randomUUID();
         try {
           // The footer's link is the rider's way to change or stop these emails.
           // Never logged: it carries the manage key.
@@ -144,19 +168,21 @@ app.serviceBusQueue("dispatchMessageCreated", {
             context.warn(`Subscriber ${sub.subscriber_id} has no manage key; email sent without a manage/unsubscribe link.`);
           }
           const mail = buildAlertEmail(event.summary, link);
-          const res = await sendEmail(sub.email, mail.subject, mail.text, mail.html, context);
+          const headers = unsubscribeHeaders(oneClickUnsubscribeUrl(riderAppBase, logId));
+          const res = await sendEmail(sub.email, mail.subject, mail.text, mail.html, context, headers);
           await logDelivery(
             pool,
             "EmailDeliveryLog",
             event.message_id,
             sub.subscriber_id,
-            res.sent ? "sent" : "failed",
+            deliveryLogStatus(res),
             res.providerId,
+            logId,
           );
           if (res.sent) emailCount++;
         } catch (err) {
           context.error(`Email to subscriber ${sub.subscriber_id} failed:`, err);
-          await logDelivery(pool, "EmailDeliveryLog", event.message_id, sub.subscriber_id, "failed");
+          await logDelivery(pool, "EmailDeliveryLog", event.message_id, sub.subscriber_id, "failed", undefined, logId);
         }
       }
     }

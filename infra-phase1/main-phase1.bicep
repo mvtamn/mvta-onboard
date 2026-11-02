@@ -256,6 +256,7 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     // no connection setting and every listener failed to start.
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'
     acsEndpoint: acsEndpoint
+    acsResourceName: empty(acsEndpoint) ? '' : 'acs-mvta-onboard-${environment}'
     acsEmailFrom: acsEmailFrom
     acsSmsFrom: acsSmsFrom
     riderAppBaseUrl: riderAppBaseUrl
