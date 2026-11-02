@@ -6,7 +6,7 @@ import { missedTripCaseSql } from "../missedTripCase/classify";
 import { workbookBlock } from "../tripStartLogRead";
 import type { TripStartStatus } from "../tripStartTypes";
 import type { Executor } from "../otpMonth";
-import { guideRoute, type FieldChange } from "./rules";
+import { availTripNumber, guideRoute, type FieldChange } from "./rules";
 import type {
   AddedTrip,
   AddedTripReason,
@@ -94,6 +94,7 @@ export async function loadLoggedTrips(executor: Executor, range: Range): Promise
       block: block && /^\d{3}$/.test(block) ? block : null,
       route_short_name: row.route_short_name,
       route_label: guideRoute(row.route_short_name, row.route_id),
+      trip_number: availTripNumber(row.trip_id, row.direction_label),
       direction_label: row.direction_label,
       scheduled_start_seconds: row.scheduled_start_seconds,
       scheduled_end_seconds: row.scheduled_end_seconds,

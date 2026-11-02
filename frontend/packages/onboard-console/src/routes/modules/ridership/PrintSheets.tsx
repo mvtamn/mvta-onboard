@@ -43,7 +43,7 @@ function remember(key: string, value: string) {
 
 function loadError(error: unknown): string {
   if (error instanceof ApiError && error.status === 503) return error.message;
-  if (error instanceof ApiError && error.status === 403) return "Printing Count Sheets needs the Ridership Recorder or Ridership Manager role.";
+  if (error instanceof ApiError && error.status === 403) return "Printing Count Sheets needs the Ridership Printer, Ridership Recorder or Ridership Manager role.";
   return "The print list could not be loaded.";
 }
 
