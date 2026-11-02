@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.3] - 2026-11-02
+## [1.7.11] - 2026-11-02
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,24 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.7.7] - 2026-11-02
+
+Ridership setup showed 180 blocks, every one Unassigned, each with its own free-text Garage box. Each garage prints only its own Count Sheets, so until the list is filled every sheet lands under Unassigned. A block rarely changes garage between service changes, and a row already stays in force until a later one replaces it, so what was missing was a fast way to set many blocks at once. Console only: the REST app does not restart.
+
+- **Garage from a list:** `RIDERSHIP_GARAGES` (Burnsville, Eagan) in `lib/ridership.ts`; `garageOptions()` adds any other name already saved so nothing is hidden. Each row is a `<select>`, not free text.
+- **Select several and assign:** a checkbox per row, a select-all-shown header (indeterminate when part-selected), shift-click for a run, and "Select blocks by number" (`parseBlockSelection`: "1-69, 306, 309"). "Assign to Burnsville / Eagan" and "Make unassigned" set every selected block in the draft; Save still sends only the rows that differ from what is in force.
+- **Filter by garage:** All / Burnsville / Eagan / Unassigned counts double as filters. Save and its message moved above the table.
+- **Garage evidence for Planning** (not built in): on dev, buses' overnight parking (EventVehiclePositionHistory against the EBG/BBG locations) puts every one of the 180 v64 blocks at one garage with at least 80% agreement: Burnsville 004, 006, 009, 013, 016, 017, 019, 024, 028, 031, 050, 306, 307, 309, 313, 315, 319-321, 333; Eagan the rest. Planning should confirm before saving.
+- Tests: console `RidershipSetupAdmin.test.tsx` (+4, three updated for the select) and `ridership.test.ts` (+3).
+
+## [1.7.6] - 2026-11-02
+
+The morning desk's reprint check, agreed for nightly Count Sheet printing: the desk prints tomorrow's sheets each evening, and the 03:30 Dispatch Log run can change a block after it was printed. Console only; no API change and no migration.
+
+- **`reprintsAfterPrinting(status)`** (lib/ridership.ts) counts what the morning desk reprints from a print status: `changed` sheets, `added` blocks (not printed, in a garage that has printed some of today's sheets; a garage with no print yet is a first print, not a reprint), and `dropped` blocks. It works on one garage's status or on every garage's.
+- **The Print sheets tab** reads today's status for every garage (`GET /api/ridership/print?date=` with no garage already returns them all) and shows "N to reprint today" when the count is above zero. A failed read shows nothing.
+- **Print sheets** reads today's status for the chosen garage whenever the date shown is another day, and puts a `role="note"` above the toolbar naming the changed, new and dropped blocks, with "Reprint today's N sheets" printing the changed and new ones for today. `print()` takes the service date, so the reprint logs against today rather than the date on screen.
 
 ## [1.7.1] - 2026-11-02
 
