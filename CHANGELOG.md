@@ -13,6 +13,32 @@ Who prints Count Sheets was an open decision: the spec gave printing to Ridershi
 - **Console:** Ridership is reachable with `ridership.view` *or* `ridership.print` (nav item and route). A caller without `ridership.view` gets Print sheets alone, with no tabs, and the Count Sheets worklist is never loaded. The REST print endpoints already checked `ridership.print` only. The mock sign-in gains a "Desk" preset.
 - Tests: REST `access.test.ts` (+1, one updated); `access.db.contract.test.ts` applies migration 159. Console `Ridership.test.tsx` (+1).
 
+## [1.7.8] - 2026-11-02
+
+A block with no garage is in no garage's stack. Unassigned was printable from the Garage list, but nothing told a Burnsville or Eagan desk that such blocks existed, so in practice nobody printed them and the operator went out without a sheet. Console only: the REST app does not restart.
+
+- **Unassigned warning** (`PrintSheets.tsx`): while a named garage is chosen and the date has Unassigned blocks (`garages` includes `null`), the tab makes one more `GET /ridership/print?garage=` call. It then names the blocks ("3 blocks have no garage … 330, 331 and 340"; past twelve, the first ten and how many more) with an **Unassigned** button that switches to that stack. The Unassigned view says why these blocks are there and that Planning sets their garage in Ridership setup. If that extra call fails, the warning is left out and the page still works.
+- **No-trips-yet note:** `tripStartLogMaterialize` runs at 09:30 UTC, which is 03:30 CST or 04:30 CDT. The note said 04:30, which was right only during daylight saving time.
+- Tests: console `Ridership.test.tsx` (+2); the default print mock now returns distinct Unassigned blocks.
+
+## [1.7.7] - 2026-11-02
+
+Ridership setup showed 180 blocks, every one Unassigned, each with its own free-text Garage box. Each garage prints only its own Count Sheets, so until the list is filled every sheet lands under Unassigned. A block rarely changes garage between service changes, and a row already stays in force until a later one replaces it, so what was missing was a fast way to set many blocks at once. Console only: the REST app does not restart.
+
+- **Garage from a list:** `RIDERSHIP_GARAGES` (Burnsville, Eagan) in `lib/ridership.ts`; `garageOptions()` adds any other name already saved so nothing is hidden. Each row is a `<select>`, not free text.
+- **Select several and assign:** a checkbox per row, a select-all-shown header (indeterminate when part-selected), shift-click for a run, and "Select blocks by number" (`parseBlockSelection`: "1-69, 306, 309"). "Assign to Burnsville / Eagan" and "Make unassigned" set every selected block in the draft; Save still sends only the rows that differ from what is in force.
+- **Filter by garage:** All / Burnsville / Eagan / Unassigned counts double as filters. Save and its message moved above the table.
+- **Garage evidence for Planning** (not built in): on dev, buses' overnight parking (EventVehiclePositionHistory against the EBG/BBG locations) puts every one of the 180 v64 blocks at one garage with at least 80% agreement: Burnsville 004, 006, 009, 013, 016, 017, 019, 024, 028, 031, 050, 306, 307, 309, 313, 315, 319-321, 333; Eagan the rest. Planning should confirm before saving.
+- Tests: console `RidershipSetupAdmin.test.tsx` (+4, three updated for the select) and `ridership.test.ts` (+3).
+
+## [1.7.6] - 2026-11-02
+
+The morning desk's reprint check, agreed for nightly Count Sheet printing: the desk prints tomorrow's sheets each evening, and the 03:30 Dispatch Log run can change a block after it was printed. Console only; no API change and no migration.
+
+- **`reprintsAfterPrinting(status)`** (lib/ridership.ts) counts what the morning desk reprints from a print status: `changed` sheets, `added` blocks (not printed, in a garage that has printed some of today's sheets; a garage with no print yet is a first print, not a reprint), and `dropped` blocks. It works on one garage's status or on every garage's.
+- **The Print sheets tab** reads today's status for every garage (`GET /api/ridership/print?date=` with no garage already returns them all) and shows "N to reprint today" when the count is above zero. A failed read shows nothing.
+- **Print sheets** reads today's status for the chosen garage whenever the date shown is another day, and puts a `role="note"` above the toolbar naming the changed, new and dropped blocks, with "Reprint today's N sheets" printing the changed and new ones for today. `print()` takes the service date, so the reprint logs against today rather than the date on screen.
+
 ## [1.7.1] - 2026-11-02
 
 The Watched SOP Folder is chosen by browsing the library, not set by an app setting. `DECISION_MATRIX_SOP_FOLDER` on dev and prod names `_SOPs`, a folder that does not exist in the library - and the only symptom was a walk reporting `not_found` at 06:30, behind a `forbidden` that has masked it since September. Correcting it required an infra deploy.

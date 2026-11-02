@@ -3,9 +3,11 @@
 // gated by its own action; Flags, Month close and Totals arrive with their
 // increments. The garage check-in desk (Ridership Printer) holds print without
 // view, so it sees Print sheets alone and never the Count Sheets or counts.
+import { useEffect, useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "../auth/AccessContext.js";
-import { normalizeBlock, sheetKey } from "../lib/ridership.js";
+import { api } from "../config.js";
+import { centralDay, normalizeBlock, reprintsAfterPrinting, sheetKey } from "../lib/ridership.js";
 import { PrintSheets } from "./modules/ridership/PrintSheets.js";
 import { RidershipEntry } from "./modules/ridership/RidershipEntry.js";
 import "./modules/ridership/ridership.css";
@@ -22,6 +24,15 @@ export function Ridership() {
   // A printed sheet's QR link arrives as ?sheet=<YYYYMMDD>|<block> (see SheetLink).
   const sheet = tab === "enter" ? params.get("sheet") : null;
   const enterLabel = canEnter ? "Enter sheets" : "Count Sheets";
+  // Every garage's sheets for today that changed after the evening print, so
+  // the morning desk sees them without opening the print list.
+  const [toReprint, setToReprint] = useState(0);
+  useEffect(() => {
+    if (!canPrint) return;
+    api.getRidershipPrintStatus({ date: centralDay(0).replace(/-/g, "") })
+      .then((status) => setToReprint(reprintsAfterPrinting(status).total))
+      .catch(() => setToReprint(0));
+  }, [canPrint, tab]);
 
   function show(next: Tab) {
     setParams(next === "print" ? { tab: "print" } : {}, { replace: true });
@@ -34,7 +45,9 @@ export function Ridership() {
         {canPrint && canView && (
           <div className="ridership-tabs" role="tablist" aria-label="Ridership">
             <button type="button" role="tab" aria-selected={tab === "enter"} onClick={() => show("enter")}>{enterLabel}</button>
-            <button type="button" role="tab" aria-selected={tab === "print"} onClick={() => show("print")}>Print sheets</button>
+            <button type="button" role="tab" aria-selected={tab === "print"} onClick={() => show("print")}>
+              Print sheets{toReprint > 0 && <span className="ridership-pill is-warn">{toReprint} to reprint today</span>}
+            </button>
           </div>
         )}
         {tab === "print" ? <PrintSheets /> : <>
