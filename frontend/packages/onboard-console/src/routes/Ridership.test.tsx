@@ -1,8 +1,9 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, type RidershipSheet, type RidershipWorklist, type RidershipWorklistSheet } from "@mvta/shared";
-import { Ridership } from "./Ridership.js";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { ApiError, type RidershipPrintStatus, type RidershipSheet, type RidershipWorklist, type RidershipWorklistSheet } from "@mvta/shared";
+import { Ridership, SheetLink } from "./Ridership.js";
 import { visibleAreas } from "../components/adminNav.js";
 import { accessStateWith } from "../auth/AccessContext.js";
 
@@ -15,10 +16,14 @@ vi.mock("../auth/AccessContext.js", async () => {
 const getRidershipWorklist = vi.fn();
 const getRidershipSheet = vi.fn();
 const saveRidershipSheet = vi.fn();
+const getRidershipPrintStatus = vi.fn();
+const printRidershipSheets = vi.fn();
 vi.mock("../config.js", () => ({ api: {
   getRidershipWorklist: (...args: unknown[]) => getRidershipWorklist(...args),
   getRidershipSheet: (...args: unknown[]) => getRidershipSheet(...args),
   saveRidershipSheet: (...args: unknown[]) => saveRidershipSheet(...args),
+  getRidershipPrintStatus: (...args: unknown[]) => getRidershipPrintStatus(...args),
+  printRidershipSheets: (...args: unknown[]) => printRidershipSheets(...args),
 } }));
 
 const progress = (required: number, keyed = 0) => ({ trips: required, required, keyed, counted: keyed, not_counted: 0, did_not_operate: 0, added_trips: 0, boardings: 0 });
@@ -50,8 +55,15 @@ const sheetFor = (service_date: string, block: string, overrides: Partial<Riders
   ...overrides,
 });
 
-function renderPage() {
-  render(<Ridership />);
+function renderPage(path = "/ridership") {
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/ridership" element={<Ridership />} />
+        <Route path="/r/:date/:block" element={<SheetLink />} />
+      </Routes>
+    </MemoryRouter>,
+  );
 }
 
 describe("Ridership › Enter sheets", () => {
@@ -183,10 +195,125 @@ describe("Ridership › Enter sheets", () => {
     expect(getRidershipSheet).toHaveBeenCalledWith("20261130", "212");
   });
 
+  it("a printed sheet's QR link opens that sheet", async () => {
+    renderPage("/r/20261130/24");
+    expect(await screen.findByRole("heading", { name: "Block 024" })).toBeTruthy();
+    expect(getRidershipSheet).toHaveBeenCalledWith("20261130", "024");
+  });
+
   it("says when migration 153 is missing", async () => {
     getRidershipWorklist.mockRejectedValue(new ApiError(503, "not ready"));
     renderPage();
     expect((await screen.findByRole("alert")).textContent).toMatch(/migration 153/);
+  });
+});
+
+// --- Print sheets ---------------------------------------------------------------
+
+const printRow = (block: string, order: number, state: RidershipPrintStatus["sheets"][number]["state"], garage: string | null = "Burnsville") => ({
+  block, garage, order, first_start_seconds: 18000 + order * 600, trips: 6, pages: 1, state,
+  printed_at: state === "not_printed" ? null : "2026-12-01T03:05:00Z", printed_by: state === "not_printed" ? null : "desk@example.test",
+});
+
+function printStatus(garage: string | null, sheets: RidershipPrintStatus["sheets"], printed = false): RidershipPrintStatus {
+  const lastPrint = printed ? { printed_at: "2026-12-01T03:05:00Z", printed_by: "desk@example.test", scope: "garage" as const, sheets: sheets.length, pages: sheets.length, blank_backs: false } : null;
+  return {
+    service_date: "20261202", garage, garages: ["Burnsville", "Eagan", null], sheets,
+    last_print: lastPrint, prints: lastPrint ? [lastPrint] : [],
+    not_printed: sheets.filter((s) => s.state === "not_printed").length, changed: sheets.filter((s) => s.state === "changed").length,
+    dropped: [],
+  };
+}
+
+describe("Ridership › Print sheets", () => {
+  const opened = { location: { href: "" }, close: vi.fn() };
+
+  beforeEach(() => {
+    actions = ["ridership.view", "ridership.enter", "ridership.print"];
+    window.localStorage.clear();
+    getRidershipWorklist.mockReset().mockResolvedValue(WORKLIST);
+    getRidershipPrintStatus.mockReset().mockImplementation(async ({ garage }: { garage?: string | null }) =>
+      garage === "Eagan"
+        ? printStatus("Eagan", [printRow("212", 1, "not_printed", "Eagan")])
+        : printStatus(garage ?? "Burnsville", [printRow("024", 1, "not_printed"), printRow("105", 2, "not_printed")]));
+    printRidershipSheets.mockReset().mockResolvedValue(new Blob(["%PDF-"], { type: "application/pdf" }));
+    opened.location.href = "";
+    vi.spyOn(window, "open").mockReturnValue(opened as unknown as Window);
+    URL.createObjectURL = vi.fn(() => "blob:count-sheets");
+    URL.revokeObjectURL = vi.fn();
+  });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it("lists tomorrow's sheets for one garage, in pull-out order, not printed yet", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("tab", { name: "Print sheets" }));
+    expect(await screen.findByText(/Not printed yet/)).toBeTruthy();
+    const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    expect(rows.map((r) => within(r).getAllByRole("cell")[1].textContent)).toEqual(["024", "105"]);
+    expect((screen.getByLabelText("Garage") as HTMLSelectElement).value).toBe("Burnsville");
+    expect(getRidershipPrintStatus).toHaveBeenLastCalledWith(expect.objectContaining({ garage: "Burnsville" }));
+    expect(screen.getByRole("button", { name: "Print 2 sheets · Burnsville" })).toBeTruthy();
+  });
+
+  it("prints the garage's stack as a PDF, with blank backs when asked, and remembers the choice", async () => {
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=print");
+    await user.click(await screen.findByLabelText(/Blank back on each page/));
+    await user.click(screen.getByRole("button", { name: "Print 2 sheets · Burnsville" }));
+    await waitFor(() => expect(printRidershipSheets).toHaveBeenCalledTimes(1));
+    expect(printRidershipSheets).toHaveBeenCalledWith(expect.objectContaining({
+      garage: "Burnsville", blank_backs: true, link_base: expect.stringMatching(/^http:\/\/localhost/),
+    }));
+    expect(printRidershipSheets.mock.calls[0][0].blocks).toBeUndefined();
+    expect(window.open).toHaveBeenCalledBefore(printRidershipSheets);
+    await waitFor(() => expect(opened.location.href).toBe("blob:count-sheets"));
+    expect((await screen.findByRole("status")).textContent).toMatch(/Opened the stack for Burnsville/);
+    expect(window.localStorage.getItem("ridership.print.blankBacks")).toBe("true");
+  });
+
+  it("flags a block changed since printing, and reprints just that one", async () => {
+    getRidershipPrintStatus.mockImplementation(async () => printStatus("Burnsville", [printRow("024", 1, "printed"), printRow("105", 2, "changed")], true));
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=print");
+    expect(await screen.findByText(/The Dispatch Log has changed since printing/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Reprint just that sheet" }));
+    await waitFor(() => expect(printRidershipSheets).toHaveBeenCalledWith(expect.objectContaining({ garage: "Burnsville", blocks: ["105"] })));
+  });
+
+  it("tells the desk to take back a printed sheet for a block that no longer runs", async () => {
+    getRidershipPrintStatus.mockImplementation(async () => ({
+      ...printStatus("Burnsville", [printRow("024", 1, "printed")], true),
+      dropped: [{ block: "330", printed_at: "2026-12-01T03:05:00Z", printed_by: "desk@example.test" }],
+    }));
+    renderPage("/ridership?tab=print");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Block 330 no longer runs .* Take it back/);
+  });
+
+  it("says when everything printed is still current", async () => {
+    getRidershipPrintStatus.mockImplementation(async () => printStatus("Burnsville", [printRow("024", 1, "printed")], true));
+    renderPage("/ridership?tab=print");
+    expect((await screen.findByText(/nothing has changed since/)).textContent).toMatch(/desk@example\.test/);
+  });
+
+  it("switches garage, and keeps the desk's garage for next time", async () => {
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=print");
+    await screen.findByText(/Not printed yet/);
+    await user.selectOptions(screen.getByLabelText("Garage"), "Eagan");
+    expect(await screen.findByRole("button", { name: "Print 1 sheet · Eagan" })).toBeTruthy();
+    cleanup();
+    renderPage("/ridership?tab=print");
+    expect(await screen.findByRole("button", { name: "Print 1 sheet · Eagan" })).toBeTruthy();
+  });
+
+  it("shows the API's reason when printing fails, and closes the empty tab", async () => {
+    printRidershipSheets.mockRejectedValue(new ApiError(503, "Count Sheet printing is not set up in this environment yet. Apply migration 157."));
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=print");
+    await user.click(await screen.findByRole("button", { name: "Print 2 sheets · Burnsville" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/migration 157/);
+    expect(opened.close).toHaveBeenCalled();
   });
 });
 
@@ -201,6 +328,7 @@ describe("Ridership gating", () => {
     renderPage();
     await screen.findByRole("table");
     expect(screen.queryByRole("button", { name: /Start entering/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Print sheets" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "105" }));
     expect((await screen.findByLabelText("Boardings, trip 105-1") as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();

@@ -43,7 +43,8 @@ function serviceDateDaysAgo(days: number, now = new Date()): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" }).replace(/-/g, "");
 }
 
-export function RidershipEntry({ canEnter }: { canEnter: boolean }) {
+/** `initialSheet` (a sheet key) opens that sheet straight away: a printed sheet's QR link. */
+export function RidershipEntry({ canEnter, initialSheet = null }: { canEnter: boolean; initialSheet?: string | null }) {
   const [range, setRange] = useState<number>(RANGES[0].days);
   const [worklist, setWorklist] = useState<Load<RidershipWorklist>>({ state: "loading" });
   const [garage, setGarage] = useState<string | null | "all">("all");
@@ -64,6 +65,12 @@ export function RidershipEntry({ canEnter }: { canEnter: boolean }) {
   }, [range]);
 
   useEffect(() => { refreshWorklist(); }, [refreshWorklist]);
+
+  useEffect(() => {
+    if (!initialSheet) return;
+    setQueue([initialSheet]);
+    setOpenKey(initialSheet);
+  }, [initialSheet]);
 
   // The next sheet in the queue is fetched while this one is keyed, so Save
   // opens it at once and the first keystrokes land in it rather than nowhere.
