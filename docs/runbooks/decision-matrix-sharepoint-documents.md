@@ -150,6 +150,32 @@ Work down this list. Each step distinguishes a different failure, so do not skip
 
 5. **OnBoard reports a document as healthy.** This needs migration 076 applied and one Procedure authored with a real document reference, neither of which is true on dev today. Until then, verification stops at step 4.
 
+## Choosing the folder new SOPs are looked for in
+
+**Administration → Decision Matrix → Where new SOPs are looked for.** Browse
+the approved library and choose the folder that holds SOPs; the whole library
+is an explicit option at the root. What is chosen here outranks
+`DECISION_MATRIX_SOP_FOLDER`, which only seeds a fresh environment.
+
+The folder is listed against SharePoint before it is stored, so a path that is
+not there is refused immediately rather than failing at 06:30 the next
+morning. That is how `_SOPs` - configured on dev and prod, absent from the
+library - went unnoticed from September to 2026-11-02: the `forbidden` from
+the missing site grant masked the `not_found` behind it.
+
+One folder is watched at a time. Changing it retires the old location rather
+than deleting it, so what the walk had learned stays readable:
+
+```sql
+SELECT folder_path, is_active, added_by, added_at, last_synced_at, last_sync_status
+FROM dbo.DecisionMatrixDocumentLocations
+ORDER BY is_active DESC, added_at DESC;
+```
+
+`added_by` is `configuration` for a seeded folder and the Admin's id for a
+chosen one. Browsing needs the same site grant the walk needs, so until the
+grant in **Steps** is made the picker reports SharePoint's refusal.
+
 ## Seeding a Procedure Draft from a QRG
 
 The grant in this runbook is also what lets an author start a Draft from a

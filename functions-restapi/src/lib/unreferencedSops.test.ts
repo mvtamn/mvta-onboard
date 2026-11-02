@@ -21,9 +21,36 @@ test("the SOP folder is a path inside the library; / is the whole library, and u
 // These answer before the database is asked: a pool that throws proves it.
 const untouchable = new Proxy({}, { get() { throw new Error("the database was asked"); } }) as sql.ConnectionPool;
 
-test("with no library or no SOP folder, the report says which setting is missing and asks nothing of the database", async () => {
+test("with no library at all, the report says so and asks nothing of the database", async () => {
   const noLibrary = await unreferencedSopReport(untouchable, null, { configured: true, folder_path: "_SOPs" }, "No approved SharePoint library is configured.");
   assert.deepEqual(noLibrary, { walk: { status: "not_configured", reason: "No approved SharePoint library is configured.", folder: null, walked_at: null, overdue: false }, documents: [] });
-  const noFolder = await unreferencedSopReport(untouchable, { site_id: "s", drive_id: "d" }, { configured: false, reason: "No SOP folder is configured." }, null);
-  assert.deepEqual(noFolder.walk, { status: "not_configured", reason: "No SOP folder is configured.", folder: null, walked_at: null, overdue: false });
+});
+
+// This case USED to answer without the database too, back when the setting was
+// the only possible source of the folder. It cannot any more: an Admin's
+// chosen folder lives only in DecisionMatrixDocumentLocations, so "is one
+// chosen?" is a question only the database can answer. The narrower property -
+// no library means no query - is the test above.
+test("with a library but nothing chosen, the report asks the database before trusting the setting", async () => {
+  let asked = "";
+  const pool = {
+    request: () => {
+      const self = {
+        input: () => self,
+        query: async (text: string) => {
+          asked += text;
+          // Every table the surface asks about is present: the probe counts
+          // its own placeholders, so answering with fewer would report the
+          // environment unmigrated and stop the report early.
+          if (text.includes("sys.tables")) return { recordset: [{ present: (text.match(/@t\d+/g) ?? []).length }] };
+          return { recordset: [] };
+        },
+      };
+      return self;
+    },
+  } as unknown as sql.ConnectionPool;
+
+  const report = await unreferencedSopReport(pool, { site_id: "s", drive_id: "d" }, { configured: false, reason: "No SOP folder is configured." }, null);
+  assert.match(asked, /DecisionMatrixDocumentLocations/, "it must look for a chosen folder");
+  assert.deepEqual(report.walk, { status: "not_configured", reason: "No SOP folder is configured.", folder: null, walked_at: null, overdue: false });
 });

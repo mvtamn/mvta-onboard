@@ -27,6 +27,12 @@ export type SopFolderSetting =
  * cannot hold an empty value distinctly from a missing one, so "/" is the
  * whole library and unset is not configured - walking every form and map in
  * the library is a choice someone has to make on purpose.
+ *
+ * This is now only a SEED. Once an Admin has chosen a folder in the console
+ * the watched location is the truth and this is not consulted again: a setting
+ * that silently reverted a deliberate choice at the next infra deploy was the
+ * reason the folder could not be corrected without one. `watchedSopLocation`
+ * is what every reader should ask.
  */
 export function sopFolderSetting(env: NodeJS.ProcessEnv = process.env): SopFolderSetting {
   const raw = env.DECISION_MATRIX_SOP_FOLDER?.trim();
@@ -45,13 +51,76 @@ export interface SopLocation {
   folder_path: string;
 }
 
+/** Who a location was added by when nobody chose it. */
+export const CHOSEN_LABEL = "SOP folder";
+
 /**
- * The one watched location: the SOP folder in the configured library. When the
- * setting points somewhere new, the old row is retired and a new one added, so
- * the next walk starts fresh rather than carrying first-seen dates across
- * folders. Only rows configuration added are retired.
+ * The folder currently watched in this library, whoever set it - an Admin who
+ * browsed to it, or the setting that seeded it. One active location per
+ * library by design (see chooseSopLocation), so this is the whole answer.
+ */
+export async function watchedSopLocation(
+  pool: sql.ConnectionPool,
+  library: { site_id: string; drive_id: string },
+): Promise<(SopLocation & { added_by: string; chosen: boolean }) | null> {
+  const result = await pool.request()
+    .input("site_id", sql.NVarChar, library.site_id)
+    .input("drive_id", sql.NVarChar, library.drive_id)
+    .query<SopLocation & { added_by: string }>(
+      "SELECT location_id,site_id,drive_id,folder_path,added_by FROM DecisionMatrixDocumentLocations WHERE site_id=@site_id AND drive_id=@drive_id AND is_active=1 ORDER BY added_at DESC");
+  const row = result.recordset[0];
+  return row ? { ...row, chosen: row.added_by !== CONFIGURED_BY } : null;
+}
+
+/**
+ * Point the watch at a folder an Admin browsed to. Every other active location
+ * in this library is retired - including one an earlier Admin chose, not just
+ * the seeded one - because the report answers "which SOPs has no Procedure
+ * taken up" and that question needs one folder to be about. The retired row
+ * and everything observed under it stay: they record what SharePoint held and
+ * when, and deleting them would buy nothing.
+ */
+export async function chooseSopLocation(
+  pool: sql.ConnectionPool,
+  library: { site_id: string; drive_id: string },
+  folder: string,
+  actor: string,
+): Promise<SopLocation> {
+  const path = normalizeLibraryPath(folder);
+  const result = await pool.request()
+    .input("location_id", sql.NVarChar, `sop-folder-${randomUUID()}`)
+    .input("site_id", sql.NVarChar, library.site_id)
+    .input("drive_id", sql.NVarChar, library.drive_id)
+    .input("folder_path", sql.NVarChar, path)
+    .input("added_by", sql.NVarChar, actor)
+    .query<SopLocation>(`
+      SET XACT_ABORT ON;
+      BEGIN TRANSACTION;
+      UPDATE DecisionMatrixDocumentLocations WITH (UPDLOCK, HOLDLOCK) SET is_active=0
+        WHERE is_active=1 AND site_id=@site_id AND drive_id=@drive_id AND folder_path<>@folder_path;
+      IF NOT EXISTS (SELECT 1 FROM DecisionMatrixDocumentLocations WITH (UPDLOCK, HOLDLOCK) WHERE site_id=@site_id AND drive_id=@drive_id AND folder_path=@folder_path AND is_active=1)
+        INSERT INTO DecisionMatrixDocumentLocations (location_id, site_id, drive_id, folder_path, label, added_by)
+        VALUES (@location_id, @site_id, @drive_id, @folder_path, '${CHOSEN_LABEL}', @added_by);
+      ELSE
+        -- Re-choosing the folder already watched records who stands behind it
+        -- without discarding what the walk has learned about it.
+        UPDATE DecisionMatrixDocumentLocations SET added_by=@added_by
+          WHERE site_id=@site_id AND drive_id=@drive_id AND folder_path=@folder_path AND is_active=1;
+      COMMIT TRANSACTION;
+      SELECT location_id, site_id, drive_id, folder_path FROM DecisionMatrixDocumentLocations
+        WHERE site_id=@site_id AND drive_id=@drive_id AND folder_path=@folder_path AND is_active=1;`);
+  return result.recordset[0];
+}
+
+/**
+ * Seed the watch from the setting, for an environment where nobody has chosen
+ * yet. If ANY active location exists it is returned untouched - a choice made
+ * in the console outranks the setting, and the daily walk must not drag the
+ * watch back to the configured folder every morning.
  */
 export async function ensureSopLocation(pool: sql.ConnectionPool, site: string, drive: string, folder: string): Promise<SopLocation> {
+  const existing = await watchedSopLocation(pool, { site_id: site, drive_id: drive });
+  if (existing) return existing;
   const result = await pool.request()
     .input("location_id", sql.NVarChar, `sop-folder-${randomUUID()}`)
     .input("site_id", sql.NVarChar, site)
@@ -166,6 +235,8 @@ export interface UnreferencedSopReport {
     reason: string | null;
     /** The SOP folder the report is about; null when none is configured. */
     folder: string | null;
+    /** True when an Admin chose this folder, false when the setting seeded it. */
+    chosen?: boolean;
     walked_at: string | null;
     overdue: boolean;
   };
@@ -190,23 +261,33 @@ export async function unreferencedSopReport(
   now: Date = new Date(),
 ): Promise<UnreferencedSopReport> {
   if (!library) return { walk: { status: "not_configured", reason: walkBlocked, folder: null, walked_at: null, overdue: false }, documents: [] };
-  if (!setting.configured) return { walk: { status: "not_configured", reason: setting.reason, folder: null, walked_at: null, overdue: false }, documents: [] };
-  const folder = setting.folder_path;
+  // The tables have to be there before the watch can be read out of them, so
+  // this check comes before resolving the folder rather than after.
   for (const surface of [DECISION_MATRIX_SURFACES.governance, DECISION_MATRIX_SURFACES.sopFolder]) {
     if (!(await surfaceReady(pool, surface))) {
-      return { walk: { status: "not_connected", reason: `This environment's database is missing the tables from migration ${surface.migration}.`, folder, walked_at: null, overdue: false }, documents: [] };
+      return { walk: { status: "not_connected", reason: `This environment's database is missing the tables from migration ${surface.migration}.`, folder: null, walked_at: null, overdue: false }, documents: [] };
     }
   }
 
-  const located = await pool.request()
-    .input("site_id", sql.NVarChar, library.site_id).input("drive_id", sql.NVarChar, library.drive_id).input("folder_path", sql.NVarChar, folder)
-    .query<{ location_id: string; last_synced_at: Date | null; last_sync_status: SopWalkStatus | null; last_sync_reason: string | null }>(
-      "SELECT location_id,last_synced_at,last_sync_status,last_sync_reason FROM DecisionMatrixDocumentLocations WHERE site_id=@site_id AND drive_id=@drive_id AND folder_path=@folder_path AND is_active=1");
+  // A folder an Admin chose is the folder this report is about. The setting
+  // only answers for an environment where nobody has chosen one yet.
+  const watched = await watchedSopLocation(pool, library);
+  if (!watched && !setting.configured) {
+    return { walk: { status: "not_configured", reason: setting.reason, folder: null, walked_at: null, overdue: false }, documents: [] };
+  }
+  const folder = watched ? watched.folder_path : (setting as { configured: true; folder_path: string }).folder_path;
+  const chosen = watched?.chosen ?? false;
+
+  const located = watched
+    ? await pool.request().input("location_id", sql.NVarChar, watched.location_id)
+      .query<{ location_id: string; last_synced_at: Date | null; last_sync_status: SopWalkStatus | null; last_sync_reason: string | null }>(
+        "SELECT location_id,last_synced_at,last_sync_status,last_sync_reason FROM DecisionMatrixDocumentLocations WHERE location_id=@location_id")
+    : { recordset: [] as { location_id: string; last_synced_at: Date | null; last_sync_status: SopWalkStatus | null; last_sync_reason: string | null }[] };
   const location = located.recordset[0];
   if (!location?.last_synced_at || !location.last_sync_status) {
     // Never walked because it cannot be, which "runs every morning" would hide.
-    if (walkBlocked) return { walk: { status: "not_configured", reason: walkBlocked, folder, walked_at: null, overdue: false }, documents: [] };
-    return { walk: { status: "not_walked", reason: "The SOP folder has not been walked yet. The walk runs every morning.", folder, walked_at: null, overdue: false }, documents: [] };
+    if (walkBlocked) return { walk: { status: "not_configured", reason: walkBlocked, folder, chosen, walked_at: null, overdue: false }, documents: [] };
+    return { walk: { status: "not_walked", reason: "The SOP folder has not been walked yet. The walk runs every morning.", folder, chosen, walked_at: null, overdue: false }, documents: [] };
   }
 
   // Referenced means some Supporting Document Reference on a current revision
@@ -232,6 +313,7 @@ export async function unreferencedSopReport(
       status: location.last_sync_status,
       reason: location.last_sync_reason,
       folder,
+      chosen,
       walked_at: walkedAt.toISOString(),
       overdue: now.getTime() - walkedAt.getTime() > SOP_WALK_OVERDUE_HOURS * 3600_000,
     },
