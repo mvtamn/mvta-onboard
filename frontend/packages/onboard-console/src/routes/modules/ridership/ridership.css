@@ -73,7 +73,19 @@ kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.
 /* setup */
 .ridership-setup { display: flex; flex-direction: column; gap: 12px; }
 .ridership-garage-table { max-width: 640px; }
-.ridership-garage-table input { width: 220px; }
+.ridership-garage-table select { width: 180px; }
+.ridership-garage-table .ridership-pick { width: 32px; }
+.ridership-garage-table .ridership-pick input { width: auto; }
+.ridership-garage-table tr.is-selected td { background: var(--pill-accent-bg); }
+.ridership-garage-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.ridership-garage-counts button { font: inherit; font-size: 0.88rem; padding: 4px 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-bg); color: var(--text); cursor: pointer; }
+.ridership-garage-counts button.is-warn { background: var(--pill-warning-bg); color: var(--pill-warning-fg); border-color: transparent; }
+.ridership-garage-counts button[aria-pressed="true"] { outline: 2px solid var(--brand-green); outline-offset: 1px; }
+.ridership-bulk { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; max-width: 640px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-alt-bg); }
+.ridership-bulk input { width: 160px; }
+.ridership-setup .ridership-form-foot, .ridership-setup .ridership-toast, .ridership-setup .ridership-problems { max-width: 640px; box-sizing: border-box; }
+.ridership-bulk-assign { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
+.ridership-secondary:disabled { color: var(--text-muted); cursor: default; }
 
 /* Tabs: Enter sheets / Print sheets. */
 .ridership-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
