@@ -177,11 +177,16 @@ test("a folder an Admin chooses outranks the setting, and the daily walk leaves 
     assert.equal(reasserted.folder_path, "Operations/SOPs", "the setting must not reclaim the watch");
     assert.equal(reasserted.location_id, chosen.location_id);
 
-    // Exactly one active location, and the seeded one is retired rather than deleted.
+    // Exactly one active location, and the seeded one is retired rather than
+    // deleted. Asserted by is_active rather than by sort order: `ORDER BY
+    // folder_path` puts `_SOPs` first under SQL Server's collation, and both
+    // localeCompare and code-unit order disagree with it and each other. The
+    // claim here is "one active, one retired", which needs no ordering.
     const rows = await pool.request().input("site_id", sql.NVarChar, site)
       .query<{ folder_path: string; is_active: boolean; added_by: string }>(
-        "SELECT folder_path,is_active,added_by FROM DecisionMatrixDocumentLocations WHERE site_id=@site_id ORDER BY folder_path");
-    assert.deepEqual(rows.recordset.map((r) => [r.folder_path, r.is_active]), [["Operations/SOPs", true], ["_SOPs", false]]);
+        "SELECT folder_path,is_active,added_by FROM DecisionMatrixDocumentLocations WHERE site_id=@site_id");
+    assert.deepEqual(rows.recordset.filter((r) => r.is_active).map((r) => r.folder_path), ["Operations/SOPs"]);
+    assert.deepEqual(rows.recordset.filter((r) => !r.is_active).map((r) => r.folder_path), ["_SOPs"]);
 
     // Re-choosing the same folder keeps the location, so the walk's history
     // survives, and records who stands behind it now.

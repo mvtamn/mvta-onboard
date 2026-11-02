@@ -157,6 +157,12 @@ the approved library and choose the folder that holds SOPs; the whole library
 is an explicit option at the root. What is chosen here outranks
 `DECISION_MATRIX_SOP_FOLDER`, which only seeds a fresh environment.
 
+Until somebody chooses, the setting still governs: correcting
+`DECISION_MATRIX_SOP_FOLDER` moves an unchosen watch on the next walk. That
+matters because dev and prod both already hold a seeded `_SOPs` row, so either
+route will fix them. Once an Admin has chosen, the setting is inert for that
+library and the console is the only way to move the watch.
+
 The folder is listed against SharePoint before it is stored, so a path that is
 not there is refused immediately rather than failing at 06:30 the next
 morning. That is how `_SOPs` - configured on dev and prod, absent from the

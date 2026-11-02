@@ -114,13 +114,20 @@ export async function chooseSopLocation(
 
 /**
  * Seed the watch from the setting, for an environment where nobody has chosen
- * yet. If ANY active location exists it is returned untouched - a choice made
- * in the console outranks the setting, and the daily walk must not drag the
- * watch back to the configured folder every morning.
+ * yet. A CHOSEN location is returned untouched: the console outranks the
+ * setting, and the daily walk must not drag the watch back to the configured
+ * folder every morning.
+ *
+ * A merely SEEDED location still follows the setting, which is the difference
+ * between a seed and a lock. Returning any active location would have made the
+ * setting inert the moment one row existed - and dev and prod each already
+ * hold a seeded `_SOPs` row, so correcting the setting there would have done
+ * nothing and the only route left would have been the console. A seed that
+ * cannot be re-sown is not a seed.
  */
 export async function ensureSopLocation(pool: sql.ConnectionPool, site: string, drive: string, folder: string): Promise<SopLocation> {
   const existing = await watchedSopLocation(pool, { site_id: site, drive_id: drive });
-  if (existing) return existing;
+  if (existing?.chosen) return existing;
   const result = await pool.request()
     .input("location_id", sql.NVarChar, `sop-folder-${randomUUID()}`)
     .input("site_id", sql.NVarChar, site)
