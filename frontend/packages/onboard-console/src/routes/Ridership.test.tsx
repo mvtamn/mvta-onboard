@@ -352,6 +352,14 @@ describe("Ridership › Print sheets", () => {
     expect((await screen.findByText(/nothing has changed since/)).textContent).toMatch(/desk@example\.test/);
   });
 
+  it("opens straight on Print sheets for the check-in desk, which holds print only", async () => {
+    actions = ["ridership.print"];
+    renderPage();
+    expect(await screen.findByRole("button", { name: "Print 2 sheets · Burnsville" })).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(getRidershipWorklist).not.toHaveBeenCalled();
+  });
+
   it("tells a garage's desk which blocks have no garage, and opens them", async () => {
     const user = userEvent.setup();
     renderPage("/ridership?tab=print");
@@ -359,7 +367,7 @@ describe("Ridership › Print sheets", () => {
     expect(note.textContent).toMatch(/2 blocks have no garage .* not in any garage's stack: 330 and 331\. Print them from Unassigned/);
     await user.click(within(note).getByRole("button", { name: "Unassigned" }));
     expect(await screen.findByRole("button", { name: "Print 2 sheets · Unassigned" })).toBeTruthy();
-    expect(morningNote()).toBeNull();
+    expect(screen.queryByRole("note")).toBeNull();
     expect(screen.getByText(/These blocks have no garage/)).toBeTruthy();
   });
 
@@ -367,7 +375,7 @@ describe("Ridership › Print sheets", () => {
     getRidershipPrintStatus.mockImplementation(async () => ({ ...printStatus("Burnsville", [printRow("024", 1, "not_printed")]), garages: ["Burnsville"] }));
     renderPage("/ridership?tab=print");
     await screen.findByText(/Not printed yet/);
-    expect(morningNote()).toBeNull();
+    expect(screen.queryByRole("note")).toBeNull();
     expect(getRidershipPrintStatus).not.toHaveBeenCalledWith(expect.objectContaining({ garage: null }));
   });
 

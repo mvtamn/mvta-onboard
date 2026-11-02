@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.9] - 2026-11-02
+
+Who prints Count Sheets was an open decision: the spec gave printing to Ridership Recorder, while the SOP draft gives it to the garage check-in desk. Recorder also keys counts, which the desk should not do. Decided 2026-11-02: add a print-only role. **The REST app restarts on merge** (`seeds.ts`).
+
+- **Migration 159** seeds `ridership-printer` (Ridership Printer) with `ridership.print` only, granted to nobody. It follows the same insert-when-missing pattern as 129 and 154, and `seeds.ts` carries the same role.
+- **Console:** Ridership is reachable with `ridership.view` *or* `ridership.print` (nav item and route). A caller without `ridership.view` gets Print sheets alone, with no tabs, and the Count Sheets worklist is never loaded. The REST print endpoints already checked `ridership.print` only. The mock sign-in gains a "Desk" preset.
+- Tests: REST `access.test.ts` (+1, one updated); `access.db.contract.test.ts` applies migration 159. Console `Ridership.test.tsx` (+1).
+
 ## [1.7.8] - 2026-11-02
 
 A block with no garage is in no garage's stack. Unassigned was printable from the Garage list, but nothing told a Burnsville or Eagan desk that such blocks existed, so in practice nobody printed them and the operator went out without a sheet. Console only: the REST app does not restart.
