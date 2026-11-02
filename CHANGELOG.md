@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.78] - 2026-11-01
+## [1.7.7] - 2026-11-01
 
 Ridership setup showed 180 blocks, every one Unassigned, each with its own free-text Garage box. Each garage prints only its own Count Sheets, so until the list is filled every sheet lands under Unassigned. A block rarely changes garage between service changes, and a row already stays in force until a later one replaces it, so what was missing was a fast way to set many blocks at once. Console only: the REST app does not restart.
 
@@ -14,6 +14,33 @@ Ridership setup showed 180 blocks, every one Unassigned, each with its own free-
 - **Filter by garage:** All / Burnsville / Eagan / Unassigned counts double as filters. Save and its message moved above the table.
 - **Garage evidence for Planning** (not built in): on dev, buses' overnight parking (EventVehiclePositionHistory against the EBG/BBG locations) puts every one of the 180 v64 blocks at one garage with at least 80% agreement: Burnsville 004, 006, 009, 013, 016, 017, 019, 024, 028, 031, 050, 306, 307, 309, 313, 315, 319-321, 333; Eagan the rest. Planning should confirm before saving.
 - Tests: console `RidershipSetupAdmin.test.tsx` (+4, three updated for the select) and `ridership.test.ts` (+3).
+
+## [1.7.1] - 2026-11-02
+
+The Watched SOP Folder is chosen by browsing the library, not set by an app setting. `DECISION_MATRIX_SOP_FOLDER` on dev and prod names `_SOPs`, a folder that does not exist in the library - and the only symptom was a walk reporting `not_found` at 06:30, behind a `forbidden` that has masked it since September. Correcting it required an infra deploy.
+
+- **`watchedSopLocation(pool, library)`** is what every reader now asks: the one active location in this library, whoever set it, with `chosen` telling an Admin's choice from a seeded default. `unreferencedSopReport` and the daily walk both read it instead of looking the location up by the setting's path.
+- **`chooseSopLocation(pool, library, folder, actor)`** retires every other active location in the library - including one an earlier Admin chose - and records who chose this one. Re-choosing the folder already watched keeps the location, so `DecisionMatrixLocationDocuments` history survives; `added_by` is updated.
+- **`ensureSopLocation` seeds, it does not lock.** A *chosen* location comes back untouched, because the walk's own call would otherwise drag the watch back to the configured folder every morning - the contract test asserts exactly that. A merely *seeded* location still follows the setting, so correcting `DECISION_MATRIX_SOP_FOLDER` still works in an environment where nobody has chosen yet. Dev and prod each already hold a seeded `_SOPs` row, so treating any existing row as a lock would have left the setting inert in exactly the two places it still has to work.
+- **`PUT /api/manage/decision-matrix/library/sop-folder`** (`decision-matrix.manage`) takes `{folder_path}` or `{whole_library: true}` and **lists the folder before storing it**: `not_found` → 400, `forbidden` → 409, outage → 503, each with SharePoint's own sentence. Answers 503 naming migration 116 where the tables are absent.
+- **One picker, two modes.** `DocumentPicker` takes `mode: "file" | "folder"`; in folder mode the folder being viewed is the choice ("Watch Operations/SOPs", or "Watch the whole library" at the root) and documents are shown disabled as context. A second browser would have duplicated the listing, the refusal handling and the diagnostics.
+- **Two existing tests were restated, not loosened.** Both asserted that an unconfigured environment asks nothing of the database. That can no longer hold: a chosen folder lives only in `DecisionMatrixDocumentLocations`, so "is one chosen?" is a question only SQL can answer. The narrower property - no library means no query - is now its own test.
+- CONTEXT.md gains **Watched SOP Folder**; **Unreferenced SOP** points at it rather than implying configuration. No migration: migration 116's tables already hold a location with an `added_by`.
+
+## [1.7.0] - 2026-11-02
+
+Seed a Procedure Draft from a QRG in the Approved Document Library (ADR 0045, migration 158). ADR 0024 rejects importing Decision Matrix content from SharePoint; this does not import it - what the model proposes is a Draft with every field unreviewed, approved only through the existing review, mirroring how `decisionMatrixLegacyMigration.ts` maps a legacy candidate.
+
+- **`lib/qrgDraftSeed.ts` is the module.** `seedDraftFromQrg(input, source, proposer, options?)` reads the QRG, asks for guidance, and RETURNS the Draft to create plus the seeding to record - it writes nothing. Dependencies are injected (`QrgSource`, `GuidanceProposer`), so its 13 tests cover refusals, timeout, and every unusable answer without SharePoint or a model. `MAX_QRG_PAGES` 4, `PROPOSAL_TIMEOUT_MS` 25 s, both overridable for tests only.
+- **A SharePoint refusal refuses the seeding; an unusable model answer does not.** `forbidden`/`unconfigured` → 409, `not_found` → 400, `failed` → 503, a non-PNG/JPEG/PDF QRG → 400, a QRG whose eTag moved since the picker showed it → 409. A model that throws, times out, returns off-schema, or proposes nothing yields an EMPTY Draft with the QRG attached and the reason recorded - the manual path, not worse than no feature.
+- **The author names the governing SOP.** `supportingDocumentReferences.ts:101` refuses any primary that is not an SOP or Reference, and review refuses a Draft with no primary, so a QRG-only Draft could never be submitted. The handler refuses a non-SOP/Reference governing document up front with that reason.
+- **`lib/decisionMatrixGuidance.ts` declares the vocabulary once.** `SEVERITIES`, `CRITERION_KINDS`, `ACTION_KINDS` and `GUIDANCE_LIMITS` moved out of `decisionMatrixDrafts.ts`, which now imports them. The QRG validator holds a proposal to the same rules; two copies would drift and accept different guidance.
+- **Structured outputs, not forced tool use.** `tool_choice` `any`/`tool` is a 400 on `claude-opus-5-5`, so `lib/qrgGuidanceProposer.ts` pins the shape with `output_config.format` (`type: "json_schema"`, no beta header) and parses the JSON out of the returned text block. A strict schema cannot express `maxLength`/`minimum`/`minItems > 1`, so every length is enforced in `qrgDraftSeed.ts` - that truncation is load-bearing. `refusal` and `max_tokens` stop reasons return HTTP 200 and are checked before the parse. Plain `fetch`, matching `anthropic.ts` next door.
+- **Enum casing is folded.** Structured outputs documents that an enum may come back capitalised differently and must be compared case-insensitively; a `"Applies"` or `"STOP SERVICE"` answer was being discarded as unusable. Matched by folded case and stored in OnBoard's spelling.
+- **Migration 158: `DecisionMatrixQrgSeedings`.** Keeps `proposed_json` verbatim beside the Draft it seeded, with the model, `pages_read`, and outcome (`proposed`/`empty` + reason), because neither the Draft nor `ProcedureAuditEvents` can answer what the model proposed versus what the human changed. `UX_..._Item` on (drive_id, item_id, seen_version): a revised QRG may seed again, the same unrevised one may not. Not a foreign key to `ProcedureRevisions` - the record must outlive a Draft discarded because the proposal was wrong.
+- **PDF can be displayed.** New `isInlinePreviewMime` (PNG/JPEG/PDF) governs display, used by `GET /decision-matrix` and the rendition preview endpoint; `isInlineImageMime` is untouched and still decides what a Visual rendition may be. An author has to be able to read the QRG beside the Draft.
+- **`readContent` on the library module** returns an item's bytes with the same four outcomes as `readItem`; `lib/qrgLibrarySource.ts` is the whole adapter between it and `QrgSource`, so neither side learns the other's vocabulary.
+- **Inert until the site grant.** `Sites.Selected` is consented but no per-site grant has ever been issued, so every library read is still `forbidden` (the dev SOP walk, 2026-11-01T06:30Z). Seeding says so with the picker's own reason.
 
 ## [1.6.75] - 2026-11-01
 
