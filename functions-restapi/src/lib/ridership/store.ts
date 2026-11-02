@@ -6,7 +6,7 @@ import { missedTripCaseSql } from "../missedTripCase/classify";
 import { workbookBlock } from "../tripStartLogRead";
 import type { TripStartStatus } from "../tripStartTypes";
 import type { Executor } from "../otpMonth";
-import type { FieldChange } from "./rules";
+import { guideRoute, type FieldChange } from "./rules";
 import type {
   AddedTrip,
   AddedTripReason,
@@ -18,6 +18,7 @@ import type {
   LoggedTrip,
   PulloutRun,
   SheetHeader,
+  PrintScope,
   SheetHistoryEntry,
 } from "./types";
 
@@ -54,6 +55,7 @@ interface LoggedTripRow {
   service_date: string;
   trip_id: string;
   block_id: string | null;
+  route_id: string | null;
   route_short_name: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
@@ -78,7 +80,7 @@ export async function loadLoggedTrips(executor: Executor, range: Range): Promise
   req.input("from", sql.Char(8), range.from);
   req.input("to", sql.Char(8), range.to);
   const result = await req.query<LoggedTripRow>(`
-    SELECT service_date, trip_id, block_id, route_short_name, direction_label,
+    SELECT service_date, trip_id, block_id, route_id, route_short_name, direction_label,
            scheduled_start_seconds, ${end} AS scheduled_end_seconds, start_status
     FROM dbo.TripStartLog
     WHERE service_date BETWEEN @from AND @to
@@ -91,6 +93,7 @@ export async function loadLoggedTrips(executor: Executor, range: Range): Promise
       trip_id: row.trip_id,
       block: block && /^\d{3}$/.test(block) ? block : null,
       route_short_name: row.route_short_name,
+      route_label: guideRoute(row.route_short_name, row.route_id),
       direction_label: row.direction_label,
       scheduled_start_seconds: row.scheduled_start_seconds,
       scheduled_end_seconds: row.scheduled_end_seconds,
@@ -420,6 +423,105 @@ export async function writeBlockGarages(tx: sql.Transaction, save: BlockGarageSa
       IF @@ROWCOUNT = 0
         INSERT dbo.RidershipBlockGarages (block, effective_from, garage, updated_at, updated_by)
         VALUES (@block, @effective_from, @garage, @at, @actor);
+    `);
+  }
+}
+
+// ---------------------------------------------------------------- print log (migration 157)
+
+export const PRINT_LOG_TABLES = ["RidershipPrintRuns", "RidershipPrintedSheets"] as const;
+
+/** Whether migration 157 has landed. Without it printing answers 503. */
+export async function printLogReady(executor: Executor): Promise<boolean> {
+  const checks = PRINT_LOG_TABLES.map((t) => `OBJECT_ID('dbo.${t}', 'U') IS NOT NULL`).join(" AND ");
+  const result = await request(executor).query<{ ok: number }>(`SELECT CASE WHEN ${checks} THEN 1 ELSE 0 END AS ok`);
+  return result.recordset[0]?.ok === 1;
+}
+
+export interface StoredPrintRun {
+  print_id: string;
+  garage: string | null;
+  scope: PrintScope;
+  blank_backs: boolean;
+  sheet_count: number;
+  page_count: number;
+  printed_at: Date;
+  printed_by: string;
+}
+
+export interface StoredPrintedSheet {
+  print_id: string;
+  /** The garage the print was for; null is Unassigned. */
+  garage: string | null;
+  block: string;
+  fingerprint: string;
+  printed_at: Date;
+  printed_by: string;
+}
+
+/** Every print of the service date, newest first, with the blocks each one carried. */
+export async function loadPrintLog(executor: Executor, serviceDate: string): Promise<{ runs: StoredPrintRun[]; sheets: StoredPrintedSheet[] }> {
+  const runsReq = request(executor);
+  runsReq.input("service_date", sql.Char(8), serviceDate);
+  const runs = await runsReq.query<StoredPrintRun>(`
+    SELECT CONVERT(NVARCHAR(36), print_id) AS print_id, garage, scope, blank_backs, sheet_count, page_count, printed_at, printed_by
+    FROM dbo.RidershipPrintRuns
+    WHERE service_date = @service_date
+    ORDER BY printed_at DESC
+  `);
+  const sheetsReq = request(executor);
+  sheetsReq.input("service_date", sql.Char(8), serviceDate);
+  const sheets = await sheetsReq.query<StoredPrintedSheet>(`
+    SELECT CONVERT(NVARCHAR(36), s.print_id) AS print_id, r.garage, s.block, s.fingerprint, r.printed_at, r.printed_by
+    FROM dbo.RidershipPrintedSheets s
+    JOIN dbo.RidershipPrintRuns r ON r.print_id = s.print_id
+    WHERE s.service_date = @service_date
+    ORDER BY r.printed_at DESC
+  `);
+  return {
+    runs: runs.recordset.map((r) => ({ ...r, print_id: r.print_id.toLowerCase(), blank_backs: Boolean(r.blank_backs) })),
+    sheets: sheets.recordset.map((s) => ({ ...s, print_id: s.print_id.toLowerCase() })),
+  };
+}
+
+export interface PrintWrite {
+  service_date: string;
+  garage: string | null;
+  scope: PrintScope;
+  blank_backs: boolean;
+  page_count: number;
+  sheets: { block: string; fingerprint: string; pages: number }[];
+}
+
+/** Records one PDF and the blocks in it. */
+export async function writePrintRun(tx: sql.Transaction, write: PrintWrite, actor: string, at: Date): Promise<void> {
+  const run = new sql.Request(tx);
+  run.input("service_date", sql.Char(8), write.service_date);
+  run.input("garage", sql.NVarChar(50), write.garage);
+  run.input("scope", sql.NVarChar(10), write.scope);
+  run.input("blank_backs", sql.Bit, write.blank_backs);
+  run.input("sheet_count", sql.Int, write.sheets.length);
+  run.input("page_count", sql.Int, write.page_count);
+  run.input("printed_at", sql.DateTime2, at);
+  run.input("printed_by", sql.NVarChar(200), actor);
+  const inserted = await run.query<{ print_id: string }>(`
+    DECLARE @ids TABLE (print_id UNIQUEIDENTIFIER);
+    INSERT INTO dbo.RidershipPrintRuns (service_date, garage, scope, blank_backs, sheet_count, page_count, printed_at, printed_by)
+    OUTPUT INSERTED.print_id INTO @ids
+    VALUES (@service_date, @garage, @scope, @blank_backs, @sheet_count, @page_count, @printed_at, @printed_by);
+    SELECT CONVERT(NVARCHAR(36), print_id) AS print_id FROM @ids;
+  `);
+  const printId = inserted.recordset[0].print_id;
+  for (const sheet of write.sheets) {
+    const req = new sql.Request(tx);
+    req.input("print_id", sql.UniqueIdentifier, printId);
+    req.input("service_date", sql.Char(8), write.service_date);
+    req.input("block", sql.Char(3), sheet.block);
+    req.input("fingerprint", sql.Char(64), sheet.fingerprint);
+    req.input("pages", sql.Int, sheet.pages);
+    await req.query(`
+      INSERT INTO dbo.RidershipPrintedSheets (print_id, service_date, block, fingerprint, pages)
+      VALUES (@print_id, @service_date, @block, @fingerprint, @pages)
     `);
   }
 }
