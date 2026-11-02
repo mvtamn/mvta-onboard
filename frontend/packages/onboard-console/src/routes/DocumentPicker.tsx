@@ -70,7 +70,19 @@ export function folderOf(path: string): string {
   return segments.length ? segments.join("/") : "Library root";
 }
 
-export function DocumentPicker({ onChoose, onCancel }: { onChoose: (chosen: ChosenDocument) => void; onCancel?: () => void }) {
+/**
+ * Two modes, one browser. In "file" mode a document is chosen and folders are
+ * only navigated; in "folder" mode the folder being looked at is what gets
+ * chosen, and documents are shown greyed as context for the decision. A second
+ * component would have duplicated the listing, the refusal handling and the
+ * diagnostics - three things that have each already been got wrong once.
+ */
+export function DocumentPicker({ onChoose, onCancel, mode = "file", onChooseFolder }: {
+  onChoose?: (chosen: ChosenDocument) => void;
+  onCancel?: () => void;
+  mode?: "file" | "folder";
+  onChooseFolder?: (folder: { path: string; files: number; folders: number }) => void;
+}) {
   const [path, setPath] = useState("");
   const [state, setState] = useState<PickerState>({ status: "loading" });
 
@@ -102,7 +114,7 @@ export function DocumentPicker({ onChoose, onCancel }: { onChoose: (chosen: Chos
   useEffect(() => { void load(path); }, [load, path]);
 
   function choose(entry: DecisionMatrixLibraryEntry) {
-    onChoose({ item_id: entry.item_id, seen_version: entry.etag ?? "", file_name: entry.name, path: entry.path });
+    onChoose?.({ item_id: entry.item_id, seen_version: entry.etag ?? "", file_name: entry.name, path: entry.path });
   }
 
   return <div className="dmx-picker">
@@ -114,6 +126,20 @@ export function DocumentPicker({ onChoose, onCancel }: { onChoose: (chosen: Chos
           : <button type="button" className="btn-sm" onClick={() => setPath(crumb.path)}>{crumb.label}</button>}
       </span>)}
     </nav>
+
+    {mode === "folder" && state.status === "listing" ? <div className="dmx-picker-choose-folder">
+      <button type="button" className="btn-sm" onClick={() => onChooseFolder?.({
+        path,
+        files: state.entries.filter((entry) => entry.kind === "file").length,
+        folders: state.entries.filter((entry) => entry.kind === "folder").length,
+      })}>
+        {path ? `Watch ${path}` : "Watch the whole library"}
+      </button>
+      <span className="dmx-meta">
+        {state.entries.filter((entry) => entry.kind === "file").length} document{state.entries.filter((entry) => entry.kind === "file").length === 1 ? "" : "s"} here
+        {state.entries.some((entry) => entry.kind === "folder") ? ", and subfolders are included" : ""}
+      </span>
+    </div> : null}
 
     {state.status === "loading" ? <p className="dmx-empty" role="status">Reading the library…</p> : null}
 
@@ -140,7 +166,7 @@ export function DocumentPicker({ onChoose, onCancel }: { onChoose: (chosen: Chos
             : <button
                 type="button"
                 className="dmx-picker-open"
-                disabled={missing.length > 0}
+                disabled={mode === "folder" || missing.length > 0}
                 onClick={() => choose(entry)}
               >
                 <span className="dmx-picker-name">{entry.name}</span>

@@ -5,7 +5,7 @@ import { ApiError } from "@mvta/shared";
 import { DecisionMatrixAdmin, unreferencedSopNotice } from "./DecisionMatrixAdmin.js";
 import type { DecisionMatrixUnreferencedSops } from "@mvta/shared";
 
-vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn(), getDecisionMatrixUnreferencedSops: vi.fn(), seedDecisionMatrixDraftFromQrg: vi.fn() } }));
+vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn(), getDecisionMatrixUnreferencedSops: vi.fn(), seedDecisionMatrixDraftFromQrg: vi.fn(), chooseDecisionMatrixSopFolder: vi.fn() } }));
 import { api } from "../config.js";
 import { AppDialogProvider } from "../components/AppDialog.js";
 
@@ -356,5 +356,86 @@ describe("starting a Draft from a QRG", () => {
 
     expect(await screen.findByText(/A QRG cannot be a Procedure's primary document/)).toBeInTheDocument();
     expect(vi.mocked(api.seedDecisionMatrixDraftFromQrg)).not.toHaveBeenCalled();
+  });
+});
+
+describe("where new SOPs are looked for", () => {
+  const library = {
+    entries: [
+      { item_id: "folder-ops", name: "Operations", kind: "folder" as const, path: "Operations", mime_type: null, size_bytes: null, etag: null, last_modified_at: null, child_count: 3, web_url: null },
+      { item_id: "file-loose", name: "Notes.docx", kind: "file" as const, path: "Notes.docx", mime_type: "application/pdf", size_bytes: 10, etag: '"{N},1"', last_modified_at: null, child_count: null, web_url: null },
+    ],
+    diagnostics: { configured: true, outcome: "ok" as const, path: "", reason: null, folder_count: 1, file_count: 1 },
+  };
+  const walked = (folder: string | null, chosen?: boolean) => ({
+    walk: { status: "not_walked" as const, reason: "The SOP folder has not been walked yet.", folder, chosen, walked_at: null, overdue: false },
+    documents: [],
+  });
+
+  it("says when a folder came from configuration rather than a choice", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked("_SOPs", false));
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    expect(await screen.findByText(/came from this environment's configuration/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change the SOP folder" })).toBeInTheDocument();
+  });
+
+  it("says when nobody has chosen a folder at all", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked(null));
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    expect(await screen.findByText(/No folder is being watched/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose the SOP folder" })).toBeInTheDocument();
+  });
+
+  it("sends the folder an Admin browsed to, and reports what is in it", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked("_SOPs", false));
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(library);
+    vi.mocked(api.chooseDecisionMatrixSopFolder).mockResolvedValue({
+      folder: "Operations", whole_library: false, documents_in_folder: 7, folders_in_folder: 2, walked: false,
+    });
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Change the SOP folder" }));
+    await user.click(await screen.findByRole("button", { name: /^Operations/ }));
+    await user.click(await screen.findByRole("button", { name: "Watch Operations" }));
+
+    expect(vi.mocked(api.chooseDecisionMatrixSopFolder).mock.calls[0]?.[0]).toEqual({ folder_path: "Operations" });
+    expect(await screen.findByText(/Now watching Operations: 7 documents directly in it and 2 subfolders/)).toBeInTheDocument();
+    expect(screen.getByText(/nothing is reported from it until the morning walk runs/)).toBeInTheDocument();
+  });
+
+  it("sends whole_library for the library root, not an empty folder_path", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked(null));
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(library);
+    vi.mocked(api.chooseDecisionMatrixSopFolder).mockResolvedValue({
+      folder: "", whole_library: true, documents_in_folder: 1, folders_in_folder: 1, walked: false,
+    });
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Choose the SOP folder" }));
+    await user.click(await screen.findByRole("button", { name: "Watch the whole library" }));
+
+    expect(vi.mocked(api.chooseDecisionMatrixSopFolder).mock.calls[0]?.[0]).toEqual({ whole_library: true });
+    expect(await screen.findByText(/Now watching the whole library/)).toBeInTheDocument();
+  });
+
+  it("a refusal from SharePoint is shown as itself, not as a generic failure", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked("_SOPs", false));
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(library);
+    vi.mocked(api.chooseDecisionMatrixSopFolder).mockRejectedValue(
+      new ApiError(409, "SharePoint refused OnBoard's read of this library."));
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Change the SOP folder" }));
+    await user.click(await screen.findByRole("button", { name: "Watch the whole library" }));
+    expect(await screen.findByText("SharePoint refused OnBoard's read of this library.")).toBeInTheDocument();
+  });
+
+  it("in folder mode a document cannot be chosen by mistake", async () => {
+    vi.mocked(api.getDecisionMatrixUnreferencedSops).mockResolvedValue(walked(null));
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(library);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Choose the SOP folder" }));
+    expect(await screen.findByRole("button", { name: /Notes\.docx/ })).toBeDisabled();
   });
 });

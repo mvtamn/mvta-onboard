@@ -115,6 +115,7 @@ import type {
   ProcedureDraft,
   ProcedureDraftInput,
   QrgSeedInput,
+  SopFolderChoice,
   QrgSeedResult,
   ProcedureDraftSaveResult,
   PutStopExclusionInput,
@@ -383,6 +384,8 @@ export interface DecisionMatrixUnreferencedSops {
     status: "not_configured" | "not_connected" | "not_walked" | "ok" | "forbidden" | "not_found" | "failed";
     reason: string | null;
     folder: string | null;
+    /** True when an Admin chose this folder; false when a setting seeded it. */
+    chosen?: boolean;
     walked_at: string | null;
     overdue: boolean;
   };
@@ -1202,6 +1205,14 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
 
     getDecisionMatrixLegacyCandidates() {
       return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }>; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/legacy-candidates", {}, true);
+    },
+
+    chooseDecisionMatrixSopFolder(choice: { folder_path: string } | { whole_library: true }) {
+      return request<SopFolderChoice>(
+        "/api/manage/decision-matrix/library/sop-folder",
+        { method: "PUT", body: JSON.stringify(choice) },
+        true,
+      );
     },
 
     seedDecisionMatrixDraftFromQrg(input: QrgSeedInput) {

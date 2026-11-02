@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.1] - 2026-11-02
+## [1.7.4] - 2026-11-02
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,18 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.1] - 2026-11-02
+
+The Watched SOP Folder is chosen by browsing the library, not set by an app setting. `DECISION_MATRIX_SOP_FOLDER` on dev and prod names `_SOPs`, a folder that does not exist in the library - and the only symptom was a walk reporting `not_found` at 06:30, behind a `forbidden` that has masked it since September. Correcting it required an infra deploy.
+
+- **`watchedSopLocation(pool, library)`** is what every reader now asks: the one active location in this library, whoever set it, with `chosen` telling an Admin's choice from a seeded default. `unreferencedSopReport` and the daily walk both read it instead of looking the location up by the setting's path.
+- **`chooseSopLocation(pool, library, folder, actor)`** retires every other active location in the library - including one an earlier Admin chose - and records who chose this one. Re-choosing the folder already watched keeps the location, so `DecisionMatrixLocationDocuments` history survives; `added_by` is updated.
+- **`ensureSopLocation` seeds, it does not lock.** A *chosen* location comes back untouched, because the walk's own call would otherwise drag the watch back to the configured folder every morning - the contract test asserts exactly that. A merely *seeded* location still follows the setting, so correcting `DECISION_MATRIX_SOP_FOLDER` still works in an environment where nobody has chosen yet. Dev and prod each already hold a seeded `_SOPs` row, so treating any existing row as a lock would have left the setting inert in exactly the two places it still has to work.
+- **`PUT /api/manage/decision-matrix/library/sop-folder`** (`decision-matrix.manage`) takes `{folder_path}` or `{whole_library: true}` and **lists the folder before storing it**: `not_found` → 400, `forbidden` → 409, outage → 503, each with SharePoint's own sentence. Answers 503 naming migration 116 where the tables are absent.
+- **One picker, two modes.** `DocumentPicker` takes `mode: "file" | "folder"`; in folder mode the folder being viewed is the choice ("Watch Operations/SOPs", or "Watch the whole library" at the root) and documents are shown disabled as context. A second browser would have duplicated the listing, the refusal handling and the diagnostics.
+- **Two existing tests were restated, not loosened.** Both asserted that an unconfigured environment asks nothing of the database. That can no longer hold: a chosen folder lives only in `DecisionMatrixDocumentLocations`, so "is one chosen?" is a question only SQL can answer. The narrower property - no library means no query - is now its own test.
+- CONTEXT.md gains **Watched SOP Folder**; **Unreferenced SOP** points at it rather than implying configuration. No migration: migration 116's tables already hold a location with an `added_by`.
 
 ## [1.7.0] - 2026-11-02
 
