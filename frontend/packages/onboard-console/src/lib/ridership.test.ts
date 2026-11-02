@@ -18,6 +18,7 @@ import {
   parseClock,
   parseSheetScan,
   printedTime,
+  reprintsAfterPrinting,
   rowInForce,
   saveFromDraft,
   sheetLinkBase,
@@ -184,6 +185,17 @@ describe("printing", () => {
   it("lists the blocks still to print: never printed or changed since", () => {
     const row = (block: string, state: "not_printed" | "printed" | "changed") => ({ block, garage: "Burnsville", order: 1, first_start_seconds: 0, trips: 1, pages: 1, state, printed_at: null, printed_by: null });
     expect(blocksToPrint([row("024", "printed"), row("105", "changed"), row("212", "not_printed")])).toEqual(["105", "212"]);
+  });
+
+  it("counts what the morning desk reprints: changed, new since its garage printed, and no longer running", () => {
+    const row = (block: string, garage: string | null, state: "not_printed" | "printed" | "changed") => ({ block, garage, order: 1, first_start_seconds: 0, trips: 1, pages: 1, state, printed_at: null, printed_by: null });
+    const status = {
+      service_date: "20261202", garages: ["Burnsville", "Eagan"], last_print: null, prints: [], not_printed: 0, changed: 0,
+      sheets: [row("024", "Burnsville", "printed"), row("105", "Burnsville", "changed"), row("106", "Burnsville", "not_printed"), row("212", "Eagan", "not_printed")],
+      dropped: [{ block: "330", printed_at: "2026-12-02T03:05:00Z", printed_by: "desk@example.test" }],
+    };
+    // Eagan never printed, so its 212 is a first print, not a reprint.
+    expect(reprintsAfterPrinting(status)).toEqual({ changed: ["105"], added: ["106"], dropped: ["330"], total: 3 });
   });
 
   it("points the QR link at this console until the operator app has an address", () => {

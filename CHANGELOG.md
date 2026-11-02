@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.6] - 2026-11-02
+
+The morning desk's reprint check, agreed for nightly Count Sheet printing: the desk prints tomorrow's sheets each evening, and the 03:30 Dispatch Log run can change a block after it was printed. Console only; no API change and no migration.
+
+- **`reprintsAfterPrinting(status)`** (lib/ridership.ts) counts what the morning desk reprints from a print status: `changed` sheets, `added` blocks (not printed, in a garage that has printed some of today's sheets; a garage with no print yet is a first print, not a reprint), and `dropped` blocks. It works on one garage's status or on every garage's.
+- **The Print sheets tab** reads today's status for every garage (`GET /api/ridership/print?date=` with no garage already returns them all) and shows "N to reprint today" when the count is above zero. A failed read shows nothing.
+- **Print sheets** reads today's status for the chosen garage whenever the date shown is another day, and puts a `role="note"` above the toolbar naming the changed, new and dropped blocks, with "Reprint today's N sheets" printing the changed and new ones for today. `print()` takes the service date, so the reprint logs against today rather than the date on screen.
+
 ## [1.7.1] - 2026-11-02
 
 The Watched SOP Folder is chosen by browsing the library, not set by an app setting. `DECISION_MATRIX_SOP_FOLDER` on dev and prod names `_SOPs`, a folder that does not exist in the library - and the only symptom was a walk reporting `not_found` at 06:30, behind a `forbidden` that has masked it since September. Correcting it required an infra deploy.
