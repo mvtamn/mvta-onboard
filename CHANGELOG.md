@@ -16,6 +16,18 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
 
+## [1.7.1] - 2026-11-02
+
+The Watched SOP Folder is chosen by browsing the library, not set by an app setting. `DECISION_MATRIX_SOP_FOLDER` on dev and prod names `_SOPs`, a folder that does not exist in the library - and the only symptom was a walk reporting `not_found` at 06:30, behind a `forbidden` that has masked it since September. Correcting it required an infra deploy.
+
+- **`watchedSopLocation(pool, library)`** is what every reader now asks: the one active location in this library, whoever set it, with `chosen` telling an Admin's choice from a seeded default. `unreferencedSopReport` and the daily walk both read it instead of looking the location up by the setting's path.
+- **`chooseSopLocation(pool, library, folder, actor)`** retires every other active location in the library - including one an earlier Admin chose - and records who chose this one. Re-choosing the folder already watched keeps the location, so `DecisionMatrixLocationDocuments` history survives; `added_by` is updated.
+- **`ensureSopLocation` seeds, it does not lock.** A *chosen* location comes back untouched, because the walk's own call would otherwise drag the watch back to the configured folder every morning - the contract test asserts exactly that. A merely *seeded* location still follows the setting, so correcting `DECISION_MATRIX_SOP_FOLDER` still works in an environment where nobody has chosen yet. Dev and prod each already hold a seeded `_SOPs` row, so treating any existing row as a lock would have left the setting inert in exactly the two places it still has to work.
+- **`PUT /api/manage/decision-matrix/library/sop-folder`** (`decision-matrix.manage`) takes `{folder_path}` or `{whole_library: true}` and **lists the folder before storing it**: `not_found` → 400, `forbidden` → 409, outage → 503, each with SharePoint's own sentence. Answers 503 naming migration 116 where the tables are absent.
+- **One picker, two modes.** `DocumentPicker` takes `mode: "file" | "folder"`; in folder mode the folder being viewed is the choice ("Watch Operations/SOPs", or "Watch the whole library" at the root) and documents are shown disabled as context. A second browser would have duplicated the listing, the refusal handling and the diagnostics.
+- **Two existing tests were restated, not loosened.** Both asserted that an unconfigured environment asks nothing of the database. That can no longer hold: a chosen folder lives only in `DecisionMatrixDocumentLocations`, so "is one chosen?" is a question only SQL can answer. The narrower property - no library means no query - is now its own test.
+- CONTEXT.md gains **Watched SOP Folder**; **Unreferenced SOP** points at it rather than implying configuration. No migration: migration 116's tables already hold a location with an `added_by`.
+
 ## [1.7.0] - 2026-11-02
 
 Seed a Procedure Draft from a QRG in the Approved Document Library (ADR 0045, migration 158). ADR 0024 rejects importing Decision Matrix content from SharePoint; this does not import it - what the model proposes is a Draft with every field unreviewed, approved only through the existing review, mirroring how `decisionMatrixLegacyMigration.ts` maps a legacy candidate.
