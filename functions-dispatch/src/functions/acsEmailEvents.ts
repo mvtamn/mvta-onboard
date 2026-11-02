@@ -41,10 +41,10 @@ app.http("acsEmailEvents", {
             .query("UPDATE EmailDeliveryLog SET delivery_status=@status WHERE provider_message_id=@provider");
           riderUpdated += rider.rowsAffected[0] ?? 0;
         } catch (err) {
-          // Until migration 158 widens the CHECK, every status but bounced is
+          // Until migration 160 widens the CHECK, every status but bounced is
           // refused. That must not cost the detour receipt below, nor make
           // Event Grid retry a batch that can never succeed.
-          context.warn(`EmailDeliveryLog receipt not recorded (is migration 158 applied?): ${(err as Error).message}`);
+          context.warn(`EmailDeliveryLog receipt not recorded (is migration 160 applied?): ${(err as Error).message}`);
         }
       }
       const updated = await pool.request()

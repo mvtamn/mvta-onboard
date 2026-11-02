@@ -98,7 +98,7 @@ app.serviceBusQueue("dispatchMessageCreated", {
     // the report onto the delivery's log row). Mailing it again harms the
     // sender's reputation for every rider; confirming the address again is
     // what clears it. Derived from the log rather than stored on the
-    // subscriber, so it reads the same before and after migration 158.
+    // subscriber, so it reads the same before and after migration 160.
     const { recordset } = await findSubs.query<SubscriberRow>(`
       SELECT s.subscriber_id, s.phone_number, s.email, s.sms_status, s.email_status, s.routes, s.zones, s.manage_key,
              CASE WHEN EXISTS (

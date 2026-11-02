@@ -76,7 +76,7 @@ export function aggregateDelivery(statuses: ReceiptStatus[]): { status: Aggregat
 export type RiderLogStatus = "delivered" | "bounced" | "suppressed" | "quarantined" | "filtered_spam" | "failed";
 
 /**
- * A receipt as EmailDeliveryLog records it (migration 158 widens its CHECK).
+ * A receipt as EmailDeliveryLog records it (migration 160 widens its CHECK).
  * Expanded is a distribution list accepting the mail, which for a rider's
  * own address means delivered.
  */

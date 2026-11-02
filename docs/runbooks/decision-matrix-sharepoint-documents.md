@@ -150,6 +150,47 @@ Work down this list. Each step distinguishes a different failure, so do not skip
 
 5. **OnBoard reports a document as healthy.** This needs migration 076 applied and one Procedure authored with a real document reference, neither of which is true on dev today. Until then, verification stops at step 4.
 
+## Seeding a Procedure Draft from a QRG
+
+The grant in this runbook is also what lets an author start a Draft from a
+Quick Reference Guide (ADR 0045, migration 158): **Administration → Decision
+Matrix → Start a Draft from a QRG**. OnBoard reads the QRG with the sign-in
+application - the same identity that lets the author browse the library - so it
+needs the same per-site grant and nothing more.
+
+What the author sees, and what it means:
+
+| The panel says | What happened | What to do |
+| --- | --- | --- |
+| `N criteria and M immediate actions proposed from the first 4 pages` | The QRG was read and guidance was proposed. Nothing is reviewed. | Read the QRG beside the Draft, correct every field, then submit for review as usual. |
+| `created empty, with <name> attached` plus a reason | The QRG was read, but the answer was unusable - not a QRG, unreadable, nothing proposed, too long, or the model timed out after 25 s. | Fill the Draft in by hand. The QRG is already referenced, so nothing is lost. |
+| `SharePoint refused OnBoard's read of this library` | The per-site grant in this runbook has not been made. | Follow **Steps** above. |
+| `changed in SharePoint after you chose it` | The QRG was revised between the picker showing it and the seeding. | Choose the QRG again; the new version may seed a fresh Draft. |
+| `has already seeded a Draft` | This exact version of this QRG seeded one before. | Work on that Draft, or revise the QRG in SharePoint. |
+| `needs migration 158` | The table is missing in this environment. | Apply `migration-158-qrg-draft-seedings.sql`. |
+
+Two things worth knowing before anyone asks:
+
+- **The QRG is never the Procedure's primary document.** Only an SOP or a
+  Reference can be, so the panel asks for the governing document as well. A
+  Draft without one is refused at review, not at save.
+- **A QRG is sent to the Anthropic API** to be read, using the
+  `ANTHROPIC_API_KEY` already configured for Compose's rider-summary action.
+  ADR 0045 records that as a decision. If MVTA requires that operational
+  documents stay inside the tenant, the model is reached through a
+  `GuidanceProposer` seam and an Azure OpenAI adapter replaces one file.
+
+What was proposed is kept in `DecisionMatrixQrgSeedings.proposed_json` beside
+the Draft it seeded, with the model that produced it, so "what did it suggest,
+and what did we change?" can be answered later:
+
+```sql
+SELECT qrg_name, outcome, outcome_reason, model, pages_read, seeded_at, proposed_json
+FROM dbo.DecisionMatrixQrgSeedings
+WHERE procedure_id = @procedure_id
+ORDER BY seeded_at DESC;
+```
+
 ## What remains blocked after this runbook
 
 This runbook grants document access. It does not by itself make the Decision Matrix usable:

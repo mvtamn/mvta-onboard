@@ -1,4 +1,4 @@
--- Migration 158: what happened to a rider email after ACS accepted it.
+-- Migration 160: what happened to a rider email after ACS accepted it.
 --
 -- EmailDeliveryLog could only say queued / sent / bounced / failed, and
 -- nothing ever wrote anything but sent or failed. The dispatch app now:
@@ -22,7 +22,7 @@ SET NOCOUNT ON;
 GO
 
 IF OBJECT_ID('dbo.EmailDeliveryLog', 'U') IS NULL OR OBJECT_ID('dbo.SmsDeliveryLog', 'U') IS NULL
-  THROW 50158, 'Migration 158 requires EmailDeliveryLog and SmsDeliveryLog (phase1-schema.sql).', 1;
+  THROW 50160, 'Migration 160 requires EmailDeliveryLog and SmsDeliveryLog (phase1-schema.sql).', 1;
 GO
 
 IF OBJECT_ID('dbo.CK_EmailDeliveryLog_Status', 'C') IS NOT NULL
@@ -51,5 +51,5 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EmailDeliveryLog_Subsc
   CREATE INDEX IX_EmailDeliveryLog_SubscriberStatus ON dbo.EmailDeliveryLog (subscriber_id, delivery_status, sent_at);
 GO
 
-PRINT 'Migration 158 applied: EmailDeliveryLog/SmsDeliveryLog statuses widened, provider and subscriber indexes added.';
+PRINT 'Migration 160 applied: EmailDeliveryLog/SmsDeliveryLog statuses widened, provider and subscriber indexes added.';
 GO
