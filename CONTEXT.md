@@ -939,12 +939,30 @@ from. An author picks a document in it; which library that is belongs to
 OnBoard, never to the author.
 _Avoid_: any granted site, SOP folder, document location
 
+**Watched SOP Folder**:
+The one folder in the Approved Document Library that OnBoard looks in for SOPs
+no Procedure uses. An Admin chooses it by browsing the library; the whole
+library is a legal choice. A configured default seeds it in a fresh
+environment and is not consulted once a choice has been made. One folder is
+watched at a time, because the question it answers needs a single folder to be
+about.
+_Avoid_: the SOP path, the configured folder, document location
+
 **Unreferenced SOP**:
-A document in the Approved Document Library's SOP folder that no Draft, Under
-review or Approved Procedure Revision references. It is a prompt that a
+A document in the Watched SOP Folder that no Draft, Under review or Approved
+Procedure Revision references. It is a prompt that a
 Procedure may be missing, not a fault; a document used only by Superseded or
 Retired revisions is unreferenced again.
 _Avoid_: orphan document, sync change, unhealthy reference
+
+**QRG-Seeded Draft**:
+A Procedure Draft whose Criteria and Immediate Actions were proposed by reading
+a QRG in the Approved Document Library, rather than typed. It is a Draft and
+nothing more: every field is unreviewed until a person reviews it, and it
+reaches Approved only through the same review as any other Draft. The QRG is a
+Supporting Document Reference on it, never its Primary Supporting Document
+Reference, and never the source of the approved guidance.
+_Avoid_: imported procedure, generated procedure, content sync
 
 **Primary Supporting Document Reference**:
 The one required Supporting Document Reference for a Procedure Revision. It
