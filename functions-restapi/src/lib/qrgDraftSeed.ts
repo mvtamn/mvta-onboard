@@ -5,7 +5,7 @@
 // proposes Criteria and Immediate Actions from it, and the author gets a Draft
 // with that guidance in it. Nothing here approves anything: a seeded Draft
 // goes through the same review and approval as a hand-typed one, which is why
-// ADR 0044 reads this as compatible with ADR 0024 rather than the content
+// ADR 0045 reads this as compatible with ADR 0024 rather than the content
 // import ADR 0024 rejects.
 //
 // Two decisions shape the interface.

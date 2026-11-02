@@ -6,7 +6,7 @@
 // maps a legacy candidate, including compensating when the Draft is refused.
 // Going through createDecisionMatrixProcedureDraft rather than writing rows
 // here is the point: a seeded Draft is validated, audited and governed exactly
-// as a hand-typed one, which is what makes ADR 0044 sit beside ADR 0024.
+// as a hand-typed one, which is what makes ADR 0045 sit beside ADR 0024.
 import { randomUUID } from "node:crypto";
 import { app, HttpRequest, type InvocationContext } from "@azure/functions";
 import { requireAccess } from "../lib/access/require";

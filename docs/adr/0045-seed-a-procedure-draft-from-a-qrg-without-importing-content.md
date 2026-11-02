@@ -1,4 +1,4 @@
-# ADR 0044: Seed a Procedure Draft from a QRG without importing content
+# ADR 0045: Seed a Procedure Draft from a QRG without importing content
 
 Status: accepted (2026-11-01)
 

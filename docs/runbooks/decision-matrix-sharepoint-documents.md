@@ -153,7 +153,7 @@ Work down this list. Each step distinguishes a different failure, so do not skip
 ## Seeding a Procedure Draft from a QRG
 
 The grant in this runbook is also what lets an author start a Draft from a
-Quick Reference Guide (ADR 0044, migration 158): **Administration → Decision
+Quick Reference Guide (ADR 0045, migration 158): **Administration → Decision
 Matrix → Start a Draft from a QRG**. OnBoard reads the QRG with the sign-in
 application - the same identity that lets the author browse the library - so it
 needs the same per-site grant and nothing more.
@@ -176,7 +176,7 @@ Two things worth knowing before anyone asks:
   Draft without one is refused at review, not at save.
 - **A QRG is sent to the Anthropic API** to be read, using the
   `ANTHROPIC_API_KEY` already configured for Compose's rider-summary action.
-  ADR 0044 records that as a decision. If MVTA requires that operational
+  ADR 0045 records that as a decision. If MVTA requires that operational
   documents stay inside the tenant, the model is reached through a
   `GuidanceProposer` seam and an Azure OpenAI adapter replaces one file.
 

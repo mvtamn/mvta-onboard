@@ -7,7 +7,7 @@ badge and footer read this version at build time - see `vite.config.ts`).
 
 ## [1.7.0] - 2026-11-02
 
-Seed a Procedure Draft from a QRG in the Approved Document Library (ADR 0044, migration 158). ADR 0024 rejects importing Decision Matrix content from SharePoint; this does not import it - what the model proposes is a Draft with every field unreviewed, approved only through the existing review, mirroring how `decisionMatrixLegacyMigration.ts` maps a legacy candidate.
+Seed a Procedure Draft from a QRG in the Approved Document Library (ADR 0045, migration 158). ADR 0024 rejects importing Decision Matrix content from SharePoint; this does not import it - what the model proposes is a Draft with every field unreviewed, approved only through the existing review, mirroring how `decisionMatrixLegacyMigration.ts` maps a legacy candidate.
 
 - **`lib/qrgDraftSeed.ts` is the module.** `seedDraftFromQrg(input, source, proposer, options?)` reads the QRG, asks for guidance, and RETURNS the Draft to create plus the seeding to record - it writes nothing. Dependencies are injected (`QrgSource`, `GuidanceProposer`), so its 13 tests cover refusals, timeout, and every unusable answer without SharePoint or a model. `MAX_QRG_PAGES` 4, `PROPOSAL_TIMEOUT_MS` 25 s, both overridable for tests only.
 - **A SharePoint refusal refuses the seeding; an unusable model answer does not.** `forbidden`/`unconfigured` → 409, `not_found` → 400, `failed` → 503, a non-PNG/JPEG/PDF QRG → 400, a QRG whose eTag moved since the picker showed it → 409. A model that throws, times out, returns off-schema, or proposes nothing yields an EMPTY Draft with the QRG attached and the reason recorded - the manual path, not worse than no feature.

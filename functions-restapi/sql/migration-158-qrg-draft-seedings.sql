@@ -3,7 +3,7 @@
 -- An author may now seed a Procedure Draft from a Quick Reference Guide in
 -- the Approved Document Library: OnBoard reads the QRG through Graph, a model
 -- proposes Criteria and Immediate Actions from it, and the author gets a
--- Draft with every field marked unreviewed. ADR 0044 sets out why that is a
+-- Draft with every field marked unreviewed. ADR 0045 sets out why that is a
 -- Draft and never approved content: ADR 0024 rejects importing Decision
 -- Matrix content from SharePoint, and a seeded Draft does not import it - a
 -- person reviews each field and approves, exactly as with a hand-typed Draft.
