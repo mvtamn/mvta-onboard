@@ -158,6 +158,7 @@ export function DecisionMatrixAdmin() {
     {!signedOut && missing.length ? <div className="dmx-state dmx-state-warning" role="status"><strong>{disconnected ? "Decision Matrix is not connected." : "Decision Matrix is partly connected."}</strong> This environment's database is missing the tables from migration{missing.length === 1 ? "" : "s"} {missing.join(", ")}. Each section below says whether its own tables are present; the ones that are keep working.</div> : null}
     {!signedOut && governance.state === "ready" ? documentCheckNotices(documentChecks).map((notice) => <div key={notice.heading} className="dmx-state dmx-state-warning" role="status"><strong>{notice.heading}</strong> {notice.detail}</div>) : null}
     {!signedOut ? (() => { const notice = unreferencedSopNotice(unreferenced); return notice ? <UnreferencedSops notice={notice} onCreateDraft={setPreselected} /> : null; })() : null}
+    {!signedOut ? <SopFolderWatch report={unreferenced} onChanged={refresh} /> : null}
     <button className="btn-sm" type="button" onClick={() => void refresh()}>Refresh governance data</button>
     <DraftEntry surface={governance} onCreated={refresh} preselected={preselected} />
     <QrgSeededDraft surface={governance} onCreated={refresh} />
@@ -183,6 +184,56 @@ function QrgSeededDraft({ surface, onCreated }: { surface: Surface; onCreated: (
     {message ? <p role="status" className="dmx-unavailable">{message}</p> : null}
     {result ? <div className={`dmx-state ${result.seeded_from.outcome === "proposed" ? "dmx-state-ok" : "dmx-state-warning"}`} role="status">{result.seeded_from.outcome === "proposed" ? <><strong>Draft {result.procedure_id} rev {result.revision} seeded from {result.seeded_from.name}.</strong> {result.seeded_from.criteria} criteri{result.seeded_from.criteria === 1 ? "on" : "a"} and {result.seeded_from.immediate_actions} immediate action{result.seeded_from.immediate_actions === 1 ? "" : "s"} proposed from the first {result.seeded_from.pages_read} page{result.seeded_from.pages_read === 1 ? "" : "s"}. Nothing is reviewed yet - read the QRG beside the Draft before submitting it.</> : <><strong>Draft {result.procedure_id} rev {result.revision} created empty, with {result.seeded_from.name} attached.</strong> {result.seeded_from.reason} Fill the Draft in as usual; the QRG is already referenced.</>}</div> : null}
   </section>; }
+
+
+/**
+ * Where the SOP watch points, and how to move it.
+ *
+ * It used to come from an app setting, so correcting it needed an infra
+ * deploy - and when the configured folder did not exist, the only symptom was
+ * a walk that reported `not_found` at 06:30 to nobody in particular. An Admin
+ * browses to the folder instead, and what they choose outranks the setting.
+ */
+function SopFolderWatch({ report, onChanged }: { report: DecisionMatrixUnreferencedSops | null; onChanged: () => Promise<void> }) {
+  const [picking, setPicking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function choose(folder: { path: string; files: number; folders: number }) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await api.chooseDecisionMatrixSopFolder(folder.path ? { folder_path: folder.path } : { whole_library: true });
+      setPicking(false);
+      setMessage(`Now watching ${result.whole_library ? "the whole library" : result.folder}: ${result.documents_in_folder} document${result.documents_in_folder === 1 ? "" : "s"} directly in it${result.folders_in_folder ? ` and ${result.folders_in_folder} subfolder${result.folders_in_folder === 1 ? "" : "s"}` : ""}. It hasn't been walked yet, so nothing is reported from it until the morning walk runs.`);
+      await onChanged();
+    } catch (error) {
+      setMessage(error instanceof ApiError ? error.message : "The SOP folder could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const folder = report?.walk.folder;
+  const where = folder === null || folder === undefined ? null : folder === "" ? "the whole library" : folder;
+
+  return <section className="dmx-admin">
+    <h2>Where new SOPs are looked for</h2>
+    <p className="dmx-meta">
+      {where === null
+        ? "No folder is being watched, so SOPs without a Procedure aren't reported. Browse the approved library and choose the folder that holds them."
+        : report?.walk.chosen
+          ? <>Watching <strong>{where}</strong>, chosen here. Subfolders are included.</>
+          : <>Watching <strong>{where}</strong>, which came from this environment's configuration. Choosing a folder here replaces it for good.</>}
+    </p>
+    {picking
+      ? <DocumentPicker mode="folder" onChooseFolder={(folder) => void choose(folder)} onCancel={() => setPicking(false)} />
+      : <button type="button" className="btn-sm" disabled={busy} onClick={() => { setMessage(null); setPicking(true); }}>
+          {where === null ? "Choose the SOP folder" : "Change the SOP folder"}
+        </button>}
+    {message ? <p role="status">{message}</p> : null}
+  </section>;
+}
 
 function GovernanceRow({ item, onChanged }: { item: DecisionMatrixGovernanceProcedure; onChanged: () => Promise<void> }) { const { confirm } = useAppDialog(); const [reason, setReason] = useState(""); const [replacementProcedureId, setReplacementProcedureId] = useState(""); const [replacementRevision, setReplacementRevision] = useState(""); const [message, setMessage] = useState<string | null>(null); const [documentCheck, setDocumentCheck] = useState<DecisionMatrixDocumentCheck | null>(null); async function lifecycle(action: "submit_for_review" | "return_to_draft" | "approve" | "retire" | "withdraw") { if (!reason.trim()) { setMessage("A governance reason is required."); return; } if (action === "withdraw" && !await confirm({ title: "Emergency withdraw this guidance?", description: "Withdrawal immediately removes this approved guidance from the Decision Matrix.", confirmLabel: "Withdraw guidance", danger: true })) return; try { await api.governDecisionMatrixProcedureRevision(item.procedure_id, item.revision, { action, reason, replacement_procedure_id: replacementProcedureId || undefined, replacement_revision: replacementRevision ? Number(replacementRevision) : undefined, confirm_withdrawal: action === "withdraw" }); setReason(""); await onChanged(); } catch (error) { setMessage(error instanceof ApiError ? error.message : "Lifecycle decision could not be recorded."); const found = error instanceof ApiError ? (error.details as { document_check?: DecisionMatrixDocumentCheck } | undefined)?.document_check : undefined; if (found) setDocumentCheck(found); } } async function check() { setMessage(null); try { const result = await api.checkDecisionMatrixProcedureReferences(item.procedure_id, item.revision); setDocumentCheck(result); if (result.outcome === "not_configured") setMessage(result.reason); await onChanged(); } catch (error) { setDocumentCheck(null); setMessage(error instanceof ApiError ? error.message : "Document references could not be checked."); } } return <tr><td>{item.condition}<br /><span className="dmx-meta">rev {item.revision}</span></td><td>{item.lifecycle_state}</td><td>{item.review_overdue ? <strong>Overdue · {date(item.next_review_at)}</strong> : date(item.next_review_at)}</td><td>{item.unhealthy_reference_count ? `${item.unhealthy_reference_count} unhealthy` : "Valid"}{item.unchecked_reference_count ? ` · ${item.unchecked_reference_count} require check` : ""}</td><td><label className="sr-only" htmlFor={`reason-${item.procedure_id}-${item.revision}`}>Reason for lifecycle decision</label><input id={`reason-${item.procedure_id}-${item.revision}`} placeholder="Reason" value={reason} onChange={(event) => setReason(event.target.value)} />{item.lifecycle_state === "Approved" ? <><label className="sr-only" htmlFor={`replacement-procedure-${item.procedure_id}-${item.revision}`}>Approved replacement Procedure ID</label><input id={`replacement-procedure-${item.procedure_id}-${item.revision}`} placeholder="Replacement Procedure ID" value={replacementProcedureId} onChange={(event) => setReplacementProcedureId(event.target.value)} /><label className="sr-only" htmlFor={`replacement-revision-${item.procedure_id}-${item.revision}`}>Approved replacement revision</label><input id={`replacement-revision-${item.procedure_id}-${item.revision}`} placeholder="Replacement revision" type="number" min="1" value={replacementRevision} onChange={(event) => setReplacementRevision(event.target.value)} /></> : null}<div className="dmx-governance"><button className="btn-sm" type="button" onClick={check}>Check documents</button>{item.lifecycle_state === "Draft" ? <button className="btn-sm" type="button" onClick={() => lifecycle("submit_for_review")}>Submit</button> : null}{item.lifecycle_state === "Under review" ? <><button className="btn-sm" type="button" onClick={() => lifecycle("return_to_draft")}>Return</button><button className="btn-sm" type="button" onClick={() => lifecycle("approve")}>Approve</button></> : null}{item.lifecycle_state === "Approved" ? <><button className="btn-sm" type="button" onClick={() => lifecycle("retire")}>Retire with replacement</button><button className="btn-sm danger" type="button" onClick={() => lifecycle("withdraw")}>Emergency withdraw</button></> : null}</div>{message ? <span role="status" className="dmx-unavailable">{message}</span> : null}{documentCheck?.outcome === "checked" && documentCheck.document_references.length ? <ul className="dmx-check-results" aria-label="Document check results">{documentCheck.document_references.map((reference) => <li key={reference.reference_id} className={`dmx-check-result ${reference.health_status === "Valid" ? "valid" : "attention"}`}><strong>{reference.expected_file_name}</strong> · {reference.health_status}{reference.reason ? <span className="dmx-meta"> — {reference.reason}</span> : null}</li>)}</ul> : null}</td></tr>; }
 
