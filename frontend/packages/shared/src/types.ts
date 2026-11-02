@@ -432,6 +432,15 @@ export interface ProcedureDraft extends Omit<ProcedureDraftInput, "document_refe
 }
 
 /** What a QRG was asked to seed, as the author chose it. */
+/** Where the SOP watch points, after an Admin chose it. */
+export interface SopFolderChoice {
+  folder: string;
+  whole_library: boolean;
+  documents_in_folder: number;
+  folders_in_folder: number;
+  walked: false;
+}
+
 export interface QrgSeedChosenDocument {
   item_id: string;
   seen_version: string;
