@@ -109,11 +109,15 @@ test("the seeded roles", async (t) => {
     for (const action of recorder.actions) assert.ok(manager.actions.includes(action), action);
     assert.ok(!recorder.actions.includes("ridership.configure"));
     assert.ok(manager.actions.includes("ridership.configure"));
-    // Only the two ridership roles hold Ridership; System Administrator gets it through its wildcard.
+    // Only the ridership roles hold Ridership; System Administrator gets it through its wildcard.
     assert.deepEqual(
       SEEDED_ROLES.filter((r) => r.actions.some((a) => a.startsWith("ridership."))).map((r) => r.key),
-      ["ridership-recorder", "ridership-manager"],
+      ["ridership-recorder", "ridership-manager", "ridership-printer"],
     );
+  });
+
+  await t.test("Ridership Printer prints and nothing else: no counts, no garage list", () => {
+    assert.deepEqual(seededRole("ridership-printer")!.actions, ["ridership.print"]);
   });
 
   await t.test("exactly two roles are locked, and only one holds the wildcard", () => {

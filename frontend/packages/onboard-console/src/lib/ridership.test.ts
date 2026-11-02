@@ -10,14 +10,17 @@ import {
   draftFromSheet,
   dueLabel,
   garageChanges,
+  garageOptions,
   garageFromValue,
   garagePercent,
   garageValue,
   isOverridden,
   normalizeBlock,
+  parseBlockSelection,
   parseClock,
   parseSheetScan,
   printedTime,
+  reprintsAfterPrinting,
   rowInForce,
   saveFromDraft,
   sheetLinkBase,
@@ -186,6 +189,17 @@ describe("printing", () => {
     expect(blocksToPrint([row("024", "printed"), row("105", "changed"), row("212", "not_printed")])).toEqual(["105", "212"]);
   });
 
+  it("counts what the morning desk reprints: changed, new since its garage printed, and no longer running", () => {
+    const row = (block: string, garage: string | null, state: "not_printed" | "printed" | "changed") => ({ block, garage, order: 1, first_start_seconds: 0, trips: 1, pages: 1, state, printed_at: null, printed_by: null });
+    const status = {
+      service_date: "20261202", garages: ["Burnsville", "Eagan"], last_print: null, prints: [], not_printed: 0, changed: 0,
+      sheets: [row("024", "Burnsville", "printed"), row("105", "Burnsville", "changed"), row("106", "Burnsville", "not_printed"), row("212", "Eagan", "not_printed")],
+      dropped: [{ block: "330", printed_at: "2026-12-02T03:05:00Z", printed_by: "desk@example.test" }],
+    };
+    // Eagan never printed, so its 212 is a first print, not a reprint.
+    expect(reprintsAfterPrinting(status)).toEqual({ changed: ["105"], added: ["106"], dropped: ["330"], total: 3 });
+  });
+
   it("points the QR link at this console until the operator app has an address", () => {
     expect(sheetLinkBase("https://ops.example.test", "/console/")).toBe("https://ops.example.test/console");
     expect(sheetLinkBase("http://localhost:5173", "/")).toBe("http://localhost:5173");
@@ -203,5 +217,21 @@ describe("printing", () => {
   it("gives Unassigned a select value of its own", () => {
     expect(garageFromValue(garageValue(null))).toBeNull();
     expect(garageFromValue(garageValue("Eagan"))).toBe("Eagan");
+  });
+});
+
+describe("block → garage selection", () => {
+  it("reads numbers and ranges as three-digit blocks, low to high", () => {
+    expect(parseBlockSelection("3-1, 306 309")).toEqual(["001", "002", "003", "306", "309"]);
+    expect(parseBlockSelection("69\u201367")).toEqual(["067", "068", "069"]);
+  });
+  it("refuses anything that is not a block or a range", () => {
+    expect(parseBlockSelection("")).toBeNull();
+    expect(parseBlockSelection("1-69, abc")).toBeNull();
+    expect(parseBlockSelection("1000")).toBeNull();
+  });
+  it("offers MVTA's garages first and keeps any other name already saved", () => {
+    expect(garageOptions([])).toEqual(["Burnsville", "Eagan"]);
+    expect(garageOptions(["Eagan", "Old garage"])).toEqual(["Burnsville", "Eagan", "Old garage"]);
   });
 });
