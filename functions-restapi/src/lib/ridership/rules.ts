@@ -51,6 +51,22 @@ export function guideRoute(shortName: string | null, routeId: string | null): st
   return short ?? id;
 }
 
+/**
+ * The trip as Avail and dispatch name it: "320-E", the trip number and the
+ * direction letter. MVTA's GTFS trip_id carries that number in hexadecimal as
+ * its first part - "t140-b1F5-sl1B-v64" is trip 320, and the number is the
+ * scheduled start as H:MM (3:20 AM) - as the block part carries the block (1F5
+ * is 501). Checked against every Dispatch Log trip on 2026-11-01/02 (847 of
+ * 847). Null for an id not in that form, so the sheet falls back to the id.
+ */
+export function availTripNumber(tripId: string, directionLabel: string | null): string | null {
+  const match = tripId.match(/^t([0-9A-Fa-f]{1,4})-b[0-9A-Fa-f]+-/);
+  if (!match) return null;
+  const number = parseInt(match[1], 16);
+  const letter = directionLabel?.trim().toUpperCase().match(/^([NSEW])(B|BOUND)?$/)?.[1];
+  return letter ? `${number}-${letter}` : String(number);
+}
+
 /** "20261201" -> "2026-12-01", the DATE form RidershipBlockGarages keys on. */
 export function isoDate(serviceDate: string): string {
   return `${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}`;
