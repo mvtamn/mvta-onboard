@@ -10,7 +10,7 @@ const DAY = "20261202";
 
 function trip(block: string | null, tripId: string, start: number, extra: Partial<LoggedTrip> = {}): LoggedTrip {
   return {
-    service_date: DAY, trip_id: tripId, block, route_short_name: "460", direction_label: "N",
+    service_date: DAY, trip_id: tripId, block, route_short_name: "460", route_label: "460", direction_label: "N",
     scheduled_start_seconds: start, scheduled_end_seconds: start + 2700, start_status: "unknown", ...extra,
   };
 }
@@ -49,6 +49,13 @@ test("Unassigned blocks print as their own stack, so none goes missing", () => {
 test("a garage row from a later service change does not move the date's sheets", () => {
   const moved = [...GARAGES, { block: "212", effective_from: "2026-12-05", garage: "Burnsville" }];
   assert.deepEqual(sheetsToPrint(TRIPS, moved, DAY, "Eagan").map((s) => s.block), ["212"]);
+});
+
+test("a route named in GTFS prints as the guide's number, and still changes the fingerprint if it moves", () => {
+  const orange = sheetsToPrint([trip("009", "o-1", 20000, { route_short_name: "Orange LINK", route_label: "425" })], [], DAY, null)[0];
+  assert.equal(orange.trips[0].route_label, "425");
+  const renamed = sheetsToPrint([trip("009", "o-1", 20000, { route_short_name: "Orange LINK", route_label: "426" })], [], DAY, null)[0];
+  assert.notEqual(renamed.fingerprint, orange.fingerprint);
 });
 
 test("a block continues on a second page past 14 trips", () => {

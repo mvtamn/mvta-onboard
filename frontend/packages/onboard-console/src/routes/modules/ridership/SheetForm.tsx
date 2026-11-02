@@ -201,11 +201,11 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
                   <span className="ridership-trip-time">{timeSpan(trip.scheduled_start_seconds, trip.scheduled_end_seconds)}</span>
                   <span className="ridership-trip-id mono" title="GTFS trip ID">{trip.trip_id}</span>
                 </td>
-                <td>{trip.route_short_name ?? "-"}</td>
+                <td title={trip.route_short_name && trip.route_short_name !== trip.route_label ? trip.route_short_name : undefined}>{trip.route_label ?? "-"}</td>
                 <td>{directionLetter(trip.direction_label)}</td>
                 <td>{trip.excused_reason ? EXCUSED_LABEL[trip.excused_reason] : START_STATUS_LABEL[trip.start_status]}</td>
                 <td className="num">
-                  <input data-flow data-trip={trip.trip_id} aria-label={`Boardings, ${trip.route_short_name ?? "route ?"} ${directionLetter(trip.direction_label)} ${clock(trip.scheduled_start_seconds)}`} inputMode="numeric" autoComplete="off"
+                  <input data-flow data-trip={trip.trip_id} aria-label={`Boardings, ${trip.route_label ?? "route ?"} ${directionLetter(trip.direction_label)} ${clock(trip.scheduled_start_seconds)}`} inputMode="numeric" autoComplete="off"
                     className={meaning ? "is-letter" : undefined} value={cell} disabled={readOnly}
                     placeholder={trip.required ? "" : "-"} onKeyDown={onFlowKey} onChange={(e) => setCell(trip.trip_id, e.target.value)} />
                 </td>
