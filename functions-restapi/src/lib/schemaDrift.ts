@@ -129,6 +129,16 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     column: "scheduled_end_seconds",
     breaks: "Count Sheets show no scheduled end time for their trips",
   },
+  {
+    migration: "157",
+    table: "RidershipPrintRuns",
+    breaks: "Ridership: Count Sheets cannot be printed, and nobody can see whether a garage has printed",
+  },
+  {
+    migration: "157",
+    table: "RidershipPrintedSheets",
+    breaks: "Ridership: a block changed in the Dispatch Log since printing is not flagged for reprint",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */

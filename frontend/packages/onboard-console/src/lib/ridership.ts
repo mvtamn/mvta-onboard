@@ -8,6 +8,8 @@ import {
   type RidershipCountStatus,
   type RidershipExcusedReason,
   type RidershipGarageCompleteness,
+  type RidershipPrintState,
+  type RidershipPrintStatusSheet,
   type RidershipPulloutRun,
   type RidershipSheet,
   type RidershipSheetSave,
@@ -267,6 +269,12 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
 
 export const sheetKey = (serviceDate: string, block: string) => `${serviceDate}|${block}`;
 
+/** "7" -> "007": a block as the sheet prints it, or null when it is not up to three digits. */
+export function normalizeBlock(value: string): string | null {
+  const trimmed = value.trim();
+  return /^\d{1,3}$/.test(trimmed) ? trimmed.padStart(3, "0") : null;
+}
+
 export function splitSheetKey(key: string): { serviceDate: string; block: string } {
   const [serviceDate, block] = key.split("|");
   return { serviceDate, block };
@@ -322,3 +330,48 @@ export function garageChanges(
     .filter(({ block, garage }) => (rowInForce(rows, block, day)?.garage ?? null) !== garage)
     .sort((a, b) => a.block.localeCompare(b.block));
 }
+
+// ---------------------------------------------------------------- printing
+
+/** A Central calendar day as YYYY-MM-DD, `offset` days from today; tomorrow is the sheets the desk prints tonight. */
+export function centralDay(offset: number, now: Date = new Date()): string {
+  return new Date(now.getTime() + offset * 86_400_000).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+}
+
+export const PRINT_STATE_LABEL: Record<RidershipPrintState, string> = {
+  not_printed: "Not printed",
+  printed: "Printed",
+  changed: "Changed since printed",
+};
+
+export const PRINT_STATE_TONE: Record<RidershipPrintState, "ok" | "warn" | "muted"> = {
+  not_printed: "muted",
+  printed: "ok",
+  changed: "warn",
+};
+
+/** When a sheet was printed, in Central: "Tue, Dec 1 21:05". */
+export function printedTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).replace(/,(?= \d{2}:)/, "");
+}
+
+/** The blocks a desk still needs to print: never printed, or changed since. */
+export function blocksToPrint(sheets: readonly RidershipPrintStatusSheet[]): string[] {
+  return sheets.filter((s) => s.state !== "printed").map((s) => s.block);
+}
+
+/**
+ * Where the printed QR link points until the operator app has an address of
+ * its own (spec §15): this console, whose /r/<date>/<block> route opens the
+ * sheet after sign-in. The API swaps in RIDERSHIP_SHEET_LINK_BASE when it is set.
+ */
+export function sheetLinkBase(origin: string, basePath: string): string {
+  return new URL(basePath, origin).href.replace(/\/+$/, "");
+}
+
+/** Select values for a garage, where null (Unassigned) needs a string of its own. */
+export const UNASSIGNED_VALUE = "\u0000unassigned";
+export const garageValue = (garage: string | null) => garage ?? UNASSIGNED_VALUE;
+export const garageFromValue = (value: string) => (value === UNASSIGNED_VALUE ? null : value);
