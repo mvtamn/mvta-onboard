@@ -431,6 +431,39 @@ export interface ProcedureDraft extends Omit<ProcedureDraftInput, "document_refe
   concurrency_token: string;
 }
 
+/** What a QRG was asked to seed, as the author chose it. */
+export interface QrgSeedChosenDocument {
+  item_id: string;
+  seen_version: string;
+  document_code: string;
+}
+
+export interface QrgSeedInput {
+  procedure_id: string;
+  condition_key: string;
+  condition: string;
+  qrg: QrgSeedChosenDocument;
+  /** The governing document. A QRG can never be a Procedure's primary one. */
+  primary: QrgSeedChosenDocument & { document_type: "SOP" | "Reference" };
+}
+
+export interface QrgSeedResult {
+  procedure_id: string;
+  revision: number;
+  lifecycle_state: "Draft";
+  /** Whether the author is reviewing proposed guidance or filling in an empty
+   *  Draft, and why if it is empty. */
+  seeded_from: {
+    name: string;
+    outcome: "proposed" | "empty";
+    reason: string | null;
+    pages_read: number;
+    criteria: number;
+    immediate_actions: number;
+  };
+  reviewed: false;
+}
+
 export interface ProcedureDraftSaveResult {
   procedure_id: string;
   revision: number;
