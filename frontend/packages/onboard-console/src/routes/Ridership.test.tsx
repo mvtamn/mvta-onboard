@@ -102,10 +102,10 @@ describe("Ridership › Enter sheets", () => {
     await screen.findByRole("table");
     await user.keyboard("{Enter}");
     // The first sheet opens with its first blank trip focused.
-    const first = await screen.findByLabelText("Boardings, trip 105-1");
+    const first = await screen.findByLabelText("Boardings, 460 N 6:00 AM");
     expect(document.activeElement).toBe(first);
     await user.keyboard("12{Enter}");
-    expect(document.activeElement).toBe(screen.getByLabelText("Boardings, trip 105-2"));
+    expect(document.activeElement).toBe(screen.getByLabelText("Boardings, 460 S 7:00 AM"));
     await user.keyboard("n{Enter}");
     expect(document.activeElement).toBe(screen.getByRole("button", { name: /Save · next sheet/ }));
     await user.keyboard("{Enter}");
@@ -124,12 +124,21 @@ describe("Ridership › Enter sheets", () => {
     expect(screen.getByRole("status").textContent).toMatch(/Block 105 .* saved\. Now on block 024/);
   });
 
+  it("names each trip as the paper sheet does, with its GTFS id beneath", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "105" }));
+    const row = (await screen.findByLabelText("Boardings, 460 N 6:00 AM")).closest("tr")!;
+    expect(within(row).getByText("6:00 AM – 6:40 AM")).toBeTruthy();
+    expect(within(row).getByTitle("GTFS trip ID").textContent).toBe("105-1");
+  });
+
   it("fetches the next sheet while this one is keyed, so Save opens it at once", async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole("table");
     await user.keyboard("{Enter}");
-    await screen.findByLabelText("Boardings, trip 105-1");
+    await screen.findByLabelText("Boardings, 460 N 6:00 AM");
     await waitFor(() => expect(getRidershipSheet).toHaveBeenCalledWith("20261130", "024"));
     await user.keyboard("1{Enter}2{Control>}{Enter}{/Control}");
     expect(await screen.findByRole("heading", { name: "Block 024" })).toBeTruthy();
@@ -144,10 +153,10 @@ describe("Ridership › Enter sheets", () => {
     renderPage();
     await screen.findByRole("table");
     await user.keyboard("{Enter}");
-    await screen.findByLabelText("Boardings, trip 105-1");
+    await screen.findByLabelText("Boardings, 460 N 6:00 AM");
     await user.keyboard("{Control>}{Enter}{/Control}");
     expect((await screen.findByRole("alert")).textContent).toMatch(/2 trips still blank/);
-    expect(document.activeElement).toBe(screen.getByLabelText("Boardings, trip 105-1"));
+    expect(document.activeElement).toBe(screen.getByLabelText("Boardings, 460 N 6:00 AM"));
     expect(saveRidershipSheet).not.toHaveBeenCalled();
   });
 
@@ -156,7 +165,7 @@ describe("Ridership › Enter sheets", () => {
     renderPage();
     await screen.findByRole("table");
     await user.keyboard("{Enter}");
-    await screen.findByLabelText("Boardings, trip 105-1");
+    await screen.findByLabelText("Boardings, 460 N 6:00 AM");
     await user.keyboard("7{Escape}");
     expect((await screen.findByRole("alert")).textContent).toMatch(/not saved/);
     expect(screen.getByRole("heading", { name: "Block 105" })).toBeTruthy();
@@ -170,7 +179,7 @@ describe("Ridership › Enter sheets", () => {
     renderPage();
     await screen.findByRole("table");
     await user.keyboard("{Enter}");
-    await screen.findByLabelText("Boardings, trip 105-1");
+    await screen.findByLabelText("Boardings, 460 N 6:00 AM");
     await user.keyboard("1{Enter}2{Control>}{Enter}{/Control}");
     expect((await screen.findByRole("alert")).textContent).toMatch(/Someone else saved/);
     const before = getRidershipSheet.mock.calls.filter(([, block]) => block === "105").length;
@@ -330,7 +339,7 @@ describe("Ridership gating", () => {
     expect(screen.queryByRole("button", { name: /Start entering/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Print sheets" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "105" }));
-    expect((await screen.findByLabelText("Boardings, trip 105-1") as HTMLInputElement).disabled).toBe(true);
+    expect((await screen.findByLabelText("Boardings, 460 N 6:00 AM") as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
   });
 

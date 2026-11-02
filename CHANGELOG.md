@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.6.71] - 2026-11-01
+## [1.6.74] - 2026-11-01
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,32 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.6.73] - 2026-11-01
+
+- **A route/stop/day of week Avail stops returning kept its figure forever, and since 1.6.43 could never be stamped.** The monthly upsert is a MERGE, and a MERGE says nothing about rows its source did not mention — harmless while a row could only gain figures, and not harmless once `measurement_parameters` meant "the standard this figure was polled under". 1.6.48 found the 11 rows and deliberately left them: deleting history on a feed's say-so is a decision. ADR 0044 is that decision, and this is it built.
+- **The symptom that matters is not the figures, it is the list.** ADR 0042 derives "months measured under a different standard" from the stamps, so those 11 unstampable rows would have held 2026-05, 2026-08 and 2026-09 on the re-pull list permanently, each with a Re-pull button that could not clear them. A list that cannot reach empty stops being read, which is the one thing it was built not to be. The figures move by 0.014 points in 2026-05 (87.560% → 87.574%), 0.001 in 2026-08 and 0.005 in 2026-09.
+- **Retired means archived and removed, not flagged.** Eleven queries in ten places read `OtpMonthlyRouteStopDay` — the month module, the OTP month endpoint, the flagged-stop rule, route classification, the date-exclusion snapshot, the provenance read, and the reporting views of migrations 106, 140, 141 and 151. A flag one reader forgot would be a figure that disagrees with itself depending on which query asked; a deleted row cannot be half-applied. `OtpMonthlyRetiredKeys` (migration 152) holds the row whole — figures, `first_seen_at`, `updated_at` and its stamp — with why it was retired and by what, and `vw_OtpMonthlyRetiredKeys` publishes it to `mvta_reporting_ro`.
+- **Absence alone retires nothing.** A truncated response and a month that genuinely shrank look identical from the payload, so `retirementDecision` requires the poll to have accounted for at least 90% of the month's stored keys, and the callers additionally require every one of their own upserts to have landed. The real cases are 1–8 keys in 850–1,000 (0.1–0.9%), so anything near the threshold is not the case this exists for — what it rules out is arithmetic over a bad delivery.
+- **A refused retirement is the loud path.** Short coverage logs a warning, and `POST /otp-historical-backfill` returns `retirement_note`, which the backfill panel shows with "worth checking with Avail before trusting this month" — a month that really lost a tenth of its keys is a question for a human, not a cleanup. The quiet path is the one that retires.
+- **Self-healing both ways.** If Avail sends the key again the upsert inserts it, stamped with the standard of the poll that brought it back, and the archive keeps the earlier life — so a key that comes and goes leaves a history rather than a row that quietly changed meaning. There is no unretire to get wrong.
+- **The daily table is left alone**, deliberately: `OtpDailyRouteStopHour` keys on a date and an hour, the re-pull list does not read it, and no stranded row has been seen there. `OtpMonthlyRestatements` keeps pointing at retired keys, also deliberately — migration 141's ledger carries no foreign key precisely so history outlives the figure it describes.
+- Proved against real SQL: nothing is deleted that is not archived in the same transaction, a short payload removes nothing, only the named month is at risk, a returning key is stored again with both lives on the record, and the migration's one-off repair spares a month that has not been re-polled since 151.
+- Apply migration 152 after this deploys. It archives and removes the 11 stranded rows; nothing else in the table changes.
+## [1.6.72] - 2026-11-01
+
+Count Sheets name trips as MVTA's current guide does (request from the Enter sheets screen, Block 501 route 495). Display only: no API, stored value or migration change. The REST app restarts on merge, because the printed sheet is drawn there.
+
+- **Where the trip information comes from.** The Dispatch Log (`TripStartLog`), which is materialized from the GTFS static schedule. The `t140-b1F5-sl1B-v64` labels are GTFS `trip_id`s.
+- **The times were right.** Block 501's first route 495 trip, Oct 25, is scheduled at 12,000 s past the service day's midnight. GTFS `first_departure_seconds` agrees, and `scheduled_start_at` is 08:20 UTC, which is 3:20 AM CDT, from Mystic Lake Casino. The bus actually left at 3:21 AM (`actual_start_at` 08:21:34 UTC). Access shows the same trip at 3:20 AM – 4:40 AM. It is real early service, not a time zone or seconds conversion error.
+- **The guide's identifier.** The paper Count Sheet's "Ride Detail" is the scheduled start and end (`2:26 PM - 3:11 PM`) beside the route. Access keys the row by Route, a one-letter Direction, and Start/End in 12-hour time. Its TripID column is blank for 495 trips, and its rule is still unconfirmed (build plan decision 6). So the visible label is now the time span, and the GTFS `trip_id` stays as the key, shown small beneath (title "GTFS trip ID").
+- **Console** (`lib/ridership.ts`):
+  - `clock()` is 12-hour (`3:20 AM`; 24:40 shows as `12:40 AM`). New helpers: `timeSpan()`, `directionLetter()` (EB → E), and `editableClock()`, which keeps 24:40 for an unscheduled start after midnight so it reads back the same.
+  - `parseClock()` accepts `7:30 PM` / `12:15 am` as well as 24-hour input.
+  - Sheet form: the Trip column shows the time span with the id beneath, and the separate Time column is gone. Boardings boxes are labelled `Boardings, 495 E 3:20 AM`.
+  - Print sheets' first-trip time is 12-hour.
+- **Printed sheet** (`countSheetPdf.ts`): the "Ride" column reads `5:20 AM - 6:40 AM`, the direction is one letter, the unscheduled rows' start has AM / PM to circle, and the footer's print time is 12-hour. A full 14-trip page still fits.
+- Tests: console `ridership.test.ts` (12-hour clock, span, AM/PM parsing, round trip after midnight, direction letter) and `Ridership.test.tsx` (+1: a trip shows `6:00 AM – 6:40 AM` with its GTFS id). REST `print.test.ts` (12-hour clock and print time, direction letter).
 
 ## [1.6.70] - 2026-11-01
 

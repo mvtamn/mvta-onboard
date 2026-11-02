@@ -5,6 +5,8 @@ import {
   cellFromInput,
   centralDay,
   clock,
+  directionLetter,
+  editableClock,
   draftFromSheet,
   dueLabel,
   garageChanges,
@@ -19,6 +21,7 @@ import {
   rowInForce,
   saveFromDraft,
   sheetLinkBase,
+  timeSpan,
 } from "./ridership.js";
 
 const sheet = (overrides: Partial<RidershipSheet> = {}): RidershipSheet => ({
@@ -60,9 +63,23 @@ describe("a trip's box", () => {
 });
 
 describe("times and dates", () => {
-  it("prints GTFS seconds as the sheet's clock and reads typed starts", () => {
-    expect(clock(21600)).toBe("06:00");
-    expect(clock(88_800)).toBe("00:40");
+  it("shows GTFS seconds as the guide's 12-hour clock and reads typed starts", () => {
+    expect(clock(21600)).toBe("6:00 AM");
+    expect(clock(12000)).toBe("3:20 AM");
+    expect(clock(43200)).toBe("12:00 PM");
+    expect(clock(88_800)).toBe("12:40 AM");
+    expect(timeSpan(19200, 24000)).toBe("5:20 AM – 6:40 AM");
+    expect(timeSpan(19200, null)).toBe("5:20 AM");
+    expect(parseClock("7:30 PM")).toBe(70200);
+    expect(parseClock("12:15 am")).toBe(900);
+    expect(parseClock("12:15 PM")).toBe(44100);
+    expect(parseClock("13:15 PM")).toBeNull();
+    expect(editableClock(70200)).toBe("7:30 PM");
+    expect(editableClock(88_800)).toBe("24:40");
+    expect(parseClock(editableClock(88_800))).toBe(88_800);
+    expect(directionLetter("EB")).toBe("E");
+    expect(directionLetter("S")).toBe("S");
+    expect(directionLetter(null)).toBe("-");
     expect(parseClock("7:30")).toBe(27000);
     expect(parseClock("0730")).toBe(27000);
     expect(parseClock("24:40")).toBe(88_800);
