@@ -80,12 +80,15 @@ kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.
 .ridership-tabs button { background: none; border: none; border-bottom: 2px solid transparent; padding: 6px 12px; font: inherit; color: var(--text-muted); cursor: pointer; }
 .ridership-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--brand-green); font-weight: 600; }
 .ridership-tabs button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ridership-tabs .ridership-pill { margin-left: 6px; font-weight: 600; }
 
 /* Print sheets: the print log's word on the chosen garage. */
 .ridership-print-status { border: 1px solid var(--border); border-left-width: 4px; border-radius: 4px; padding: 8px 12px; }
 .ridership-print-status.is-ok { border-left-color: var(--pill-success-fg); }
 .ridership-print-status.is-warn { border-left-color: var(--pill-warning-fg); }
 .ridership-print-status.is-todo { border-left-color: var(--border-strong); }
+/* Today's changed sheets, above the toolbar while the desk looks at tomorrow. */
+.ridership-print > .ridership-print-status[role="note"] { margin-bottom: 12px; }
 
 @media (max-width: 640px) {
   .ridership-who { grid-template-columns: 1fr; }
