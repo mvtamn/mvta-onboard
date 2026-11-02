@@ -946,6 +946,15 @@ Procedure may be missing, not a fault; a document used only by Superseded or
 Retired revisions is unreferenced again.
 _Avoid_: orphan document, sync change, unhealthy reference
 
+**QRG-Seeded Draft**:
+A Procedure Draft whose Criteria and Immediate Actions were proposed by reading
+a QRG in the Approved Document Library, rather than typed. It is a Draft and
+nothing more: every field is unreviewed until a person reviews it, and it
+reaches Approved only through the same review as any other Draft. The QRG is a
+Supporting Document Reference on it, never its Primary Supporting Document
+Reference, and never the source of the approved guidance.
+_Avoid_: imported procedure, generated procedure, content sync
+
 **Primary Supporting Document Reference**:
 The one required Supporting Document Reference for a Procedure Revision. It
 is an SOP or Reference and provides the unambiguous source-document action;

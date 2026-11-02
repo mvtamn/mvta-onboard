@@ -5,7 +5,7 @@ import { ApiError } from "@mvta/shared";
 import { DecisionMatrixAdmin, unreferencedSopNotice } from "./DecisionMatrixAdmin.js";
 import type { DecisionMatrixUnreferencedSops } from "@mvta/shared";
 
-vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn(), getDecisionMatrixUnreferencedSops: vi.fn() } }));
+vi.mock("../config.js", () => ({ api: { getDecisionMatrixGovernanceQueue: vi.fn(), getDecisionMatrixAudit: vi.fn(), getDecisionMatrixMatchRules: vi.fn(), getDecisionMatrix: vi.fn(), getDecisionMatrixLegacyCandidates: vi.fn(), checkDecisionMatrixProcedureReferences: vi.fn(), governDecisionMatrixProcedureRevision: vi.fn(), getDecisionMatrixLibrary: vi.fn(), createDecisionMatrixProcedureDraft: vi.fn(), getDecisionMatrixUnreferencedSops: vi.fn(), seedDecisionMatrixDraftFromQrg: vi.fn() } }));
 import { api } from "../config.js";
 import { AppDialogProvider } from "../components/AppDialog.js";
 
@@ -129,11 +129,11 @@ describe("Decision Matrix administration", () => {
     vi.mocked(api.createDecisionMatrixProcedureDraft).mockResolvedValue({ procedure_id: "vehicle-collision", revision: 1, lifecycle_state: "Draft", concurrency_token: "0x01" });
     render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "Create Draft" });
+    const form = within((await screen.findByRole("button", { name: "Create Draft" })).closest("form")!);
     for (const [label, value] of [["Procedure ID", "vehicle-collision"], ["Condition key", "vehicle-collision"], ["Condition", "Vehicle collision"], ["Criterion", "A collision is reported."], ["Immediate action", "Notify command staff."], ["Severity meaning", "Hold service."], ["Owner team", "Operations Control Center"], ["Effective date", "2026-09-20"], ["Next review date", "2027-03-20"], ["Primary SOP code", "SOP-OCC-001"]]) {
-      await user.type(screen.getByLabelText(label, { exact: true }), value);
+      await user.type(form.getByLabelText(label, { exact: true }), value);
     }
-    await user.click(screen.getByRole("button", { name: /Browse the approved library/i }));
+    await user.click(form.getByRole("button", { name: /Browse the approved library/i }));
     await user.click(await screen.findByRole("button", { name: /SOP-OCC-001\.docx/ }));
     await user.click(screen.getByRole("button", { name: "Create Draft" }));
     expect(vi.mocked(api.createDecisionMatrixProcedureDraft).mock.calls[0]?.[0].document_references).toEqual([
@@ -275,7 +275,7 @@ describe("SOPs no Procedure uses", () => {
     expect(screen.getByRole("button", { name: "Choose a different document" })).toBeInTheDocument();
     expect(screen.getAllByText("SOP-OCC-014 Bus bridge.docx", { selector: "strong" }).length).toBe(2);
     expect(screen.getByText("in _SOPs/_OCC Documents", { selector: ".dmx-chosen .dmx-meta" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Procedure ID")).toHaveFocus();
+    expect(within(screen.getByRole("button", { name: "Create Draft" }).closest("form")!).getByLabelText("Procedure ID")).toHaveFocus();
   });
 
   it("a report that cannot be read leaves the rest of the workspace working", async () => {
@@ -283,5 +283,78 @@ describe("SOPs no Procedure uses", () => {
     render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
     expect(await screen.findByRole("button", { name: "Create Draft" })).toBeInTheDocument();
     expect(screen.queryByText(/aren't used by any Procedure|isn't used by any Procedure/)).not.toBeInTheDocument();
+  });
+});
+
+describe("starting a Draft from a QRG", () => {
+  const library = {
+    entries: [
+      { item_id: "item-qrg", name: "QRG-014 Bus bridge.pdf", kind: "file" as const, path: "_SOPs/QRG-014 Bus bridge.pdf", mime_type: "application/pdf", size_bytes: 1024, etag: '"{Q},2"', last_modified_at: null, child_count: null, web_url: null },
+      { item_id: "item-sop", name: "SOP-OCC-014.docx", kind: "file" as const, path: "_SOPs/SOP-OCC-014.docx", mime_type: "application/pdf", size_bytes: 2048, etag: '"{S},1"', last_modified_at: null, child_count: null, web_url: null },
+    ],
+    diagnostics: { configured: true, outcome: "ok" as const, path: "", reason: null, folder_count: 0, file_count: 2 },
+  };
+
+  async function fillAndChoose(user: ReturnType<typeof userEvent.setup>) {
+    const form = within((await screen.findByRole("button", { name: "Seed a Draft" })).closest("form")!);
+    for (const [label, value] of [["Procedure ID", "dm-bus-bridge"], ["Condition key", "bus-bridge"], ["Condition", "Rail replacement bus bridge"], ["QRG code", "QRG-014"], ["Governing document code", "SOP-OCC-014"]]) {
+      await user.type(form.getByLabelText(label, { exact: true }), value);
+    }
+    await user.click(form.getByRole("button", { name: "Browse for the QRG" }));
+    await user.click(await screen.findByRole("button", { name: /QRG-014 Bus bridge\.pdf/ }));
+    await user.click(form.getByRole("button", { name: "Browse for the governing document" }));
+    await user.click(await screen.findByRole("button", { name: /SOP-OCC-014\.docx/ }));
+    return form;
+  }
+
+  it("sends the QRG and the governing document as the author chose them, and says nothing is reviewed", async () => {
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(library);
+    vi.mocked(api.seedDecisionMatrixDraftFromQrg).mockResolvedValue({
+      procedure_id: "dm-bus-bridge", revision: 1, lifecycle_state: "Draft", reviewed: false,
+      seeded_from: { name: "QRG-014 Bus bridge.pdf", outcome: "proposed", reason: null, pages_read: 4, criteria: 3, immediate_actions: 1 },
+    });
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    const user = userEvent.setup();
+    const form = await fillAndChoose(user);
+    await user.click(form.getByRole("button", { name: "Seed a Draft" }));
+
+    expect(vi.mocked(api.seedDecisionMatrixDraftFromQrg).mock.calls[0]?.[0]).toEqual({
+      procedure_id: "dm-bus-bridge", condition_key: "bus-bridge", condition: "Rail replacement bus bridge",
+      qrg: { item_id: "item-qrg", seen_version: '"{Q},2"', document_code: "QRG-014" },
+      primary: { item_id: "item-sop", seen_version: '"{S},1"', document_code: "SOP-OCC-014", document_type: "SOP" },
+    });
+    expect(await screen.findByText(/3 criteria and 1 immediate action proposed/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is reviewed yet/)).toBeInTheDocument();
+  });
+
+  it("an empty Draft says why, rather than reading as a failure", async () => {
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(library);
+    vi.mocked(api.seedDecisionMatrixDraftFromQrg).mockResolvedValue({
+      procedure_id: "dm-bus-bridge", revision: 1, lifecycle_state: "Draft", reviewed: false,
+      seeded_from: { name: "QRG-014 Bus bridge.pdf", outcome: "empty", reason: "The model proposed no criteria and no immediate actions.", pages_read: 4, criteria: 0, immediate_actions: 0 },
+    });
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    const user = userEvent.setup();
+    const form = await fillAndChoose(user);
+    await user.click(form.getByRole("button", { name: "Seed a Draft" }));
+
+    expect(await screen.findByText(/created empty, with QRG-014 Bus bridge\.pdf attached/)).toBeInTheDocument();
+    expect(screen.getByText(/proposed no criteria and no immediate actions/)).toBeInTheDocument();
+  });
+
+  it("asks for the governing document instead of sending a Draft that could never be submitted", async () => {
+    vi.mocked(api.getDecisionMatrixLibrary).mockResolvedValue(library);
+    render(<AppDialogProvider><DecisionMatrixAdmin /></AppDialogProvider>);
+    const user = userEvent.setup();
+    const form = within((await screen.findByRole("button", { name: "Seed a Draft" })).closest("form")!);
+    for (const [label, value] of [["Procedure ID", "dm-bus-bridge"], ["Condition key", "bus-bridge"], ["Condition", "Bus bridge"], ["QRG code", "QRG-014"], ["Governing document code", "SOP-OCC-014"]]) {
+      await user.type(form.getByLabelText(label, { exact: true }), value);
+    }
+    await user.click(form.getByRole("button", { name: "Browse for the QRG" }));
+    await user.click(await screen.findByRole("button", { name: /QRG-014 Bus bridge\.pdf/ }));
+    await user.click(form.getByRole("button", { name: "Seed a Draft" }));
+
+    expect(await screen.findByText(/A QRG cannot be a Procedure's primary document/)).toBeInTheDocument();
+    expect(vi.mocked(api.seedDecisionMatrixDraftFromQrg)).not.toHaveBeenCalled();
   });
 });
