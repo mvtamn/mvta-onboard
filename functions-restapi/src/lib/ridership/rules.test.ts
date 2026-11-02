@@ -5,6 +5,7 @@ import {
   checkSheetSave,
   excusedReason,
   garageOn,
+  availTripNumber,
   guideRoute,
   isOperatorOverridden,
   normalizeBlock,
@@ -237,6 +238,16 @@ test("history records only what changed, and a first save records what it sets",
 });
 
 // --- the route as the guide names it -----------------------------------------------
+
+test("a trip prints as Avail numbers it: the GTFS id's first part, read as hexadecimal, and the direction", () => {
+  assert.equal(availTripNumber("t140-b1F5-sl1B-v64", "EB"), "320-E", "block 501's 3:20 AM trip");
+  assert.equal(availTripNumber("t20E-b9-sl1C-v65", "NB"), "526-N");
+  assert.equal(availTripNumber("t4D3-b12D-sl1C-v65", "N"), "1235-N");
+  assert.equal(availTripNumber("t140-b1F5-sl1B-v64", null), "320", "no direction, no letter");
+  assert.equal(availTripNumber("t140-b1F5-sl1B-v64", "Loop"), "320");
+  assert.equal(availTripNumber("1436999", "EB"), null, "not MVTA's form: the sheet prints the id");
+  assert.equal(availTripNumber("105-1", "N"), null);
+});
 
 test("a route prints as its number: Orange LINK is route 425", () => {
   assert.equal(guideRoute("460", "460"), "460");

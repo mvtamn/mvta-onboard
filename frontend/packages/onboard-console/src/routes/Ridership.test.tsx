@@ -49,8 +49,8 @@ const sheetFor = (service_date: string, block: string, overrides: Partial<Riders
   pullout: { prefill: { run: 1, operator_name: "Test Operator A", operator_id: "9001", bus: "4401" }, other_runs: [{ run: 2, operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" }] },
   header: null, version: null,
   trips: [
-    { trip_id: `${block}-1`, route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
-    { trip_id: `${block}-2`, route_short_name: "460", route_label: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: 27000, start_status: "unknown", required: true, excused_reason: null, entry: null },
+    { trip_id: `${block}-1`, route_short_name: "460", route_label: "460", trip_number: "600-N", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
+    { trip_id: `${block}-2`, route_short_name: "460", route_label: "460", trip_number: null, direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: 27000, start_status: "unknown", required: true, excused_reason: null, entry: null },
   ],
   added_trips: [], progress: progress(2), history: [],
   ...overrides,
@@ -126,13 +126,16 @@ describe("Ridership › Enter sheets", () => {
     expect(screen.getByRole("status").textContent).toMatch(/Block 105 .* saved\. Now on block 024/);
   });
 
-  it("names each trip as the paper sheet does, with its GTFS id beneath", async () => {
+  it("names each trip as the paper sheet does, with Avail's trip number beneath", async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByRole("button", { name: "105" }));
     const row = (await screen.findByLabelText("Boardings, 460 N 6:00 AM")).closest("tr")!;
     expect(within(row).getByText("6:00 AM – 6:40 AM")).toBeTruthy();
-    expect(within(row).getByTitle("GTFS trip ID").textContent).toBe("105-1");
+    expect(within(row).getByTitle("Avail trip 600-N · GTFS trip ID 105-1").textContent).toBe("Trip 600-N");
+    // A GTFS id not in MVTA's form has no Avail number, so the id shows instead.
+    const other = screen.getByLabelText("Boardings, 460 S 7:00 AM").closest("tr")!;
+    expect(within(other).getByTitle("Avail trip ? · GTFS trip ID 105-2").textContent).toBe("105-2");
   });
 
   it("shows a route by the guide's number, with its GTFS name on hover", async () => {
@@ -352,6 +355,14 @@ describe("Ridership › Print sheets", () => {
     expect((await screen.findByText(/nothing has changed since/)).textContent).toMatch(/desk@example\.test/);
   });
 
+  it("opens straight on Print sheets for the check-in desk, which holds print only", async () => {
+    actions = ["ridership.print"];
+    renderPage();
+    expect(await screen.findByRole("button", { name: "Print 2 sheets · Burnsville" })).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(getRidershipWorklist).not.toHaveBeenCalled();
+  });
+
   it("tells a garage's desk which blocks have no garage, and opens them", async () => {
     const user = userEvent.setup();
     renderPage("/ridership?tab=print");
@@ -359,7 +370,7 @@ describe("Ridership › Print sheets", () => {
     expect(note.textContent).toMatch(/2 blocks have no garage .* not in any garage's stack: 330 and 331\. Print them from Unassigned/);
     await user.click(within(note).getByRole("button", { name: "Unassigned" }));
     expect(await screen.findByRole("button", { name: "Print 2 sheets · Unassigned" })).toBeTruthy();
-    expect(morningNote()).toBeNull();
+    expect(screen.queryByRole("note")).toBeNull();
     expect(screen.getByText(/These blocks have no garage/)).toBeTruthy();
   });
 
@@ -367,7 +378,7 @@ describe("Ridership › Print sheets", () => {
     getRidershipPrintStatus.mockImplementation(async () => ({ ...printStatus("Burnsville", [printRow("024", 1, "not_printed")]), garages: ["Burnsville"] }));
     renderPage("/ridership?tab=print");
     await screen.findByText(/Not printed yet/);
-    expect(morningNote()).toBeNull();
+    expect(screen.queryByRole("note")).toBeNull();
     expect(getRidershipPrintStatus).not.toHaveBeenCalledWith(expect.objectContaining({ garage: null }));
   });
 

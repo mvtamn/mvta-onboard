@@ -28,6 +28,8 @@ export interface PrintTrip {
   route_short_name: string | null;
   /** What the sheet prints in the Route column. */
   route_label: string | null;
+  /** What the sheet prints in the Trip column: "320-E", as Avail and dispatch name the trip. */
+  trip_number: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;
@@ -82,6 +84,7 @@ export function sheetsToPrint(
       trip_id: trip.trip_id,
       route_short_name: trip.route_short_name,
       route_label: trip.route_label,
+      trip_number: trip.trip_number,
       direction_label: trip.direction_label,
       scheduled_start_seconds: trip.scheduled_start_seconds,
       scheduled_end_seconds: trip.scheduled_end_seconds,
