@@ -16,6 +16,14 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
 
+## [1.7.8] - 2026-11-02
+
+A block with no garage is in no garage's stack. Unassigned was printable from the Garage list, but nothing told a Burnsville or Eagan desk that such blocks existed, so in practice nobody printed them and the operator went out without a sheet. Console only: the REST app does not restart.
+
+- **Unassigned warning** (`PrintSheets.tsx`): while a named garage is chosen and the date has Unassigned blocks (`garages` includes `null`), the tab makes one more `GET /ridership/print?garage=` call. It then names the blocks ("3 blocks have no garage … 330, 331 and 340"; past twelve, the first ten and how many more) with an **Unassigned** button that switches to that stack. The Unassigned view says why these blocks are there and that Planning sets their garage in Ridership setup. If that extra call fails, the warning is left out and the page still works.
+- **No-trips-yet note:** `tripStartLogMaterialize` runs at 09:30 UTC, which is 03:30 CST or 04:30 CDT. The note said 04:30, which was right only during daylight saving time.
+- Tests: console `Ridership.test.tsx` (+2); the default print mock now returns distinct Unassigned blocks.
+
 ## [1.7.7] - 2026-11-02
 
 Ridership setup showed 180 blocks, every one Unassigned, each with its own free-text Garage box. Each garage prints only its own Count Sheets, so until the list is filled every sheet lands under Unassigned. A block rarely changes garage between service changes, and a row already stays in force until a later one replaces it, so what was missing was a fast way to set many blocks at once. Console only: the REST app does not restart.
