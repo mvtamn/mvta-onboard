@@ -10,11 +10,13 @@ import {
   draftFromSheet,
   dueLabel,
   garageChanges,
+  garageOptions,
   garageFromValue,
   garagePercent,
   garageValue,
   isOverridden,
   normalizeBlock,
+  parseBlockSelection,
   parseClock,
   parseSheetScan,
   printedTime,
@@ -203,5 +205,21 @@ describe("printing", () => {
   it("gives Unassigned a select value of its own", () => {
     expect(garageFromValue(garageValue(null))).toBeNull();
     expect(garageFromValue(garageValue("Eagan"))).toBe("Eagan");
+  });
+});
+
+describe("block → garage selection", () => {
+  it("reads numbers and ranges as three-digit blocks, low to high", () => {
+    expect(parseBlockSelection("3-1, 306 309")).toEqual(["001", "002", "003", "306", "309"]);
+    expect(parseBlockSelection("69\u201367")).toEqual(["067", "068", "069"]);
+  });
+  it("refuses anything that is not a block or a range", () => {
+    expect(parseBlockSelection("")).toBeNull();
+    expect(parseBlockSelection("1-69, abc")).toBeNull();
+    expect(parseBlockSelection("1000")).toBeNull();
+  });
+  it("offers MVTA's garages first and keeps any other name already saved", () => {
+    expect(garageOptions([])).toEqual(["Burnsville", "Eagan"]);
+    expect(garageOptions(["Eagan", "Old garage"])).toEqual(["Burnsville", "Eagan", "Old garage"]);
   });
 });

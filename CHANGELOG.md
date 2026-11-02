@@ -5,6 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.6.78] - 2026-11-01
+
+Ridership setup showed 180 blocks, every one Unassigned, each with its own free-text Garage box. Each garage prints only its own Count Sheets, so until the list is filled every sheet lands under Unassigned. A block rarely changes garage between service changes, and a row already stays in force until a later one replaces it, so what was missing was a fast way to set many blocks at once. Console only: the REST app does not restart.
+
+- **Garage from a list:** `RIDERSHIP_GARAGES` (Burnsville, Eagan) in `lib/ridership.ts`; `garageOptions()` adds any other name already saved so nothing is hidden. Each row is a `<select>`, not free text.
+- **Select several and assign:** a checkbox per row, a select-all-shown header (indeterminate when part-selected), shift-click for a run, and "Select blocks by number" (`parseBlockSelection`: "1-69, 306, 309"). "Assign to Burnsville / Eagan" and "Make unassigned" set every selected block in the draft; Save still sends only the rows that differ from what is in force.
+- **Filter by garage:** All / Burnsville / Eagan / Unassigned counts double as filters. Save and its message moved above the table.
+- **Garage evidence for Planning** (not built in): on dev, buses' overnight parking (EventVehiclePositionHistory against the EBG/BBG locations) puts every one of the 180 v64 blocks at one garage with at least 80% agreement: Burnsville 004, 006, 009, 013, 016, 017, 019, 024, 028, 031, 050, 306, 307, 309, 313, 315, 319-321, 333; Eagan the rest. Planning should confirm before saving.
+- Tests: console `RidershipSetupAdmin.test.tsx` (+4, three updated for the select) and `ridership.test.ts` (+3).
+
 ## [1.6.75] - 2026-11-01
 
 The Orange LINK overprinted the Ride column on the printed Count Sheet (Block 009, 2026-11-02). Its GTFS `route_short_name` is "Orange LINK"; its `route_id` is 425, which is what Access and the ridership totals use. The REST app restarts on merge.
