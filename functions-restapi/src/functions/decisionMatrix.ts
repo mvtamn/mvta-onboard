@@ -4,7 +4,7 @@ import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
 import { DECISION_MATRIX_SURFACES, surfaceReady } from "../lib/decisionMatrixReadiness";
 import { readProcedureAvailability } from "../lib/procedureAvailability";
-import { isInlineImageMime } from "../lib/supportingDocumentReferences";
+import { isInlineImageMime, isInlinePreviewMime } from "../lib/supportingDocumentReferences";
 
 type RevisionRow = { procedure_id: string; revision: number; condition_key: string; condition: string; severity: string; severity_meaning: string; owner_team: string; owner_contact: string | null; effective_at: Date; next_review_at: Date; tags_json: string };
 type CriterionRow = { procedure_id: string; revision: number; criterion_id: string; criterion_kind: string; criterion_text: string };
@@ -56,7 +56,7 @@ export async function listDecisionMatrix(request: HttpRequest, context: Invocati
     for (const row of references.recordset) if (wanted.has(key(row))) groupedReferences.set(key(row), [...(groupedReferences.get(key(row)) ?? []), row]);
     const procedures = revisions.recordset.map((revision) => {
       const referenceRows = groupedReferences.get(key(revision)) ?? [];
-      return { ...revision, tags: tags(revision.tags_json), criteria: (groupedCriteria.get(key(revision)) ?? []).map(({ criterion_id, criterion_kind, criterion_text }) => ({ id: criterion_id, kind: criterion_kind, text: criterion_text })), immediate_actions: (groupedActions.get(key(revision)) ?? []).map(({ action_id, action_kind, instruction }) => ({ id: action_id, kind: action_kind, instruction })), document_references: referenceRows.map(({ procedure_id, revision: _revision, ...reference }) => ({ ...reference, source_available: isHealthyPrimary(reference), inline_preview_available: (reference.document_type === "QRG" || reference.document_type === "Visual rendition") && reference.health_status === "Valid" && isInlineImageMime(reference.expected_mime_type) })) };
+      return { ...revision, tags: tags(revision.tags_json), criteria: (groupedCriteria.get(key(revision)) ?? []).map(({ criterion_id, criterion_kind, criterion_text }) => ({ id: criterion_id, kind: criterion_kind, text: criterion_text })), immediate_actions: (groupedActions.get(key(revision)) ?? []).map(({ action_id, action_kind, instruction }) => ({ id: action_id, kind: action_kind, instruction })), document_references: referenceRows.map(({ procedure_id, revision: _revision, ...reference }) => ({ ...reference, source_available: isHealthyPrimary(reference), inline_preview_available: (reference.document_type === "QRG" || reference.document_type === "Visual rendition") && reference.health_status === "Valid" && isInlinePreviewMime(reference.expected_mime_type) })) };
     });
     return { status: 200, jsonBody: { procedures, diagnostics: { table_ready: true, procedure_count: procedures.length } } };
   } catch (error) { context.error("GET /decision-matrix failed", error); return { status: 500, jsonBody: { error: "Decision Matrix content is temporarily unavailable." } }; }
@@ -80,7 +80,7 @@ export async function previewDecisionMatrixRendition(request: HttpRequest, conte
     const source = await pool.request().input("procedure_id", sql.NVarChar, procedureId).input("revision", sql.Int, revision).input("reference_id", sql.UniqueIdentifier, referenceId).query<ReferenceRow & { site_id: string; drive_id: string; item_id: string }>("SELECT d.procedure_id,d.revision,d.reference_id,d.document_type,d.is_primary,d.document_code,d.expected_file_name,d.expected_mime_type,d.web_url,d.health_status,d.checked_at,d.health_reason,d.site_id,d.drive_id,d.item_id FROM ProcedureDocumentReferences d JOIN ProcedureRevisions r ON r.procedure_id=d.procedure_id AND r.revision=d.revision WHERE d.procedure_id=@procedure_id AND d.revision=@revision AND d.reference_id=@reference_id AND r.lifecycle_state='Approved'");
     const reference = source.recordset[0];
     if (!reference) return { status: 404, jsonBody: { error: "Approved visual rendition not found." } };
-    if ((reference.document_type !== "QRG" && reference.document_type !== "Visual rendition") || reference.health_status !== "Valid" || !isInlineImageMime(reference.expected_mime_type)) return { status: 415, jsonBody: { error: "Only a currently Valid PNG or JPEG QRG or visual rendition can be displayed inline." } };
+    if ((reference.document_type !== "QRG" && reference.document_type !== "Visual rendition") || reference.health_status !== "Valid" || !isInlinePreviewMime(reference.expected_mime_type)) return { status: 415, jsonBody: { error: "Only a currently Valid PNG, JPEG or PDF QRG or visual rendition can be displayed inline." } };
     const token = await delegatedGraphToken(assertion);
     const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(reference.site_id)}/drives/${encodeURIComponent(reference.drive_id)}/items/${encodeURIComponent(reference.item_id)}/content`, { headers: { Authorization: `Bearer ${token}` }, redirect: "follow" });
     if (!response.ok) return { status: response.status === 401 || response.status === 403 || response.status === 404 ? 404 : 502, jsonBody: { error: "SharePoint rendition is unavailable to this user." } };
