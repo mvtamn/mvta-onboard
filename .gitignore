@@ -61,3 +61,6 @@ mvta-functions-prod-source.zip
 Compliance/
 MVTA_Alerts_Optin_Widget.html
 MVTA_OnBoard_Phase1_Infrastructure_1.zip
+
+# Local ridership working files (scans, API samples) - never committed
+ridership/

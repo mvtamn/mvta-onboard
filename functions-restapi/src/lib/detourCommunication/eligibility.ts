@@ -13,9 +13,9 @@ const SENTENCES: Record<EligibilityRefusalCode, string> = {
   unknown_channel: "That is not a channel OnBoard knows. Choose email, text message, Teams, digital signage or AVL messaging.",
   detour_closed: "This Detour is closed, so there is nothing left to tell this audience.",
   re_review_outstanding: "The reviewed facts changed and have not been re-reviewed, so what this would say may already be wrong. Complete the re-review first.",
-  fulfillment_pending: "This Detour is not fulfilled yet. Confirm the Avail entry, or record a manual fallback, before telling anyone it is in place.",
-  fulfillment_failed: "The Avail entry failed and no manual fallback has been recorded, so the Detour is not in place for riders.",
-  conflict_unresolved: "A likely duplicate of this Detour is unresolved. Override or resolve it first, or two communications will describe the same closure differently.",
+  fulfillment_pending: "This Detour is not in place yet. Record the Avail result as built, or run it manually instead, before telling anyone about it.",
+  fulfillment_failed: "Avail refused this Detour and it has not been switched to running manually, so it is not in place for riders.",
+  conflict_unresolved: "This detour overlaps another open detour; record an override first, or two communications will describe the same closure differently.",
   no_recipients: "Add at least one recipient before sending.",
 };
 

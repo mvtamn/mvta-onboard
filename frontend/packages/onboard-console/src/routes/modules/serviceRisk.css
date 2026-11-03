@@ -573,6 +573,136 @@
   line-height: 1.45;
 }
 
+/* Start evidence on a GTFS case: one fact per row, full width, because each
+   is a sentence rather than a value. Tone marks what bears on the decision -
+   a start inside the grace, or a reason the silence may not be a missed trip. */
+.missed-trip-evidence {
+  display: grid;
+  margin: 0;
+}
+
+.missed-trip-evidence div {
+  border-bottom: 1px solid var(--border-soft);
+  padding: 7px 0;
+}
+
+.missed-trip-evidence dt {
+  color: var(--text-muted);
+  font-size: 9.5px;
+  margin-bottom: 2px;
+}
+
+.missed-trip-evidence dd {
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.missed-trip-evidence small {
+  color: var(--text-muted);
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.missed-trip-evidence .is-good dd {
+  color: var(--success-text);
+}
+
+.missed-trip-evidence .is-warn dd {
+  color: var(--pill-warning-fg);
+}
+
+/* A note about the data rather than about the contractor: the accent, so it
+   does not share amber with "No start observed". */
+.missed-trip-evidence .is-info dd {
+  color: var(--pill-accent-fg);
+}
+
+/* The case summary: scheduled, what we saw, looks like, counting. Each is a
+   sentence or two, so one per row; "Looks like" carries the tone, banded so it
+   is the line the eye lands on. */
+.missed-trip-header {
+  display: grid;
+  margin: 0;
+  padding: 10px 15px 4px;
+}
+
+.missed-trip-header > div {
+  border-bottom: 1px solid var(--border-soft);
+  display: grid;
+  gap: 2px 12px;
+  grid-template-columns: 88px minmax(0, 1fr);
+  padding: 7px 0;
+}
+
+.missed-trip-header dt {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.missed-trip-header dd {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.missed-trip-header dd > span {
+  display: block;
+}
+
+.missed-trip-header dd small {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.missed-trip-looks-like {
+  border-radius: 6px;
+  margin: 4px -8px;
+  padding: 8px !important;
+}
+
+.missed-trip-header.is-missed .missed-trip-looks-like {
+  background: var(--pill-danger-bg);
+  color: var(--pill-danger-fg);
+}
+
+.missed-trip-header.is-ran .missed-trip-looks-like {
+  background: var(--pill-success-bg);
+  color: var(--pill-success-fg);
+}
+
+.missed-trip-header.is-check .missed-trip-looks-like {
+  background: var(--pill-warning-bg);
+  color: var(--pill-warning-fg);
+}
+
+.missed-trip-looks-like dt {
+  color: inherit !important;
+}
+
+.missed-trip-technical {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 15px 8px;
+}
+
+.missed-trip-technical summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 0;
+}
+
+.missed-trip-technical .risk-facts {
+  padding: 4px 0 0;
+}
+
 .missed-trip-detail {
   max-height: calc(100vh - 110px);
   overflow-y: auto;

@@ -576,8 +576,12 @@ _Avoid_: public detour page, rider detour feed
 ## Fulfillment mode
 
 The operational path by which an authoritative Detour is carried out and
-communicated: Avail-backed, fixed-route manual, or mobility manual.
-_Avoid_: source, publication status
+communicated: Avail-backed, fixed-route manual, or mobility manual. Screens
+show one display label per mode, everywhere: "Build in Avail", "Fixed route,
+run manually", "Mobility, run manually"; the field is labelled "How it will be
+run". Switching an Avail-backed Detour to manual fallback reads "Run it
+manually instead".
+_Avoid_: source, publication status, fulfillment path
 
 ## Fixed-route manual Detour
 
@@ -608,8 +612,8 @@ _Avoid_: sent notification, automatic alert
 
 Creation of a new Detour identity from an existing Detour's configuration. The
 original record remains unchanged and the new record enters the selected
-workflow afresh.
-_Avoid_: reopen, extend in place
+workflow afresh. The worklist button reads "Re-establish".
+_Avoid_: reopen, extend in place, clone
 
 ## Temporal Detour status
 
@@ -624,7 +628,15 @@ The operational progress of an authoritative Detour: awaiting fulfillment,
 fulfilled, fulfillment failed, or closed. It is separate from temporal status,
 fulfillment mode, and communication eligibility. Approval is the promotion of a
 Detour intake and is not a stored Workflow state; intake decisions such as
-rejection and duplication belong to Detour intake.
+rejection and duplication belong to Detour intake. Screens use display labels
+and never the stored values: awaiting fulfillment is "Waiting for Avail entry";
+fulfilled is "Built in Avail" for an Avail-backed Detour and "Running manually"
+for a manual one ("In place" where the mode is not known); fulfillment failed
+is "Avail entry failed". An Avail entry result is recorded as "Built in Avail",
+"Avail refused it" or "Not built yet". The two things once both called a
+"conflict" are kept apart on screen: Avail refusing an entry is "Avail refused
+it — retry or run it manually", and an overlap that needs a Conflict override
+is "Overlaps another detour — override needed".
 _Avoid_: temporal status, communication readiness
 
 ## Detour workflow act
@@ -783,6 +795,18 @@ _Avoid_: weather exclusion, dropped stop
 A stop, on one route, on one day of the week, whose early or late share of departures exceeds the Early/Late Bias Threshold for a service month, putting it in front of a reviewer. Being flagged decides nothing: it counts toward Official Departure OTP exactly as before unless a reviewer turns it into an approved Stop Exclusion. It is not a Candidate — no Agreement, occurrence, or Candidate Resolution is involved.
 _Avoid_: exclusion candidate, OTP candidate, biased stop
 
+**OTP Measurement Standard**:
+The seven parameters OnBoard sends Avail when it asks for on-time performance — early threshold, late threshold, early outlier, late outlier, show missed stops, include outliers, show detours. They are MVTA's own Avail configuration rather than a setting of OnBoard's, and Avail can change them without telling us, so they are **declared** with an effective-from date, a stated source and a named declarer rather than compiled in (ADR 0042). Unlike the Early/Late Bias Threshold this is contractual: the early threshold decides what counts as on time, so changing it rewrites every historical figure, tier and amount that followed from one. A declaration is appended, never edited — an earlier one is what existing figures were polled under. Declaring restates nothing; the months that stop matching are listed for someone to re-pull deliberately.
+_Avoid_: OTP settings, measurement tuning, threshold (that is the Early/Late Bias Threshold)
+
+**Measurement Provenance**:
+The parameter set a stored OTP figure was polled under, recorded on the row itself as the segment string that was sent. It answers which stored figures are comparable with each other — the question that cannot be answered once a standard changes and nothing restates automatically. A row with no stamp is **not recorded**, never "measured under the current standard": the stamp is a property of a poll, and claiming otherwise would invent provenance. The sibling of recording it when Avail restates a closed month (ADR 0039), applied to OnBoard's own parameter changes.
+_Avoid_: version, revision, audit field
+
+**Retired Key**:
+A route, stop and day of week that an OTP month once held and Avail has stopped returning. It is archived whole — figures, dates and Measurement Provenance — and removed from the live month, because a figure the feed no longer publishes should neither count towards a contractual number nor hold its month on the re-pull list forever (ADR 0044). Retiring is not a correction of the figure and not a judgement about the stop: it says only that the source stopped mentioning it. Absence in one response is never enough — a response has to account for nearly the whole month before anything is retired, since a truncated delivery and a shrunken month look identical. If the key comes back, it is stored again as a new row and the archive keeps the earlier life.
+_Avoid_: deleted row, purge, cleanup
+
 **Early/Late Bias Threshold**:
 The share of departures, above which a stop's early or late running makes it a Flagged Stop. It is an operational review setting an administrator can change, not a contractual figure: moving it changes who gets looked at, never what a month scored.
 _Avoid_: OTP threshold, tolerance
@@ -915,12 +939,30 @@ from. An author picks a document in it; which library that is belongs to
 OnBoard, never to the author.
 _Avoid_: any granted site, SOP folder, document location
 
+**Watched SOP Folder**:
+The one folder in the Approved Document Library that OnBoard looks in for SOPs
+no Procedure uses. An Admin chooses it by browsing the library; the whole
+library is a legal choice. A configured default seeds it in a fresh
+environment and is not consulted once a choice has been made. One folder is
+watched at a time, because the question it answers needs a single folder to be
+about.
+_Avoid_: the SOP path, the configured folder, document location
+
 **Unreferenced SOP**:
-A document in the Approved Document Library's SOP folder that no Draft, Under
-review or Approved Procedure Revision references. It is a prompt that a
+A document in the Watched SOP Folder that no Draft, Under review or Approved
+Procedure Revision references. It is a prompt that a
 Procedure may be missing, not a fault; a document used only by Superseded or
 Retired revisions is unreferenced again.
 _Avoid_: orphan document, sync change, unhealthy reference
+
+**QRG-Seeded Draft**:
+A Procedure Draft whose Criteria and Immediate Actions were proposed by reading
+a QRG in the Approved Document Library, rather than typed. It is a Draft and
+nothing more: every field is unreviewed until a person reviews it, and it
+reaches Approved only through the same review as any other Draft. The QRG is a
+Supporting Document Reference on it, never its Primary Supporting Document
+Reference, and never the source of the approved guidance.
+_Avoid_: imported procedure, generated procedure, content sync
 
 **Primary Supporting Document Reference**:
 The one required Supporting Document Reference for a Procedure Revision. It
@@ -1134,8 +1176,8 @@ _Avoid_: missed-trip candidate, unresolved alert
 **First observed progress**:
 The earliest trustworthy observation that a run advanced beyond its first
 scheduled public stop. It bounds when Trip start occurred but is not itself the
-measured Trip start.
-_Avoid_: actual start, first arrival
+measured Trip start. On screen: "passed the first stop".
+_Avoid_: actual start, first arrival, underway
 
 **Indeterminate trip**:
 A scheduled run whose outcome cannot be classified because the available
@@ -1243,6 +1285,19 @@ standards. It remains available for explicit rereview but is excluded from
 compliance totals by default.
 _Avoid_: corrected history, confirmed missed trip
 
+**Likely GPS dead zone**:
+A first stop where most of the Suspected no-shows that the evidence could
+check turned out to have run, by the bar an administrator sets. It is a note
+for the reviewer of a case starting there. It opens, holds and closes nothing.
+_Avoid_: dead-zone exclusion, known bad stop
+
+**Dispatch Log departure**:
+The Dispatch Log's first-stop time for a run, and what that time is. Only a
+realised departure on a trip a bus reported against is a start. A repeated
+schedule, the last prediction, a time on a trip no bus reported against, or a
+time taken from bus positions is shown as what it is, not as a departure.
+_Avoid_: actual start, trip update time
+
 **Shadow detection**:
 Operation of a candidate detector for evaluation without automatic contractual
 promotion. A detector leaves Shadow detection only after a complete service
@@ -1251,7 +1306,7 @@ and unmatched cases separately; on-demand service-quality additionally requires
 two complete service weeks, dispatcher agreement, and no unresolved feed-health
 issue. Cases from a detector in Shadow detection can be reviewed but never
 reach Assessment promotion.
-_Avoid_: production truth, enabled detector
+_Avoid_: production truth, enabled detector, experimental detector
 
 **Detector promotion**:
 A dated decision that a detector family leaves Shadow detection, recorded with

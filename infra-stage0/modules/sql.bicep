@@ -12,6 +12,16 @@ param sqlAdminPassword string
 @description('Create/update the SQL connection-string secret during initial provisioning only. Keep false for normal infrastructure redeployments so they cannot rotate the app credential.')
 param manageSqlConnectionStringSecret bool = false
 
+@description('Let the server accept connections from the public internet, limited to sqlFirewallAllowedIps. The Function Apps use the private endpoint either way. Production keeps this false; dev turns it on so the database can be read directly while troubleshooting.')
+param allowPublicNetworkAccess bool = false
+
+@description('Public IPs allowed through the firewall when allowPublicNetworkAccess is true. Comes from the SQL_FIREWALL_ALLOWED_IPS GitHub environment variable, not a parameter file, because the repository is public.')
+param sqlFirewallAllowedIps array = []
+
+@description('Entra principal that administers the server: its display name (a user principal name or group name) and object id. Both empty leaves the existing admin alone. An Entra admin is what lets the Function Apps\' managed identities be created as database users.')
+param sqlEntraAdminLogin string = ''
+param sqlEntraAdminObjectId string = ''
+
 var sqlServerName = 'sql-mvta-${environment}-${uniqueSuffix}'
 var sqlDatabaseName = 'sqldb-mvta-onboard-${environment}'
 
@@ -22,7 +32,31 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
     administratorLogin: sqlAdminLogin
     administratorLoginPassword: sqlAdminPassword
     minimalTlsVersion: '1.2'
-    publicNetworkAccess: 'Disabled'
+    publicNetworkAccess: allowPublicNetworkAccess ? 'Enabled' : 'Disabled'
+  }
+}
+
+// Declared here so an infra deploy keeps the rules instead of leaving them to
+// the portal. Rules added by hand are not removed (deployments are incremental).
+resource firewallRules 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = [for ip in (allowPublicNetworkAccess ? sqlFirewallAllowedIps : []): {
+  parent: sqlServer
+  name: 'allow-${replace(ip, '.', '-')}'
+  properties: {
+    startIpAddress: ip
+    endIpAddress: ip
+  }
+}]
+
+// Declared here so prod gets one and an infra deploy cannot drop it. Only the
+// Entra admin can run CREATE USER ... FROM EXTERNAL PROVIDER.
+resource entraAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (!empty(sqlEntraAdminLogin) && !empty(sqlEntraAdminObjectId)) {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: sqlEntraAdminLogin
+    sid: sqlEntraAdminObjectId
+    tenantId: tenant().tenantId
   }
 }
 

@@ -11,6 +11,8 @@ vi.mock("../config.js", () => ({ api: {
   getMissedTripDetectorPromotions: (...args: unknown[]) => getMissedTripDetectorPromotions(...args),
   recordMissedTripDetectorPromotion: (...args: unknown[]) => recordMissedTripDetectorPromotion(...args),
   getMissedTripDetectorScorecard: (...args: unknown[]) => getMissedTripDetectorScorecard(...args),
+  // The GPS dead-zone panel on the same page; DeadZoneBarPanel.test.tsx covers it.
+  getMissedTripDeadZones: () => new Promise(() => {}),
 } }));
 
 const figures = (detector: string, overrides: Record<string, unknown> = {}) => ({
@@ -149,7 +151,7 @@ describe("Missed-trip detector promotion", () => {
   });
   it("gives every detector its verdict from its latest complete week", async () => {
     render(<MissedTripDetectorsAdmin />);
-    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    const silent = await screen.findByRole("article", { name: "Suspected no-shows" });
     // Both weeks are complete, so the verdict is the later one's (12 October), not the one that met the bar.
     expect(within(silent).getByText("94.7%")).toBeTruthy();
     expect(within(silent).getByText(/below 95%/)).toBeTruthy();
@@ -161,16 +163,16 @@ describe("Missed-trip detector promotion", () => {
 
   it("reads another week's evidence from the strip", async () => {
     render(<MissedTripDetectorsAdmin />);
-    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    const silent = await screen.findByRole("article", { name: "Suspected no-shows" });
     await userEvent.click(within(silent).getByRole("button", { name: /^Week of .*97\.2% of 143/ }));
     expect(within(silent).getByText("97.2%")).toBeTruthy();
-    expect(within(silent).getByText(/66\.7% · 2 unmatched · 1 probable/)).toBeTruthy();
-    expect(within(silent).getByText(/75\.0% · 1 missed/)).toBeTruthy();
+    expect(within(silent).getByText(/Caught 66\.7% of Avail's \d+ whole misses · 2 with no case · 1 possible matches to confirm/)).toBeTruthy();
+    expect(within(silent).getByText(/Caught 75\.0% of \d+ trips dispatchers marked not run · 1 missed/)).toBeTruthy();
   });
 
   it("fills the promotion form from a week that meets the bar, and goes to the date", async () => {
     render(<MissedTripDetectorsAdmin />);
-    const silent = await screen.findByRole("article", { name: "Silent no-shows" });
+    const silent = await screen.findByRole("article", { name: "Suspected no-shows" });
     await userEvent.click(within(silent).getByRole("button", { name: /^Week of .*97\.2% of 143/ }));
     await userEvent.click(within(silent).getByRole("button", { name: "Promote with this week" }));
     expect((screen.getByLabelText("Measured precision") as HTMLInputElement).value).toBe("97.2");
