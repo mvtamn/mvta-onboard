@@ -50,10 +50,16 @@ are the decisions in `plans/operator-kiosk-module-shell.md` (both PR #461).
   operators by its **own operator number** and hold the logon ID as an
   attribute, because Avail has not said that an ID is never reused, nor that
   IDs survive the contractor change on 2027-01-01. The roster is an
-  **OnBoard table**. Pull-out history *suggests* who to add. The check-in desk
-  *enrols* each operator when it issues the first PIN. The contractor tells
-  the desk about leavers, and a monthly check catches the ones it forgets. No
-  HR file is imported.
+  **OnBoard table**, filled in two ways (§1.4, added at the user's request):
+  - a **CSV or Excel upload** of first name, last name, Avail logon ID and an
+    assigned PIN, for go-live and for batches of new hires;
+  - **Add operator**, one at a time with the same fields, the way a person is
+    added elsewhere in OnBoard.
+
+  An assigned PIN is a **starting PIN**: the operator must change it at first
+  sign-in, and it expires if unused. Pull-out history is a cross-check, not
+  the source. The contractor tells the desk about leavers, and a monthly
+  check catches the ones it forgets. There is no automated HR feed.
 - **PINs.** 6 digits, chosen by the operator after a one-time PIN from the
   desk. Hashed with **scrypt, a per-PIN salt and a server-held pepper** in Key
   Vault, so a copy of the database alone cannot be brute-forced. There is no
@@ -130,39 +136,137 @@ no conflicts either way.
   - the logon ID as entered, for people reading the record;
   - the operator number, for joins.
 - Never issue a PIN to a shared or generic ID. The desk marks it
-  *not a person* on the Operator sign-in page, and it stays out of the
-  candidate list.
+  *not a person* on the Operator sign-in page; an upload or Add operator
+  refuses that ID.
 - Ask Avail and Keolis the three questions above (§7 steps 1 and 2).
 
 ### 1.2 Where the roster comes from
 
 | Source | For | Against | Use |
 |---|---|---|---|
-| **Avail pull-out history** (`FixedRouteDepartures`) | Already in OnBoard, refreshed every poll. Proves the ID drives MVTA service | A new hire is missing until their first pull-out. 10.6% of rows have no ID. A leaver lingers until a cut-off, and absence is noisy (36 of 236 unseen in 30 days) | **Suggests** candidates for enrolment, sets *last seen*, and drives the inactivity rule |
+| **Avail pull-out history** (`FixedRouteDepartures`) | Already in OnBoard, refreshed every poll. Proves the ID drives MVTA service | A new hire is missing until their first pull-out. 10.6% of rows have no ID. A leaver lingers until a cut-off, and absence is noisy (36 of 236 unseen in 30 days) | **Cross-checks** the roster, sets *last seen*, and drives the inactivity rule |
 | Avail operator roster endpoint (eval Q4) | Authoritative active/inactive status from the system the IDs live in | Not known to exist. `lib/availClient.ts` calls none | Use it if Avail has one; it replaces most of the monthly check |
-| Contractor HR file | Authoritative hires and leavers | Brings HR data (employee numbers, dates of birth, home garage, status codes) into a public-repo system that needs none of it. A file feed to build and keep running, which changes owner on 1/1 | **Do not import.** The contractor answers the monthly check instead (below) |
-| **OnBoard-maintained table** | One place that says who may hold a PIN, with who added or removed them and when | Someone has to keep it | **The roster.** Fed by the sources above, edited only by the desk and MVTA |
+| A contractor HR feed (automated) | Authoritative hires and leavers | Brings HR data (employee numbers, dates of birth, home garage, status codes) into a public-repo system that needs none of it. A feed to build and keep running, which changes owner on 1/1 | **No feed.** |
+| **An uploaded roster file** (CSV or Excel, §1.4) | One upload loads a whole garage at go-live, from a list the contractor already keeps. Only four columns | Someone has to prepare it. If it carries PINs, it is a sensitive file until they are changed (§1.4) | **The way to load operators in bulk** |
+| **Add operator** (one at a time, §1.4) | The same four fields in a form, for a new hire | One at a time | **The way to add a new hire** |
+| **OnBoard-maintained table** | One place that says who may hold a PIN, with who added or removed them and when | Someone has to keep it | **The roster.** Filled by the upload and Add operator, edited only by the desk and MVTA |
 
-**Recommendation:** an OnBoard table `Operators` is the roster.
+**Recommendation:** an OnBoard table `Operators` is the roster, filled by
+upload or by Add operator (§1.4).
 
-- **Candidates** are logon IDs seen in pull-out in the last 60 days and not
-  yet enrolled. They are listed on the desk's page with the name from
-  pull-out.
-- **Enrolment is issuing the first PIN.** The desk confirms the person in
-  front of them matches the name and the contractor's photo ID, then issues
-  the one-time PIN. Only then does an `Operators` row become *active*.
-- **A new hire before their first pull-out** can be enrolled by the desk by
-  typing the logon ID and name, with the reason *new hire*. The row shows
-  *not yet seen in Avail* until it appears in pull-out. If it has not
-  appeared in 30 days, it is disabled. This replaces D8's "only logon IDs in
+- **Pull-out is a cross-check.** Each operator on the roster shows *last seen
+  in Avail*. A report lists logon IDs seen in pull-out in the last 60 days
+  that are **not** on the roster, so a missed operator is noticed.
+- **A new operator not yet in pull-out** can be added. The row shows *not yet
+  seen in Avail* until it appears there. If it has not appeared in 30 days,
+  it is listed in the monthly check. This replaces D8's "only logon IDs in
   Avail's operator data", which would stop a new hire using the kiosk in
   their first week.
+
+### 1.4 Adding operators: upload a file, or one at a time
+
+Added 2026-11-02 at the user's request.
+
+**The file.** It is CSV or Excel (`.xlsx`), one row per operator, with these
+columns:
+
+| Column | Required | Rule |
+|---|---|---|
+| `first_name` | Yes | Text, up to 100 characters |
+| `last_name` | Yes | Text, up to 100 characters |
+| `avail_logon_id` | Yes | Digits only, as in Avail (3–4 digits today) |
+| `pin` | No | Exactly 6 digits and passes the PIN rules (§2.1). Left blank, OnBoard generates one |
+
+- The page offers a **template** to download with these headers, and with
+  the ID and PIN columns already formatted as text.
+- Excel drops leading zeros, so a PIN typed as `012345` becomes `12345`. A
+  PIN that is not 6 digits is **refused, not padded**, with the message
+  "PIN must be 6 digits — format the column as Text."
+- Other columns are ignored and never stored, so a contractor's export with
+  extra HR columns does no harm.
+
+**How the upload works:**
+
+1. The file is **read in the browser**. Only the parsed rows go to the API,
+   so the file itself is never uploaded or stored.
+   - The console reads no Excel today. This needs a maintained `.xlsx`
+     reader. The npm `xlsx` package stopped at 0.18.5 and has known
+     advisories, so use SheetJS's own current release or `read-excel-file`.
+   - CSV needs no new dependency.
+2. **Preview.** The API checks every row and changes nothing (a dry run).
+   Each row shows one outcome:
+   - *new*;
+   - *already on the roster, no change*;
+   - *name differs from the roster* (it will update);
+   - *name differs from Avail's pull-out* (a warning);
+   - *logon ID belongs to another active operator* (refused);
+   - *duplicate ID in the file* (refused);
+   - *missing or bad field* (refused);
+   - *PIN breaks a rule* (refused, with the rule).
+3. **Confirm.** The user loads the valid rows. Refused rows are listed to fix
+   and upload again.
+   - An upload never removes or disables anyone. Leavers stay a separate,
+     deliberate act (§1.3).
+   - It never replaces the PIN of an operator who already has one. Use
+     **Reset PIN** for that.
+4. **Audit.** One event for the batch (who, when, file name, row counts) and
+   one per operator added or changed. The PINs are never in either.
+5. **PINs generated for blank rows** are shown once, as a printable list of
+   slips (logon ID, name, PIN), and are never shown again.
+
+**Add operator** is the same four fields in a form, on the same page. It
+works the way a person is added in Access & Identity, but it is a separate
+list: operators have no Entra account and no OnBoard role. With the PIN left
+blank, OnBoard generates one and shows it once.
+
+**Every assigned PIN is a starting PIN**, whether it came from a file, from
+the form or from OnBoard:
+
+- the operator **must change it** at their first sign-in, before Home opens;
+- it **expires 14 days** after it was set if unused. That is longer than a
+  desk-issued 72 hours, because handing out a whole garage takes more than a
+  shift. After that, the desk resets it.
+
+This is what makes a list of assigned PINs acceptable. Whoever prepared the
+file knows every starting PIN, but none of them is anyone's PIN for long.
+
+**What this changes from the in-person design:**
+
+- **Identity check.** The desk no longer checks photo ID as each operator is
+  added. The check moves to **whoever hands out the PIN**. The contractor
+  gives each operator their own PIN privately: on a slip, in person, never
+  posted or sent in a group message. This goes in the procedure (§7
+  step 10).
+- **The file is sensitive** while it holds unchanged PINs. The procedure
+  says:
+  - prepare it on a contractor or MVTA computer, not a personal one;
+  - never email it;
+  - delete it once it has been uploaded and the slips handed out.
+
+  Leaving the `pin` column blank, so that OnBoard generates the PINs, avoids
+  a PIN file existing at all. Only the printed slips remain. **This is the
+  recommended way to use the upload.** The PIN column is there for a
+  contractor that has already given its operators PINs.
+- **Who may upload.** Holders of `operator-credential-admin` (the desk and
+  the garage manager) and MVTA access administrators. One action covers
+  both upload and Add operator. A bulk upload is a bigger act than one
+  reset, so the monthly report (§4.3) lists every upload.
+
+**Recommendation:**
+
+- build the upload (CSV and `.xlsx`, a template, a dry-run preview) and Add
+  operator;
+- every assigned PIN is a starting PIN: changed at first sign-in, and it
+  expires after 14 days;
+- prefer a blank PIN column, so that OnBoard generates the PINs and prints
+  slips;
+- an upload adds and corrects, but never disables or overwrites a PIN.
 
 ### 1.3 Who adds and who deactivates
 
 | Event | Who | How |
 |---|---|---|
-| Enrol (new hire, or an existing operator at go-live) | The garage desk (`operator-credential-admin`) | Issue a one-time PIN from the candidate list, or type a new hire in |
+| Add (an existing operator at go-live, or a new hire) | The garage desk or garage manager (`operator-credential-admin`), or MVTA | Upload a roster file, or Add operator (§1.4) |
 | Leaver | **The contractor tells the desk the same day**, and the desk disables the operator | Disable on the Operator sign-in page, with the reason *left*. Written into the procedure (§7 step 10) |
 | Leaver the contractor forgot | **Monthly check** | On the first working day of each month the page lists active operators not seen in pull-out **and** not signed in for 30 days. The desk confirms each one with the contractor's garage manager: still employed (keep) or left (disable). The confirmation is recorded |
 | Long absence, nobody acted | Automatic | Disabled after **90 days** with no pull-out and no sign-in. The 30-day figure above shows that a shorter rule would catch operators on leave. Re-enabling is a new one-time PIN at the desk |
@@ -179,26 +283,27 @@ employer. What remains:
 - the roster records which **agreement** each operator was enrolled under
   (the `agreement_id` used elsewhere in OnBoard). At a later contractor
   change, all of the outgoing agreement's operators are disabled on the last
-  day, and the incoming desk re-enrols them in person. Nobody's PIN passes
+  day, and the incoming contractor reloads them with new starting PINs (§1.4). Nobody's PIN passes
   across an employer boundary unchecked.
 
-**Recommendation:** as above. The roster is OnBoard's, pull-out suggests,
-the desk enrols in person, and the contractor answers a monthly leaver
-check. No HR file.
+**Recommendation:** as above. The roster is OnBoard's, loaded by upload or
+Add operator, checked against pull-out, and the contractor answers a monthly
+leaver check. No automated HR feed.
 
 ## 2. PINs
 
 ### 2.1 Length, and who chooses it
 
-| | Issued by the desk, kept | **Chosen by the operator** after a one-time PIN |
+| | Assigned, kept | **Chosen by the operator** after a starting PIN |
 |---|---|---|
-| Who knows it | The desk staff who issued it, and anyone who saw the slip | Only the operator |
+| Who knows it | Whoever assigned it or prepared the file, and anyone who saw the slip | Only the operator |
 | Memorability | Poor; it ends up written on the badge | Better |
 | Desk effort | One issue per operator | The same issue, plus nothing |
 | Weak choices | None | Possible, so a blocklist is needed (below) |
 
 **Recommendation: keep D7 and D8.** 6 digits, chosen by the operator after a
-one-time PIN from the desk.
+starting PIN. The starting PIN comes from the desk, an upload or Add
+operator (§1.4). An assigned PIN may be used to start, never kept.
 
 - 6, not 4, because a PIN is long-lived (unlike a rider's 24-hour SMS code),
   and the step from 10⁴ to 10⁶ costs about one second at the pad.
@@ -226,8 +331,12 @@ for their Avail credentials to compare against.
 
 ### 2.2 First-time setup
 
-1. The operator goes to the desk. The desk finds them in the candidate list,
-   or types them in as a new hire, and checks the contractor's photo ID
+Operators loaded by upload or Add operator (§1.4) already have a starting PIN
+on a slip, valid for 14 days. They go straight to step 3. The steps below are
+the desk's way, for one operator in person, and are also how a reset works.
+
+1. The operator goes to the desk. The desk finds them on the roster,
+   or adds them (§1.4), and checks the contractor's photo ID
    against the name.
 2. The desk presses **Issue PIN**. The page shows a random 6-digit one-time
    PIN **once**, in large type, with the operator's logon ID.
@@ -242,9 +351,9 @@ for their Avail credentials to compare against.
 4. If the 72 hours pass unused, the one-time PIN stops working and the desk
    issues another.
 
-At go-live (the detour soft launch, P5), the desk enrols the pilot garage's
-operators this way during the week before, as they come in for their shifts
-(§7 step 9).
+At go-live (the detour soft launch, P5), the pilot garage's operators are
+loaded by upload in the week before, and their starting PINs are handed out
+privately as they come in for their shifts (§7 step 9).
 
 ### 2.3 Storage
 
@@ -526,13 +635,18 @@ Controls:
   whose PIN was reset without asking finds out the next time they sign in.
 - **Every desk action is audited** with the desk user's OnBoard person, the
   time and the garage (§4.4).
-- **A monthly report to MVTA** lists resets by desk user and any **reset
+- **A monthly report to MVTA** lists every upload and Add operator, resets
+  by desk user, and any **reset
   followed within 30 minutes by a sign-in at a kiosk other than the one by
   the desk**, or by a submission for a run the operator was not on. These are
   unusual, not proof, and MVTA reviews them (§7 step 12).
 - No self-reset (§2.4), and the procedure requires a photo ID check.
 - Desk users never see a PIN after the one-time PIN screen, and never see a
   hash.
+- **Uploaded or assigned PINs** are known to whoever set them. They are
+  starting PINs only: changed at first sign-in, and they expire in 14 days
+  (§1.4). A sign-in with a starting PIN at a kiosk away from the operator's
+  garage is in the monthly report.
 
 ### 4.4 Audit trail
 
@@ -610,7 +724,7 @@ upgrade. The rest are not pursued.
 
 | Table | Holds | Key points |
 |---|---|---|
-| `Operators` | `operator_id INT IDENTITY`, `logon_id INT`, `display_name`, `agreement_id`, `status` (`active`, `disabled`, `not_a_person`), `source` (`pull_out`, `desk_new_hire`), `first_seen_service_date`, `last_seen_service_date`, `linked_person_id NULL` (staff who are operators), created/disabled by, at and reason | A filtered unique index on `logon_id WHERE status = 'active'`. Candidates are a view over `FixedRouteDepartures`, not rows |
+| `Operators` | `operator_id INT IDENTITY`, `logon_id INT`, `first_name`, `last_name`, `agreement_id`, `status` (`active`, `disabled`, `not_a_person`), `source` (`upload`, `form`), `import_batch_id NULL`, `first_seen_service_date`, `last_seen_service_date`, `linked_person_id NULL` (staff who are operators), created/disabled by, at and reason | A filtered unique index on `logon_id WHERE status = 'active'`. "In pull-out, not on the roster" is a view over `FixedRouteDepartures`, not rows. `OperatorImportBatches` (who, when, file name, row counts; never the file or PINs) sits beside it |
 | `OperatorCredentials` | One row per operator and kind (`pin`; `badge` later): `secret_hash`, `salt`, `algo` (`scrypt-hmac-v1` with N, r, p), `pepper_version`, `state` (`one_time`, `active`, `locked`), `one_time_expires_at`, `failed_count`, `last_failed_at`, `locked_at`, `set_at`, `last_success_at`, `previous_hash` (for "not your last PIN") | Written only by `operatorAuth` |
 | `OperatorSessions` | `session_id`, `token_hash` (SHA-256, unique), `operator_id`, `device_principal_id`, `garage`, `channel` (`kiosk`, `phone`), `created_at`, `last_seen_at`, `absolute_expires_at`, `ended_at`, `end_reason` | Closed rows are kept 13 months with the events |
 | `OperatorDevices` | **Phones only, later:** `operator_id`, WebAuthn credential id and public key (or the WebCrypto key), a label, `enrolled_at` and `enrolled_by`, `revoked_at` and `revoked_by` | Not in the kiosk release |
@@ -647,8 +761,9 @@ the module endpoints in eval §4.1 and module shell §6.
 | `POST /api/operator/session/keepalive` | Touch, for the idle timer |
 | `GET /api/operator/me` | Name, last sign-in, recent PIN events, enrolled phones |
 | `POST /api/operator/pin` | Change own PIN (current + new). The only call allowed while a change is required |
-| `GET /api/admin/operators?status=&q=` | The roster, and candidates from pull-out |
-| `POST /api/admin/operators` | Enrol a new hire before their first pull-out |
+| `GET /api/admin/operators?status=&q=` | The roster, and IDs in pull-out not on it |
+| `POST /api/admin/operators` | Add operator: first name, last name, logon ID, optional PIN → a generated PIN shown once if blank |
+| `POST /api/admin/operators/import?dryRun=true\|false` | Rows parsed in the browser from CSV or `.xlsx` (§1.4). A dry run returns each row's outcome; a real run loads the valid rows in one transaction and returns any generated PINs once |
 | `POST /api/admin/operators/{operatorId}/pin` | Issue or reset → the one-time PIN, once |
 | `POST /api/admin/operators/{operatorId}/disable`, `…/enable`, `…/not-a-person` | Roster changes, with a reason |
 | `GET /api/admin/operators/monthly-check` | Active but unseen for 30 days, for the desk to confirm |
@@ -661,10 +776,15 @@ the module endpoints in eval §4.1 and module shell §6.
   console page as Planning's ridership setup is (spec §10). It is not in
   Access & Identity: desk staff must not see that area.
 - It has three tabs:
-  - **Roster**: search by logon ID or name; the status; Issue/Reset PIN,
-    Disable, Enable;
-  - **Candidates**: seen in pull-out, not enrolled;
+  - **Roster**: search by logon ID or name; the status; **Add operator**,
+    **Upload roster** (template, preview, confirm), Issue/Reset PIN, Disable,
+    Enable;
+  - **Not on the roster**: seen in pull-out in the last 60 days, not on the
+    roster;
   - **Monthly check**.
+- Access & Identity links to this page for access administrators, so
+  operators are found where people are, without desk staff seeing Access &
+  Identity.
 - The one-time PIN appears in a dialog that cannot be reopened, with
   *"Give this to the operator in person. It works once, for 72 hours."*
 
@@ -744,17 +864,22 @@ repeated here.
       record who and why. [An access administrator]
 7. **Apply the migration on dev, then prod**, and check it in the schema
    drift panel. [User]
-8. **Load the roster.** Before the first issue day, check the Candidates tab
-   at the pilot garage: mark any shared or generic ID *not a person*, and
-   check that the operators expected at the garage appear. No bulk import:
-   operators become active only when a PIN is issued in person.
-   [Engineering, with the pilot garage desk]
-9. **Issue PINs at go-live**, in the week before the detour soft launch (P5).
-   - The desk enrols each operator in person as they come in, with a photo ID
-     check, and the operator sets their PIN at the kiosk there and then.
-   - Track progress on the Roster tab against the operators seen at the
-     garage.
-   - The other garages follow the same way before their own go-live.
+8. **Prepare and upload the roster.** The contractor fills the template with
+   first name, last name and Avail logon ID for the pilot garage's operators.
+   Leave the PIN column blank so OnBoard generates the PINs (§1.4). Upload it,
+   fix any refused rows from the preview, and check the *Not on the roster*
+   tab for anyone missed. Mark any shared or generic ID *not a person*.
+   [Keolis garage manager, with the desk; MVTA Planning checks the preview]
+9. **Hand out starting PINs at go-live**, in the week before the detour soft
+   launch (P5).
+   - Print the slips at upload. Give each operator their own slip privately,
+     after checking photo ID, as they come in for their shifts. They set
+     their own PIN at the kiosk there and then.
+   - Starting PINs expire after 14 days. Track who has signed in on the
+     Roster tab, and reset the rest.
+   - Destroy unclaimed slips, and delete any roster file that held PINs.
+   - The other garages follow the same way before their own go-live. New
+     hires after that are added with Add operator.
 
    [Keolis garage management, with the desk]
 10. **Procedure wording**, in `plans/ridership-counting-procedure-draft.md`
@@ -791,7 +916,7 @@ repeated here.
     operators on its last day; revoke the outgoing desk staff's
     `operator-credential-admin` and `ridership-printer` grants in OnBoard and
     their guest accounts in Entra; grant the incoming desk staff (step 6);
-    re-enrol operators in person (step 9). [Operations + MVTA IT + an access
+    reload the operators by upload, with new starting PINs (steps 8–9). [Operations + MVTA IT + an access
     administrator]
 
 ## Decisions needed
@@ -800,9 +925,15 @@ repeated here.
 
 1. The OnBoard operator number as the key, with the logon ID unique among
    active operators only (§1.1).
-2. An OnBoard roster fed by pull-out and enrolled in person, with **no HR
-   file import**; new hires may be enrolled before their first pull-out
-   (§1.2–1.3). This changes D8's "only logon IDs in Avail's operator data".
+2. An OnBoard roster loaded by **CSV/Excel upload** (first name, last name,
+   logon ID, optional PIN) or **Add operator**, checked against pull-out, with
+   no automated HR feed. New operators may be added before their first
+   pull-out (§1.2–1.4). This changes D8's "only logon IDs in Avail's operator
+   data".
+   - Every assigned PIN is a **starting PIN**: changed at first sign-in, and
+     it expires after 14 days.
+   - Recommended: leave the PIN column blank, and let OnBoard generate the
+     PINs and print the slips (§1.4).
 3. **Auto-disable at 90 days** with no pull-out and no sign-in, with a
    monthly check at 30 days (§1.3).
 4. A **peppered** scrypt hash (§2.3).
@@ -817,8 +948,8 @@ repeated here.
 
 **From Operations:**
 
-- That the desk enrols in person with a photo ID check, and does the monthly
-  check (§1.3, §2.2).
+- That whoever hands out a starting PIN does it privately with a photo ID
+  check, and that the desk does the monthly check (§1.3, §1.4).
 - Kiosk placement against shoulder-surfing (§4.1).
 - A named owner of the monthly reset review (step 12).
 - Phone device class (ops brief O2). This decides whether §3.3 is built.
