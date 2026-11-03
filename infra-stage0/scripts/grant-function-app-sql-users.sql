@@ -22,7 +22,9 @@
 -- What each app may do:
 --   all three             read and write every table (db_datareader, db_datawriter)
 --   REST API only         ALTER on the tables it empties with TRUNCATE (gtfsStopsSync)
---                         or loads with bulk copy (gtfsStopsSync, predictionAccuracy/store).
+--                         or loads with bulk copy (gtfsStopsSync, predictionAccuracy/store,
+--                         availMissedTripsFeed). sqlAlterGrants.test.ts fails when this
+--                         list and the code disagree.
 --                         Bulk copy without CHECK_CONSTRAINTS needs ALTER, not a
 --                         database-wide bulk permission.
 -- The Spare webhook app runs the REST package but registers only the receiver,
@@ -68,7 +70,8 @@ DECLARE @alterTables TABLE (name sysname NOT NULL);
 INSERT @alterTables VALUES
   (N'GtfsStops'), (N'GtfsTripDirections'), (N'GtfsRoutes'), (N'GtfsStopRoutes'),
   (N'GtfsCalendar'), (N'GtfsCalendarDates'), (N'GtfsScheduledTrips'),
-  (N'PredictionAccuracyRouteHours'), (N'PredictionAccuracyStops');
+  (N'PredictionAccuracyRouteHours'), (N'PredictionAccuracyStops'),
+  (N'AvailMissedTripsRouteStopDay');
 
 DECLARE @name sysname, @objectId uniqueidentifier, @appId uniqueidentifier, @isRest bit,
         @table sysname, @sql nvarchar(max);
