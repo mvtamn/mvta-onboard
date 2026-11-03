@@ -5,11 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.15] - 2026-11-02
+## [1.7.19] - 2026-11-02
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.18] - 2026-11-02
+
+- **Both SQL servers have their Entra admin declared in Bicep.** Dev's admin was set by hand and prod had none, and without an Entra admin nobody can run `CREATE USER ... FROM EXTERNAL PROVIDER` for the Function Apps' managed identities. `sql.bicep` now declares `administrators/ActiveDirectory` from `sqlEntraAdminLogin` / `sqlEntraAdminObjectId`, which `infra.yml` passes from the `SQL_ENTRA_ADMIN_LOGIN` / `SQL_ENTRA_ADMIN_OBJECT_ID` GitHub environment variables (not a parameter file: the repository is public). Both empty leaves the server's admin alone. What-if: no change on dev, prod gains the admin.
+- **`SQL_CONNECTION_STRING` can sign in without a password.** `Authentication=Active Directory Default` in the connection string makes both `db.ts` files connect as the app's own identity (managed identity in Azure, `az login` on a laptop). Without the key, or with `Authentication=Sql Password`, the login and password are used as before; any other value is refused. The REST API's connect retry also retries a failed token fetch (`EFEDAUTH`, which mssql wraps in an AggregateError with no code of its own) but not a rejected login. The password parser now ends a password at `Authentication=`.
+- **Nothing switches over in this release.** Key Vault's `sql-connection-string` still holds the password. The database users for the managed identities, the switch to the new connection string, and Entra-only auth follow.
 
 ## [1.7.14] - 2026-11-02
 
