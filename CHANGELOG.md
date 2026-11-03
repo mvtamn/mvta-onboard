@@ -5,11 +5,19 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.12] - 2026-11-02
+## [1.7.15] - 2026-11-02
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+
+## [1.7.14] - 2026-11-02
+
+A Count Sheet's QR code names the block and date, not the copy, and migration 157 kept only a fingerprint of each printed sheet: enough to say a reprint differs, not how. Scanned sheets (the Burnsville capture pilot agreed 2026-11-02, `plans/count-sheet-scan-upload.md` decision 8) are read row by row, so each row has to map to the trip printed on it. **The REST app restarts on merge.**
+
+- **Migration 161** adds `RidershipPrintedSheets.trip_ids`: a JSON array of the GTFS trip_ids printed on the sheet, row 1 first, checked with `ISJSON`. Sheets printed earlier stay NULL.
+- **`writePrintRun`** writes it from the sheet's trips in print order, and only once the column exists, so printing keeps working until 161 is applied on dev and prod. `SCHEMA_REQUIREMENTS` lists the column, so Integrations & Data Health says when it is missing.
+- Tests: `ridership.db.contract.test.ts` applies migration 161 and checks that the evening copy and the reprint after a late tripper record their own trips in row order.
 
 ## [1.7.10] - 2026-11-02
 
