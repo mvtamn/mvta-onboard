@@ -15,6 +15,8 @@ Connect export holds rider addresses, coordinates, comments and driver names):
 - A scanned Passenger Count Sheet (one total per trip, by time range)
 - Screenshots of the Access "Recent Riders SST DATA ENTRY" table and the
   "Ridership Data Manager" menu
+- Screenshots added 2026-11-02: the OCC "View and Edit Ridership Records" form
+  and Planning's "Riders by Trip > Direction > Date" crosstab (spec §16)
 - `FixRoute_Ridership-Count-Jan to Oct 2026.csv` — `FixedTotals`, Jan–Sep 2026
 - `Connect_Ridership-Count-Jan to Oct 2026.csv` — Spare trip export, Jan–Oct
 - `SOP_OPR-038-00` — General Bus Operations, "Ridership Counting and Count
@@ -83,7 +85,7 @@ has three measurable parts: **completeness** (all trips), **accuracy**, and
 
 | # | Gap |
 |---|---|
-| D1 | Rows in the Access entry table can have a blank `TripID` (seen on Route 495), so trips are matched by block and time, not a stable key. |
+| D1 | Rows in the Access entry table can have a blank `TripID` (seen on Route 495), so trips are matched by block and time, not a stable key. The TripID rule is now known (day type + route + direction + start HHMM, spec §16), so OnBoard can compute it. |
 | D2 | The Count Sheet carries no trip ID or direction — only route and a time range — so OCC matches each line to a trip by hand. |
 | D3 | September 2026 fixed-route ridership is 123,618 vs 97,449 in August (+27%) on flat trip counts. Unconfirmed whether real (e.g. school service) or an entry problem. |
 | D4 | The Connect export is completed trips only (cancellations and no-shows filtered by the query); riders are the sum of 11 fare-category columns (AP–AZ). The counting rule is undocumented. |

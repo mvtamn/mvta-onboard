@@ -656,13 +656,67 @@ scanned even when the run was submitted digitally.
 - **Personal data in scans:** a scan shows the operator's name and
   handwriting. Who may open scans should follow §10's operator-name rule.
 
+## 16. What the Access screens show (added 2026-11-02)
+
+Two screenshots Planning added to the "Ridership Database Procedures" thread
+(kept in the main checkout's `ridership/`, not in git): the OCC entry form and
+Planning's day crosstab.
+
+### The Access TripID rule
+
+`TripID` is **day type + route + direction + scheduled start (24-hour HHMM)**:
+
+| TripID | Day type | Route | Direction | Start |
+|---|---|---|---|---|
+| `243610748` | 2 = Sat | 436 | 1 = N | 07:48 |
+| `243621732` | 2 = Sat | 436 | 2 = S | 17:32 (5:32 PM) |
+| `143620542` | 1 = Wk | 436 | 2 = S | 05:42 |
+
+So OnBoard can compute an Access-style TripID for every Dispatch Log trip. Uses:
+
+- **December parallel run:** Planning matches Access and OnBoard trip by trip.
+- **APC comparison:** the 10/28 Access export joins to OnBoard and Avail
+  (whose `Trip` is the same HHMM) on this key.
+- **D1 (blank `TripID` on route 495):** the blank is an Access-side gap, not a
+  missing rule; check whether those rows were keyed at all.
+
+Still unknown: the digits for Sunday and Special Saturday, how a route number
+other than three digits is written, and whether direction digits are always
+N/E = 1 and S/W = 2.
+
+### OCC entry form (Ridership Data Manager)
+
+- Pick **Date + SST Block** → the block's trips with Date, Start, End, Route,
+  **Riders** and a free-text **Flag**; saves automatically. This is §4's entry
+  screen. Block 501 on 10/31/2026 lists the same three route 495 trips
+  (3:20–4:40 AM, 5:20–6:40 AM, 6:42–8:15 AM) that the Dispatch Log produces,
+  which supports building the roster from the Dispatch Log (§2).
+- Menu: **Find Records Not Yet Entered** (§5 completeness), **View by Flag**
+  (§6), **View by Date Entered** (greyed out — no entry timestamps, gap P6),
+  **View Crosstab**.
+- **Open:** what OCC types in **Flag** today. OnBoard has only *Not counted*
+  and *Did not operate*; any other use needs a home before December.
+
+### Planning's crosstab ("Riders by Trip > Direction > Date")
+
+- One row per trip (Days, Route, Direction, TripID, `Vehtypgrp`,
+  `MaxOfVariation`, `FirstOfTerm`, `LastOfStart`) and **one column per service
+  date** holding riders. This trip × date grid is what Planning reviews and
+  exports monthly for accuracy, so the reporting work needs an equivalent grid
+  and Excel export, not only monthly totals.
+- **Open:** what `Vehtypgrp` (seen: R), `MaxOfVariation` (blank) and
+  `FirstOfTerm` (seen: S) mean. One of them may be the ServiceType source (Q15).
+
 ## Open
 
 - **ServiceType (Q15).** Each trip carries a code (L, MX, RC, SX, DX) that
   varies within a route (e.g. 460 has L and MX trips), so it is a trip property,
   most likely from Optibus trip properties. Where OnBoard gets it, and what each
   code means, is unsettled. Until then the totals export cannot fill the
-  `ServiceType` column.
+  `ServiceType` column. Check the Access crosstab's `Vehtypgrp`,
+  `MaxOfVariation` and `FirstOfTerm` columns first (§16).
+- **Access TripID digits and the Flag column (§16).** Sunday / Special
+  Saturday digits; what OCC enters in Flag.
 - **Connect (v2).** Not designed; depends on the Spare export being reachable.
 - **APC (C8).** See §12. Unknown which vehicles have working APC; no APC data reaches
   OnBoard today.
