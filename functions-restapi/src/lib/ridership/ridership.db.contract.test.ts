@@ -22,7 +22,9 @@ import { buildWorklist, listBlockGarages, loadPrintStatus, loadSheet, printCount
 //   a garage's print logged with each block's fingerprint, a block the
 //   Dispatch Log changed since flagged, and a reprint of just that block
 //   clearing it, and a printed block the day no longer runs reported as
-//   dropped (migration 157).
+//   dropped (migration 157);
+//   every save above working before migration 162, a relief or bus change
+//   refused until it is applied, then saved, read back and in the history.
 //
 // Ridership's tables come from the real migration 153; Avail's pull-out from
 // the real migration 013; the Dispatch Log and missed-trip cases are reduced
@@ -217,6 +219,41 @@ test("ridership against real SQL", { skip: !connectionString && "DECISION_MATRIX
       }
       const after = (await pool.request().query("SELECT COUNT(*) AS n FROM dbo.RidershipCountHistory")).recordset[0].n;
       assert.equal(after, before);
+    });
+
+    const relief = { from_trip_id: "a2", operator_name: "Test Operator Relief", operator_id: "9102", bus: "4388" };
+
+    await t.test("a relief or bus change waits for migration 162; nothing else does", async () => {
+      const sheet = await loadSheet(pool, DAY, "024", AFTER_DEADLINE);
+      assert.equal(sheet?.header?.change, null, "read as no change before the columns exist");
+      const result = await saveSheet(pool, DAY, "024", {
+        version, operator_name: "Test Operator Relief", operator_id: "9102", bus: "4388", reconstructed: false,
+        trips: sheet!.trips.filter((tr) => tr.entry).map((tr) => ({ trip_id: tr.trip_id, ...tr.entry })),
+        added_trips: [], change: relief,
+      }, OCC, AFTER_DEADLINE);
+      assert.equal(result.kind, "change_not_ready");
+    });
+
+    await t.test("with migration 162, the change is saved, read back and recorded field by field", async () => {
+      for (const b of batches(readFileSync(join(process.cwd(), "sql", "migration-162-ridership-sheet-change.sql"), "utf8"))) await pool.request().batch(b);
+      const sheet = await loadSheet(pool, DAY, "024", AFTER_DEADLINE);
+      const result = await saveSheet(pool, DAY, "024", {
+        version, operator_name: "Test Operator A", operator_id: "9101", bus: "4421", reconstructed: false,
+        trips: sheet!.trips.filter((tr) => tr.entry).map((tr) => ({ trip_id: tr.trip_id, ...tr.entry })),
+        added_trips: [], change: relief,
+      }, OCC, AFTER_DEADLINE);
+      assert.equal(result.kind, "saved");
+      if (result.kind !== "saved") return;
+      assert.deepEqual(result.sheet.header?.change, relief);
+      assert.equal(result.sheet.header?.operator_overridden, false, "the header is the run that pulled out again");
+      const fields = result.sheet.history.filter((h) => h.field.startsWith("change_")).map((h) => `${h.field}=${h.new_value}`).sort();
+      assert.deepEqual(fields, ["change_bus=4388", "change_from_trip_id=a2", "change_operator_id=9102", "change_operator_name=Test Operator Relief"]);
+      await assert.rejects(
+        pool.request().query("UPDATE dbo.RidershipSheets SET change_operator_name = NULL, change_operator_id = NULL, change_bus = NULL WHERE block = '024'"),
+        /CK_RidershipSheets_Change/,
+        "a change names who or what took over",
+      );
+      version = result.sheet.version;
     });
 
     await t.test("an unentered sheet is late after the deadline, and its garage shows it", async () => {

@@ -2825,6 +2825,7 @@ export interface RidershipSheet {
     operator_name: string | null;
     operator_id: string | null;
     bus: string | null;
+    change: RidershipSheetChange | null;
     prefill_run: number | null;
     operator_overridden: boolean;
     reconstructed: boolean;
@@ -2841,11 +2842,25 @@ export interface RidershipSheet {
   history: RidershipSheetHistoryEntry[];
 }
 
+/**
+ * A relief operator or bus change part way through the block (migration 162):
+ * from this trip on, the named operator and bus ran it. A null field carries
+ * on from the header - a bus swap names no operator.
+ */
+export interface RidershipSheetChange {
+  from_trip_id: string;
+  operator_name: string | null;
+  operator_id: string | null;
+  bus: string | null;
+}
+
 export interface RidershipSheetSave {
   version: string | null;
   operator_name: string | null;
   operator_id: string | null;
   bus: string | null;
+  /** Null when nobody took over and the bus stayed. */
+  change: RidershipSheetChange | null;
   reconstructed: boolean;
   trips: { trip_id: string; count_status: RidershipCountStatus; boardings: number | null }[];
   /** The whole list. A saved row whose id is missing here is removed. */

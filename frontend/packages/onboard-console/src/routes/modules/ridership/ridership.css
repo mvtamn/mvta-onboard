@@ -62,6 +62,10 @@ kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.
 .ridership-who { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; align-items: end; border: none; padding: 0; margin: 0; }
 .ridership-source { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .ridership-runs { display: inline-flex; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-dim); }
+.ridership-change { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.ridership-change label > input, .ridership-change label > select { width: 100%; min-width: 0; box-sizing: border-box; }
+.ridership-change legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+.ridership-change-add { margin: 10px 0 0; }
 .ridership-trips td.num input { width: 72px; text-align: right; font-size: 1rem; }
 .ridership-trips td.num input.is-letter { font-weight: 700; color: var(--pill-warning-fg); }
 .ridership-trips tr.is-excused td { color: var(--text-muted); }

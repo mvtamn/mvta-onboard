@@ -167,6 +167,11 @@ app.http("ridershipSheetPut", {
           return { status: 400, jsonBody: { error: "Validation failed", details: result.problems } };
         case "not_found":
           return { status: 404, jsonBody: { error: `Block ${address.block} has no trips in the Dispatch Log on ${address.serviceDate}.` } };
+        case "change_not_ready":
+          return {
+            status: 503,
+            jsonBody: { error: "This sheet has a relief or bus change, which needs migration 162 applied first. Save it without the change for now, or apply the migration." },
+          };
         case "conflict":
           return {
             status: 409,
