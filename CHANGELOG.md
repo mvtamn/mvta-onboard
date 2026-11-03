@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.18] - 2026-11-02
+
+- **Both SQL servers have their Entra admin declared in Bicep.** Dev's admin was set by hand and prod had none, and without an Entra admin nobody can run `CREATE USER ... FROM EXTERNAL PROVIDER` for the Function Apps' managed identities. `sql.bicep` now declares `administrators/ActiveDirectory` from `sqlEntraAdminLogin` / `sqlEntraAdminObjectId`, which `infra.yml` passes from the `SQL_ENTRA_ADMIN_LOGIN` / `SQL_ENTRA_ADMIN_OBJECT_ID` GitHub environment variables (not a parameter file: the repository is public). Both empty leaves the server's admin alone. What-if: no change on dev, prod gains the admin.
+- **`SQL_CONNECTION_STRING` can sign in without a password.** `Authentication=Active Directory Default` in the connection string makes both `db.ts` files connect as the app's own identity (managed identity in Azure, `az login` on a laptop). Without the key, or with `Authentication=Sql Password`, the login and password are used as before; any other value is refused. The REST API's connect retry also retries a failed token fetch (`EFEDAUTH`, which mssql wraps in an AggregateError with no code of its own) but not a rejected login. The password parser now ends a password at `Authentication=`.
+- **Nothing switches over in this release.** Key Vault's `sql-connection-string` still holds the password. The database users for the managed identities, the switch to the new connection string, and Entra-only auth follow.
+
 ## [1.7.14] - 2026-11-02
 
 A Count Sheet's QR code names the block and date, not the copy, and migration 157 kept only a fingerprint of each printed sheet: enough to say a reprint differs, not how. Scanned sheets (the Burnsville capture pilot agreed 2026-11-02, `plans/count-sheet-scan-upload.md` decision 8) are read row by row, so each row has to map to the trip printed on it. **The REST app restarts on merge.**
