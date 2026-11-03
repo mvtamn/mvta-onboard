@@ -94,7 +94,7 @@ table sets out each role's link in that chain.
 | Role | Responsibilities |
 |---|---|
 | Bus Operators | Count every boarding passenger on every trip of the assigned block, record each trip's Count on the Count Sheet, and hand the sheet in at pull-in. |
-| Check-In Desk Staff and Garage Managers | Print the next service date's Count Sheets from OnBoard, issue each Operator the sheet for the assigned block, collect completed sheets at pull-in, follow up the same day on any sheet not returned, pass sheets to Contractor OCC staff, and store sheets as this SOP requires. |
+| Check-In Desk Staff and Garage Managers (OnBoard role: Ridership printer) | Print the next service date's Count Sheets from OnBoard each evening, reprint changed sheets each morning, issue each Operator the sheet for the assigned block, collect completed sheets at pull-in, follow up the same day on any sheet not returned, pass sheets to Contractor OCC staff, and store sheets as this SOP requires. |
 | Contractor OCC Staff (OnBoard role: Ridership recorder) | Enter every Count Sheet by the deadline, in OnBoard and, until the Cutover Date, in the Access Database, add Unscheduled Trips, review completeness daily, answer every Flag, and mark each month complete. |
 | Contractor Operations Management | Supervise and monitor compliance with this SOP: review completeness and timeliness in OnBoard, correct repeated Operator or staff failures, request and remove OnBoard access for Contractor staff, and keep the paper Count Sheets for the required period. |
 | Contractor Training and Safety Staff | Train every Operator, check-in desk staff member and OCC staff member on this SOP before they perform it, and keep the training records. |
@@ -127,24 +127,33 @@ as Unassigned so the gap is visible rather than silent.
 **Carried out by:** check-in desk staff, under the Garage Manager.
 
 Every Operator needs the right sheet before the first trip. OnBoard prepares
-the next service date's sheets overnight from the day's scheduled trips: one
-sheet per block, listing each revenue trip's route, direction, scheduled start
-and end times and trip ID, with a QR code identifying the block and service
-date. The Operator name and bus are left blank, because Operators are assigned
-just before pull-out.
+each service date's sheets the day before, from the scheduled trips: one sheet
+per block, listing each revenue trip's route, direction, scheduled times and
+Avail trip number, with a QR code that ties the sheet to its block, service
+date and page. The Operator name and bus are left blank, because Operators are
+assigned just before pull-out. OnBoard refreshes the schedule early each
+morning and marks any sheet whose trips changed after it was printed.
 
-1. Each day, before the first pull-out of the next service date, print that
-   service date's Count Sheets from OnBoard for every block your garage
-   operates. **[Decide]** the print time against garage staffing.
-2. Check that a sheet has printed for every block on the day's pull-out list.
-   Reprint any missing sheet from OnBoard.
-3. At check-in, give each Operator the Count Sheet for the assigned block and
-   service date, as part of the run packet (OPR-038-00, Operator Check-In and
+1. Each evening, open **Ridership**, then **Print sheets**, choose your garage
+   and print the next service date's Count Sheets. OnBoard produces one file
+   per garage, in pull-out order.
+2. Check the print page for blocks shown as Unassigned or dropped. Tell MVTA
+   Planning the same evening about any Unassigned block your garage operates,
+   and print its sheet with your garage's.
+3. Each morning before the first pull-out, open **Print sheets** again and
+   reprint every sheet OnBoard marks as changed. Discard the earlier copy of
+   each reprinted sheet.
+4. At check-in, give each Operator the Count Sheet for the assigned block and
+   service date with the run paperwork (OPR-038-00, Operator Check-In and
    Check-Out).
-4. If OnBoard is unavailable and sheets cannot be printed, notify Contractor
+5. If OnBoard is unavailable and sheets cannot be printed, notify Contractor
    Operations Management and the IT Service Desk, and issue blank Count
    Sheets on which the Operator writes the block, service date and each trip.
    **[Decide]**
+
+REQUIREMENT: Do not photocopy a Count Sheet or reuse one from another day.
+Each sheet is printed for one block on one service date, and its code files
+the counts under that block and date.
 
 ### Counting on the Trip
 
@@ -157,17 +166,18 @@ is recorded; alightings and counts by timepoint are not.
    Count Sheet. If you change buses during the block, write the new bus number
    beside the first trip operated on it.
 2. Count every passenger who boards on every trip printed on the sheet,
-   including passengers who board with a pass, a transfer or no fare.
-   **[Decide]** whether a passenger who stays aboard from one trip into the
-   next is counted again on the next trip.
-3. At the end of each trip, write the trip's total boardings in that trip's
-   row.
+   including passengers who board with a pass, a transfer or no fare. A
+   passenger who stays aboard from one trip into the next has not boarded
+   the next trip and is not counted again.
+3. Make one stroke in the trip's **Tally** box for every boarding. At the
+   end of the trip, write the total in the **Total boardings** boxes, one
+   digit per box (for 27 riders, write 0 2 7). If no one boarded, write 0.
 4. Record actual observations only. Do not estimate or round.
 5. If you operate a trip that is not on your sheet, write its route,
-   direction, start time and boardings in a blank row at the bottom of the
-   sheet. **[Decide]**
-6. If a trip on your sheet did not operate, write "Did not operate" in its
-   row. Do not write 0. **[Decide]**
+   direction, start time and boardings in the **Unscheduled trips** rows at
+   the bottom of the sheet.
+6. If a trip on your sheet did not operate, tick its **DNO** box and leave
+   the total blank. Do not write 0.
 7. Complete the Count Sheet on every trip, including on a bus with APC
    equipment, unless MVTA has authorized otherwise in writing (Automatic
    Passenger Counters, below).
@@ -183,8 +193,8 @@ Record each trip's total at the end of the trip, when the vehicle is stopped.
    Write each remaining trip's total on any paper you have, at the end of the
    trip, and notify the OCC and the Garage Manager at pull-in.
 2. Reconstruct the counts as accurately as you can on a new Count Sheet for
-   the same block and service date, and write **Reconstructed** across the
-   top.
+   the same block and service date, reprinted by the check-in desk, and tick
+   its **Reconstructed** box.
 3. Hand in the Reconstructed Count Sheet, and the damaged original if you
    still have it, at pull-in.
 
@@ -200,14 +210,17 @@ so that repeated losses can be addressed.
    desk as part of check-out (OPR-038-00, Pull-In and End-of-Shift
    Procedures).
 2. Check the sheet before the Operator leaves: name, Operator ID and bus
-   number are filled in, and every trip row has a Count, "Did not operate" or
-   a written reason.
+   number are filled in, and every trip row has a total or a ticked DNO box.
 3. By the end of the shift, confirm that a sheet has come back for every block
    that operated. Follow up the same day with the Operator of any block whose
    sheet is missing.
-4. Pass completed sheets to Contractor OCC staff for entry at least
-   **[Decide]** times a day, and keep entered sheets together by service date
-   and garage.
+4. Pass completed sheets to Contractor OCC staff for entry up to three
+   times a day, and keep entered sheets together by service date and garage.
+
+NOTE: When MVTA enables other ways of entering a sheet, the timing follows
+the method: an Operator who enters counts directly enters them at the end of
+the shift, and sheets scanned and uploaded to OnBoard are uploaded up to
+three times a day. The paper sheet is still handed in at pull-in.
 
 REQUIREMENT: A Count Sheet must not be altered after it is handed in. A
 correction is made in OnBoard, where it is recorded, never on the paper sheet.
@@ -227,7 +240,7 @@ and the late sheets first.
    different Operator or bus, change OnBoard to match the sheet. The sheet
    wins.
 3. Enter each trip's Count from the sheet, in order.
-4. For a trip marked "Did not operate", record it as not operated. A trip
+4. For a trip with DNO ticked, record it as Did not operate. A trip
    that MVTA has confirmed as a Missed Trip does not need a Count.
 5. Add each Unscheduled Trip written on the sheet with **Add trip**, giving
    its route, direction, start time and the reason it was added, and enter
@@ -275,8 +288,8 @@ the trip usually carries passengers. MVTA Planning may also flag any Count.
 4. If the Count matches the sheet, **confirm** it, with a short note giving
    any reason known (for example, a school group or an event).
 5. Answer every Flag for a month by the **5th** of the following month. A
-   Flag MVTA Planning raises after the 5th is answered within **[Decide]**
-   business days.
+   Flag MVTA Planning raises after the 5th is answered within one business
+   day.
 
 NOTE: At issue, OnBoard flags a Count that is more than three times the
 four-week median and at least 10 above it, or zero when the median is 5 or
@@ -332,7 +345,7 @@ they carry Operator names and IDs.
 1. Keep every paper Count Sheet, filed by garage and service date, until
    MVTA confirms that the month's performance assessment is final and its
    dispute period has passed.
-2. Produce any Count Sheet MVTA requests within **[Decide]** business days.
+2. Produce any Count Sheet MVTA requests within one business day.
 3. Store Count Sheets securely. Do not share them, or the Operator names and
    IDs on them, outside the Contractor and MVTA.
 4. When MVTA confirms a month, destroy its Count Sheets securely.
@@ -365,7 +378,7 @@ Count Sheet with one total per trip, check-in desk staff collect the sheets,
 and Contractor OCC staff key them into MVTA's Microsoft Access ridership
 database, which is the record. MVTA moves ridership to OnBoard in three
 stages. MVTA sets the start of each stage and gives the Contractor written
-notice at least **[Decide]** days in advance.
+notice at least 14 calendar days in advance.
 
 | Stage | Begins | Count Sheet | Entered in | Record |
 |---|---|---|---|---|
@@ -380,16 +393,22 @@ notice at least **[Decide]** days in advance.
    sheet in **both** OnBoard and the Access database, matching each OnBoard
    trip to its Access row by block and start time. The Access database
    remains the record.
-3. The Parallel Run lasts at least one full calendar month. MVTA Planning
-   compares the month's totals in the two systems and resolves any
-   difference. If MVTA accepts the result, it sets the Cutover Date as the
-   first day of a following month. If not, the Parallel Run continues.
-4. From the Cutover Date, OnBoard is the only record. The Access data-entry
+3. The Parallel Run lasts at least one full calendar month, and every sheet
+   of that month is entered in both systems. MVTA Planning compares the
+   totals in the two systems and resolves any difference. If MVTA accepts
+   the result, it sets the Cutover Date as the first day of a following
+   month. If not, the Parallel Run continues.
+4. MVTA may set the Cutover Date before the Parallel Run month has closed,
+   on a comparison of part of the month. The Access Database then remains
+   available, but is not used for new service dates, until MVTA accepts the
+   full month.
+5. From the Cutover Date, OnBoard is the only record. The Access data-entry
    form is retired and is no longer used.
-5. The entry deadline, Flags, Month Close and Reporting Failures are
+6. The entry deadline, Flags, Month Close and Reporting Failures are
    practised during the Parallel Run but not assessed. They are assessed for
-   service dates from the Cutover Date.
-6. If MVTA directs in writing that OnBoard cannot be used after the Cutover
+   service dates from the Cutover Date, subject to the Transition and Ramp-Up
+   Periods in Attachment G.
+7. If MVTA directs in writing that OnBoard cannot be used after the Cutover
    Date, return to the current process until MVTA sets a new Cutover Date.
 
 NOTE: A change of operations contractor does not restart or skip a stage. The
