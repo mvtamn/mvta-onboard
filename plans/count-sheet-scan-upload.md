@@ -1,8 +1,8 @@
 # Count Sheet scan upload and handwriting reading — evaluation
 
-Date: 2026-11-02. **Not implemented; nothing here is decided.** This is an
-evaluation with a recommendation for each question, written for the user to
-decide on.
+Date: 2026-11-02. **Not implemented.** An evaluation with a recommendation for
+each question. **The user agreed all eight decisions on 2026-11-02**, each as
+recommended (see "Decisions" at the end); the garage scanners produce **PDF**.
 
 It builds on spec §15, "the Count Sheet's journey: QR link, submission, scan
 and reading" (`plans/ridership-counting-spec.md`, PR #455). §15 already
@@ -543,30 +543,35 @@ adds no Azure cost but is the most engineering time.
 - S2: a trial of about a week;
 - S3: 1–2 PRs (readings, proposals UI, `source`).
 
-## Decisions for the user
+## Decisions (agreed with the user 2026-11-02)
 
-1. **Pilot capture at Burnsville in mid-December** (ahead of §15's "after the
-   March close"), so December produces the reading trial's labelled set? Or
-   start on Jan 2, or keep §15's timing?
-2. **Capture route:** the upload page first (recommended), or scan-to-folder
-   or scan-to-email, depending on the MFPs (step 1).
-3. **Reader:** prebuilt Document Intelligence Read/Layout first, with a custom
-   model or an in-house classifier only if the trial fails (recommended).
-   Should Azure OpenAI be in the trial at all?
-4. **Lateness:** keep `entered_at` as OCC's confirmation (recommended), or
-   judge it on the scan time?
-5. **Confidence policy:** pre-fill above a threshold and make OCC type
-   everything below it (recommended). Also: the trial's targets (no more than
-   1 in 200 pre-filled values wrong, at least 80% of trips pre-filled), and
-   whether to audit a random sample of confirmed sheets each month.
-6. **Who views scans:** a new `ridership.scans.view` action, or the January
-   operator-names action, if that is its name. Should the compliance roles
-   have it?
-7. **Paper release:** ask records management to accept the 300 dpi scan as
-   the record copy, so paper is released after month close rather than after
-   the dispute window.
-8. **Print-log trip list:** land `RidershipPrintedSheets.trip_ids` in early
-   December, so December's sheets map exactly?
+The garage scanners produce **PDF**. Each decision below was agreed as
+recommended.
+
+1. **Capture starts mid-December as a capture-only pilot at Burnsville**,
+   ahead of §15's "after the March close". December's scans, labelled by
+   OCC's keyed counts, are the reading trial's data. This changes §15's
+   "When".
+2. **The PDF reaches OnBoard through the console upload page.** Scan-to-email
+   and scan-to-folder are not built.
+3. **The trial tests Document Intelligence only:** prebuilt Read/Layout first,
+   a custom model or in-house classifier only if it misses the targets.
+   **Azure OpenAI is not in the trial.**
+4. **Lateness stays on OCC's confirmation** (`entered_at`). The scan time is
+   recorded beside it, not used for lateness.
+5. **Pre-fill above a confidence threshold; below it, an empty box with a
+   hint.** Readings go live only once the trial reaches no more than 1 in 200
+   pre-filled values wrong and at least 80% of trips pre-filled. No monthly
+   audit sample.
+6. **Scan images are opened by Ridership Recorder, Ridership Manager and the
+   compliance roles**, through `ridership.scans.view` (or the January
+   operator-names action, if that lands first), with every open logged. The
+   desk uploads but cannot view.
+7. **Records management is asked to accept the 300 dpi scan as the record
+   copy**, so paper is released after month close once its scan is stored,
+   legible and confirmed. Until they agree, paper is kept as today.
+8. **The print log stores each sheet's printed trip list** (`trip_ids`, in row
+   order) from early December.
 
 ## Sources
 
