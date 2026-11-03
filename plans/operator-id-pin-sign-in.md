@@ -1,8 +1,9 @@
 # Operator Sign-in — Logon ID + PIN
 
-Date: 2026-11-02. **Not implemented. Nothing here is decided.** Each section
-ends with a recommendation for the user, Operations, MVTA IT or the
-contractor to accept or change.
+Date: 2026-11-02. **Not implemented.** The user accepted all ten of its
+decisions on 2026-11-02, each as recommended (see *Decisions*, below). The
+questions for Operations, MVTA IT, the contractor and Avail are still open.
+Code waits for the operator credential ADR (§6.5).
 
 This evaluates how operators sign in to the operator app: the garage kiosk
 first, then operators' phones once OPR-038 is amended. It settles what the
@@ -919,9 +920,9 @@ repeated here.
     reload the operators by upload, with new starting PINs (steps 8–9). [Operations + MVTA IT + an access
     administrator]
 
-## Decisions needed
+## Decisions
 
-**From the user:**
+**Decided by the user, 2026-11-02**, one by one, each as recommended:
 
 1. The OnBoard operator number as the key, with the logon ID unique among
    active operators only (§1.1).
@@ -932,8 +933,8 @@ repeated here.
    data".
    - Every assigned PIN is a **starting PIN**: changed at first sign-in, and
      it expires after 14 days.
-   - Recommended: leave the PIN column blank, and let OnBoard generate the
-     PINs and print the slips (§1.4).
+   - OnBoard generates the PINs and prints the slips by default. The PIN
+     column stays optional, for a contractor that already has PINs (§1.4).
 3. **Auto-disable at 90 days** with no pull-out and no sign-in, with a
    monthly check at 30 days (§1.3).
 4. A **peppered** scrypt hash (§2.3).
@@ -946,7 +947,11 @@ repeated here.
 10. The role `operator-credential-admin`, agency-wide, replacing #458's
     `ridership-operator-admin` (§6.4).
 
-**From Operations:**
+Follow-on: PR #458's step 5 and its terms still name
+`ridership-operator-admin`, and its D8 still says "only logon IDs in Avail's
+operator data". Both should be updated to match decisions 2 and 10.
+
+**Still open — from Operations:**
 
 - That whoever hands out a starting PIN does it privately with a photo ID
   check, and that the desk does the monthly check (§1.3, §1.4).
@@ -954,7 +959,7 @@ repeated here.
 - A named owner of the monthly reset review (step 12).
 - Phone device class (ops brief O2). This decides whether §3.3 is built.
 
-**From MVTA IT:**
+**Still open — from MVTA IT:**
 
 - The pepper secret and its Key Vault access (step 4).
 - B2B guest invitations for desk staff (step 6).
@@ -962,14 +967,14 @@ repeated here.
   This decides between eval §3.2's compliant-device gate and the
   named-location fallback.
 
-**From the contractor (Keolis):**
+**Still open — from the contractor (Keolis):**
 
 - Whether logon IDs carry over on 2027-01-01 (step 2).
 - Named desk and supervisor staff per garage.
 - Same-day leaver notice, and an answer to the monthly check.
 - Telling operators what is recorded (step 14).
 
-**From Avail:**
+**Still open — from Avail:**
 
 - Whether logon IDs are reused, which IDs are shared, and whether there is a
   roster endpoint (step 1).
