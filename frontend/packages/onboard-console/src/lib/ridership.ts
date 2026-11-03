@@ -193,10 +193,20 @@ export interface AddedDraft {
   cell: Cell;
 }
 
+/** The sheet's "Relief or bus change" line, as typed. Blank text carries on from the header. */
+export interface ChangeDraft {
+  from_trip_id: string;
+  operator_name: string;
+  operator_id: string;
+  bus: string;
+}
+
 export interface SheetDraft {
   operator_name: string;
   operator_id: string;
   bus: string;
+  /** Null: the sheet's relief line is blank. */
+  change: ChangeDraft | null;
   reconstructed: boolean;
   cells: Record<string, Cell>;
   added: AddedDraft[];
@@ -209,6 +219,14 @@ export function draftFromSheet(sheet: RidershipSheet): SheetDraft {
     operator_name: who?.operator_name ?? "",
     operator_id: who?.operator_id ?? "",
     bus: who?.bus ?? "",
+    change: sheet.header?.change
+      ? {
+          from_trip_id: sheet.header.change.from_trip_id,
+          operator_name: sheet.header.change.operator_name ?? "",
+          operator_id: sheet.header.change.operator_id ?? "",
+          bus: sheet.header.change.bus ?? "",
+        }
+      : null,
     reconstructed: sheet.header?.reconstructed ?? false,
     cells: Object.fromEntries(sheet.trips.map((trip) => [trip.trip_id, cellFromEntry(trip.entry)])),
     added: sheet.added_trips.map((trip) => ({
@@ -236,6 +254,16 @@ export function isOverridden(draft: Pick<SheetDraft, "operator_name" | "operator
   return !sameText(draft.operator_name, prefill.operator_name)
     || !sameText(draft.operator_id, prefill.operator_id)
     || !sameText(draft.bus, prefill.bus);
+}
+
+/**
+ * A new relief line, pre-filled from Avail's next run when it has one: Avail
+ * knows who relieved and on which bus, but not from which trip - that comes
+ * from the sheet ("From trip #", the row number).
+ */
+export function newChange(sheet: RidershipSheet): ChangeDraft {
+  const relief = sheet.pullout.other_runs[0];
+  return { from_trip_id: "", operator_name: relief?.operator_name ?? "", operator_id: relief?.operator_id ?? "", bus: relief?.bus ?? "" };
 }
 
 /** Trips that need a count and have nothing yet, in sheet order. */
@@ -285,6 +313,14 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
       });
     }
   }
+  let change: RidershipSheetSave["change"] = null;
+  if (draft.change) {
+    const c = draft.change;
+    const named = { operator_name: blankToNull(c.operator_name), operator_id: blankToNull(c.operator_id), bus: blankToNull(c.bus) };
+    if (!c.from_trip_id) problems.push({ target: "change", message: "The relief or bus change needs the trip it starts from: the sheet's \"From trip #\"." });
+    if (!named.operator_name && !named.operator_id && !named.bus) problems.push({ target: "change", message: "The relief or bus change names the operator or the bus that took over. Remove it if the line is blank." });
+    if (c.from_trip_id) change = { from_trip_id: c.from_trip_id, ...named };
+  }
   if (problems.length > 0) return { save: null, problems };
   return {
     save: {
@@ -292,6 +328,7 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
       operator_name: blankToNull(draft.operator_name),
       operator_id: blankToNull(draft.operator_id),
       bus: blankToNull(draft.bus),
+      change,
       reconstructed: draft.reconstructed,
       trips,
       added_trips: added,

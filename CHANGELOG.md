@@ -5,11 +5,23 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.21] - 2026-11-03
+## [1.7.25] - 2026-11-03
 
 - **Dev's Function Apps sign in to SQL as themselves.** `main-phase1.bicep` gains `sqlAuthentication` (`password` | `managedIdentity`, default `password`) and builds one `SQL_CONNECTION_STRING` for the REST, dispatch and Spare webhook apps: the Key Vault reference to `sql-connection-string` as before, or `Server=tcp:<server>,1433;Database=sqldb-mvta-onboard-<env>;Authentication=Active Directory Default;...`, which holds no secret. `functionapp.bicep` takes it as `sqlConnectionString` instead of hardcoding the Key Vault reference. `phase1-dev.parameters.json` sets `managedIdentity`; prod keeps the password.
 - **Rollback** is setting dev back to `password` and re-running the infra workflow; the Key Vault secret stays until Entra-only auth is on.
 - **Needs, before it deploys:** 1.7.18's `db.ts` (which understands `Authentication=Active Directory Default`) on dev, and `infra-stage0/scripts/grant-function-app-sql-users.sql` run against dev's database. Without the database users, every SQL call on dev fails at login.
+
+## [1.7.22] - 2026-11-03
+
+A relief operator or bus change on a Count Sheet (migration 162). Check-in staff assign operators in Avail on the day and the bus joins at MDT login, after the desk prints the sheet the evening before, so operator and bus stay handwritten and entry pre-fills them from Avail's pull-out. A block that changed hands or buses part way had nowhere to say so, and the bus matters for comparing counts with the bus's passenger counter.
+
+- **Migration 162** adds `change_from_trip_id`, `change_operator_name`, `change_operator_id` and `change_bus` to `RidershipSheets`, with `CK_RidershipSheets_Change`: all NULL, or a trip plus at least one of the three. One change per sheet, matching the one line on the paper.
+- **The API reads the columns only once they exist** (`sheetChangeReady`, the same `COL_LENGTH` probe as `scheduled_end_seconds`). Before migration 162 every sheet loads with `change: null` and saves as before; a save carrying a change answers 503 naming the migration. Schema drift lists 162.
+- **`SheetSave.change` / `header.change`**: `{ from_trip_id, operator_name, operator_id, bus }`. `checkSheetSave` refuses a trip not on the sheet, and the first trip (that is the header). The four fields are flattened into the history, one row per field that moved.
+- **The printed sheet** gets a second operator row: "Relief or bus change: operator name", Operator ID, Bus #, Initials and From trip # (the row number). `TRIP_ROW` goes from 26 to 24 so a full 14-trip last page still clears the footer; the print fingerprint is the trips, not the layout, so printed sheets do not flip to changed.
+- **Enter sheets**: "Add relief or bus change" opens the row, pre-filled from Avail's next run (`newChange`); From trip lists the sheet's trips from #2; the chosen trip is marked "Relief or bus change from here".
+
+**Restarts the REST app on merge.**
 
 ## [1.7.18] - 2026-11-02
 

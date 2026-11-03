@@ -213,6 +213,28 @@ describe("Ridership › Enter sheets", () => {
     expect(screen.getByText(/Changed from Avail/)).toBeTruthy();
   });
 
+  it("keys the sheet's relief or bus change: Avail's next run pre-fills, the sheet's trip # says from when", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "024" }));
+    await user.click(await screen.findByRole("button", { name: "Add relief or bus change" }));
+    const line = screen.getByRole("group", { name: "Relief or bus change" });
+    expect((within(line).getByLabelText("Operator") as HTMLInputElement).value).toBe("Test Operator Relief");
+    expect((within(line).getByLabelText("Bus") as HTMLInputElement).value).toBe("4402");
+    // Trip #1 is the header's operator; the line starts from #2 or later.
+    const from = within(line).getByLabelText("From trip") as HTMLSelectElement;
+    expect([...from.options].map((o) => o.textContent)).toEqual(["Choose the sheet's trip #", "#2 · 7:00 AM · 460 S"]);
+    await user.selectOptions(from, "024-2");
+    expect(screen.getByText("Relief or bus change from here")).toBeTruthy();
+    await user.type(screen.getByLabelText("Boardings, 460 N 6:00 AM"), "12");
+    await user.type(screen.getByLabelText("Boardings, 460 S 7:00 AM"), "9");
+    await user.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(saveRidershipSheet).toHaveBeenCalledWith("20261130", "024", expect.objectContaining({
+      operator_name: "Test Operator A",
+      change: { from_trip_id: "024-2", operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" },
+    })));
+  });
+
   it("opens a sheet from a scanned QR link", async () => {
     const user = userEvent.setup();
     renderPage();

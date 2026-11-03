@@ -17,6 +17,7 @@ import type {
   CountStatus,
   LoggedTrip,
   PulloutRun,
+  SheetChange,
   SheetHeader,
   PrintScope,
   SheetHistoryEntry,
@@ -169,17 +170,44 @@ function rangeFilter(req: sql.Request, range: Range, alias = ""): string {
   return `${p}service_date BETWEEN @from AND @to`;
 }
 
+/** Whether migration 162's relief or bus change columns exist yet. */
+export async function sheetChangeReady(executor: Executor): Promise<boolean> {
+  const probe = await request(executor).query<{ ok: number }>(
+    "SELECT CASE WHEN COL_LENGTH('dbo.RidershipSheets', 'change_from_trip_id') IS NULL THEN 0 ELSE 1 END AS ok",
+  );
+  return probe.recordset[0]?.ok === 1;
+}
+
+type SheetRow = Omit<StoredSheet, "change"> & {
+  change_from_trip_id: string | null;
+  change_operator_name: string | null;
+  change_operator_id: string | null;
+  change_bus: string | null;
+};
+
 export async function loadSheets(executor: Executor, range: Range, lock = false): Promise<StoredSheet[]> {
+  // As with the scheduled end: a database without migration 162 must not be asked for its columns.
+  const change = (await sheetChangeReady(executor))
+    ? "change_from_trip_id, change_operator_name, change_operator_id, change_bus"
+    : "CAST(NULL AS NVARCHAR(100)) AS change_from_trip_id, CAST(NULL AS NVARCHAR(200)) AS change_operator_name, "
+      + "CAST(NULL AS NVARCHAR(20)) AS change_operator_id, CAST(NULL AS NVARCHAR(20)) AS change_bus";
   const req = request(executor);
   const where = rangeFilter(req, range);
-  const result = await req.query<StoredSheet>(`
+  const result = await req.query<SheetRow>(`
     SELECT service_date, block, operator_name, operator_id, bus, prefill_run,
            operator_overridden, reconstructed, entered_at, entered_by,
-           created_at, updated_at, updated_by
+           created_at, updated_at, updated_by, ${change}
     FROM dbo.RidershipSheets ${lock ? "WITH (UPDLOCK, HOLDLOCK)" : ""}
     WHERE ${where}
   `);
-  return result.recordset.map((r) => ({ ...r, operator_overridden: Boolean(r.operator_overridden), reconstructed: Boolean(r.reconstructed) }));
+  return result.recordset.map(({ change_from_trip_id, change_operator_name, change_operator_id, change_bus, ...r }) => ({
+    ...r,
+    operator_overridden: Boolean(r.operator_overridden),
+    reconstructed: Boolean(r.reconstructed),
+    change: change_from_trip_id
+      ? { from_trip_id: change_from_trip_id, operator_name: change_operator_name, operator_id: change_operator_id, bus: change_bus }
+      : null,
+  }));
 }
 
 export interface StoredCount extends CountEntry {
@@ -263,10 +291,13 @@ export interface SheetWrite {
     operator_name: string | null;
     operator_id: string | null;
     bus: string | null;
+    change: SheetChange | null;
     prefill_run: number | null;
     operator_overridden: boolean;
     reconstructed: boolean;
   };
+  /** False before migration 162: the change columns are not written (the caller refuses a change). */
+  changeColumns: boolean;
   /** Set only on the save that first completes the sheet. */
   entered: boolean;
   /** Whether the sheet row exists yet. */
@@ -295,21 +326,32 @@ export async function writeSheet(tx: sql.Transaction, write: SheetWrite, actor: 
     req.input("prefill_run", sql.Int, write.header.prefill_run);
     req.input("operator_overridden", sql.Bit, write.header.operator_overridden);
     req.input("reconstructed", sql.Bit, write.header.reconstructed);
+    const change = write.header.change;
+    req.input("change_from_trip_id", sql.NVarChar(100), change?.from_trip_id ?? null);
+    req.input("change_operator_name", sql.NVarChar(200), change?.operator_name ?? null);
+    req.input("change_operator_id", sql.NVarChar(20), change?.operator_id ?? null);
+    req.input("change_bus", sql.NVarChar(20), change?.bus ?? null);
     return req;
   };
+  const changeInsert = write.changeColumns
+    ? { columns: ", change_from_trip_id, change_operator_name, change_operator_id, change_bus", values: ", @change_from_trip_id, @change_operator_name, @change_operator_id, @change_bus" }
+    : { columns: "", values: "" };
+  const changeUpdate = write.changeColumns
+    ? "change_from_trip_id = @change_from_trip_id, change_operator_name = @change_operator_name, change_operator_id = @change_operator_id, change_bus = @change_bus,"
+    : "";
 
   if (!write.exists) {
     await header(key(new sql.Request(tx))).query(`
       INSERT dbo.RidershipSheets (service_date, block, operator_name, operator_id, bus, prefill_run,
-        operator_overridden, reconstructed, entered_at, entered_by, created_at, created_by, updated_at, updated_by)
+        operator_overridden, reconstructed, entered_at, entered_by, created_at, created_by, updated_at, updated_by${changeInsert.columns})
       VALUES (@service_date, @block, @operator_name, @operator_id, @bus, @prefill_run,
-        @operator_overridden, @reconstructed, ${write.entered ? "@at, @actor" : "NULL, NULL"}, @at, @actor, @at, @actor)
+        @operator_overridden, @reconstructed, ${write.entered ? "@at, @actor" : "NULL, NULL"}, @at, @actor, @at, @actor${changeInsert.values})
     `);
   } else {
     await header(key(new sql.Request(tx))).query(`
       UPDATE dbo.RidershipSheets
       SET operator_name = @operator_name, operator_id = @operator_id, bus = @bus, prefill_run = @prefill_run,
-          operator_overridden = @operator_overridden, reconstructed = @reconstructed,
+          operator_overridden = @operator_overridden, reconstructed = @reconstructed, ${changeUpdate}
           ${write.entered ? "entered_at = @at, entered_by = @actor," : ""}
           updated_at = @at, updated_by = @actor
       WHERE service_date = @service_date AND block = @block
