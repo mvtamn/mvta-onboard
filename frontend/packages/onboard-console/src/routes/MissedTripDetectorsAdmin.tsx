@@ -21,6 +21,7 @@ import {
   standingSentence,
   type PromotionDraft,
 } from "../lib/detectorPromotion.js";
+import { DeadZoneBarPanel } from "./DeadZoneBarPanel.js";
 import { DetectorReadiness } from "./DetectorReadiness.js";
 import "./modules/serviceRisk.css";
 import "./detectorPromotion.css";
@@ -196,5 +197,7 @@ export function MissedTripDetectorsAdmin() {
         <small>{item.decided_by} · {new Date(item.decided_at).toLocaleString()}</small>
       </article>)}
     </section>
+
+    <DeadZoneBarPanel />
   </div>;
 }

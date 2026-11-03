@@ -61,6 +61,14 @@ test("Avail entry results by Workflow state and fulfillment mode", () => {
   }
 });
 
+test("an Avail result with no details is written in words, not as the stored value", () => {
+  const decision = decide(snapshot(), { act: "avail_entry", result: "not_entered" }, person);
+  assert.ok(!("refusal" in decision));
+  assert.equal(decision.history.detail, "Avail result: not built yet");
+  const withDetail = decide(snapshot(), { act: "avail_entry", result: "conflict", detail: "Shape rejected" }, person);
+  assert.ok(!("refusal" in withDetail) && withDetail.history.detail === "Shape rejected");
+});
+
 test("confirming an Avail entry is held by an unresolved conflict or an outstanding re-review", () => {
   assert.equal(refusal(decide(snapshot({ conflicts: [conflict] }), { act: "avail_entry", result: "entered" }, person)), "conflict_unresolved");
   const blocked = decide(snapshot({ conflicts: [conflict] }), { act: "avail_entry", result: "entered" }, person);

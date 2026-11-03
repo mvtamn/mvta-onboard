@@ -34,3 +34,16 @@ test("restApiTimerNames lists exactly the timers the REST API registers", () => 
   assert.ok(code.length > 0, "found timers in functions-restapi/src/functions");
   assert.deepEqual(timersInBicep(), code);
 });
+
+// restApiTimersEnabledEarly lets named timers run before cutover. A misspelt
+// name would not run the timer and nothing would say so.
+test("every timer an environment enables early is a timer the REST API registers", () => {
+  const code = new Set(timersInCode());
+  const paramsDir = join(repoRoot, "infra-phase1", "parameters");
+  for (const file of readdirSync(paramsDir).filter((f) => f.endsWith(".json"))) {
+    const params = JSON.parse(readFileSync(join(paramsDir, file), "utf8")).parameters ?? {};
+    for (const name of (params.restApiTimersEnabledEarly?.value ?? []) as string[]) {
+      assert.ok(code.has(name), `${file}: restApiTimersEnabledEarly names "${name}", which is not a REST API timer`);
+    }
+  }
+});

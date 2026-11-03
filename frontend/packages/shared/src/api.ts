@@ -11,6 +11,7 @@ import type {
   ActiveMessage,
   AdminMessage,
   AppSettingRow,
+  MissedTripDeadZones,
   AssessmentPeriod,
   AvailAvlVehicle,
   AvailMissedTripRecord,
@@ -104,12 +105,18 @@ import type {
   OtpMonthlyTrendPoint,
   ReasonCode,
   OtpSettingsRow,
+  OtpMeasurementParametersResponse,
+  DeclareOtpParametersInput,
+  DeclareOtpParametersResponse,
   OtpStopExclusion,
   PeriodKpiAssessment,
   PrepareSuggestedAlertInput,
   PrepareSuggestedAlertResult,
   ProcedureDraft,
   ProcedureDraftInput,
+  QrgSeedInput,
+  SopFolderChoice,
+  QrgSeedResult,
   ProcedureDraftSaveResult,
   PutStopExclusionInput,
   ReasonCodeAppliesTo,
@@ -137,6 +144,13 @@ import type {
   DetectorPromotionEntry,
   DetectorPromotionInput,
   DetectorPromotionView,
+  RidershipBlockGarageList,
+  RidershipBlockGarageSave,
+  RidershipPrintRequest,
+  RidershipPrintStatus,
+  RidershipSheet,
+  RidershipSheetSave,
+  RidershipWorklist,
   DetectorScorecard,
   DetectorScorecardGrouping,
 } from "./types.js";
@@ -370,6 +384,8 @@ export interface DecisionMatrixUnreferencedSops {
     status: "not_configured" | "not_connected" | "not_walked" | "ok" | "forbidden" | "not_found" | "failed";
     reason: string | null;
     folder: string | null;
+    /** True when an Admin chose this folder; false when a setting seeded it. */
+    chosen?: boolean;
     walked_at: string | null;
     overdue: boolean;
   };
@@ -896,6 +912,21 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     return response.blob();
   }
 
+  /** An authenticated POST whose answer is a file rather than JSON. */
+  async function postForFile(path: string, body: unknown): Promise<Blob> {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (getToken) {
+      const token = await getToken();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+    }
+    const response = await fetch(`${root}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+    if (!response.ok) {
+      const payload = response.headers.get("content-type")?.includes("application/json") ? await response.json().catch(() => null) : null;
+      throw new ApiError(response.status, (payload && (payload.error as string)) || `Request failed (${response.status})`, payload?.details);
+    }
+    return response.blob();
+  }
+
   return {
     // Public read - no auth.
     async getActiveMessages(filters?: { channel?: string; route?: string; zone?: string }) {
@@ -1176,6 +1207,22 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<{ candidates: Array<{ procedure_id: string; revision: number; condition: string; mapping_status: string }>; diagnostics: DecisionMatrixSurfaceDiagnostics }>("/api/manage/decision-matrix/legacy-candidates", {}, true);
     },
 
+    chooseDecisionMatrixSopFolder(choice: { folder_path: string } | { whole_library: true }) {
+      return request<SopFolderChoice>(
+        "/api/manage/decision-matrix/library/sop-folder",
+        { method: "PUT", body: JSON.stringify(choice) },
+        true,
+      );
+    },
+
+    seedDecisionMatrixDraftFromQrg(input: QrgSeedInput) {
+      return request<QrgSeedResult>(
+        "/api/manage/decision-matrix/procedures/seed-from-qrg",
+        { method: "POST", body: JSON.stringify(input) },
+        true,
+      );
+    },
+
     createDecisionMatrixProcedureDraft(input: ProcedureDraftInput) {
       return request<ProcedureDraftSaveResult>(
         "/api/manage/decision-matrix/procedures",
@@ -1260,10 +1307,57 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       );
     },
 
+    // Ridership counting (ADR 0043). Service dates are YYYYMMDD; blocks as the sheet prints them ("024").
+    getRidershipWorklist(query: { from?: string; to?: string } = {}) {
+      const params = new URLSearchParams();
+      if (query.from) params.set("from", query.from);
+      if (query.to) params.set("to", query.to);
+      const search = params.toString();
+      return request<RidershipWorklist>(`/api/ridership/worklist${search ? `?${search}` : ""}`, {}, true);
+    },
+
+    getRidershipSheet(serviceDate: string, block: string) {
+      return request<RidershipSheet>(`/api/ridership/sheets/${encodeURIComponent(serviceDate)}/${encodeURIComponent(block)}`, {}, true);
+    },
+
+    /** 409 when someone saved the sheet after `version`; 400 with `details` for what is missing. */
+    saveRidershipSheet(serviceDate: string, block: string, save: RidershipSheetSave) {
+      return request<RidershipSheet & { changes: number }>(
+        `/api/ridership/sheets/${encodeURIComponent(serviceDate)}/${encodeURIComponent(block)}`,
+        { method: "PUT", body: JSON.stringify(save) },
+        true,
+      );
+    },
+
+    getRidershipBlockGarages() {
+      return request<RidershipBlockGarageList>("/api/ridership/block-garages", {}, true);
+    },
+
+    saveRidershipBlockGarages(save: RidershipBlockGarageSave) {
+      return request<RidershipBlockGarageList>("/api/ridership/block-garages", { method: "PUT", body: JSON.stringify(save) }, true);
+    },
+
+    /** `garage` undefined is every garage; null is the Unassigned blocks. */
+    getRidershipPrintStatus(query: { date?: string; garage?: string | null } = {}) {
+      const params = new URLSearchParams();
+      if (query.date) params.set("date", query.date);
+      if (query.garage !== undefined) params.set("garage", query.garage ?? "");
+      const search = params.toString();
+      return request<RidershipPrintStatus>(`/api/ridership/print${search ? `?${search}` : ""}`, {}, true);
+    },
+
+    /** One PDF of the garage's Count Sheets (or the reprinted blocks), logged as it is made. */
+    printRidershipSheets(print: RidershipPrintRequest) {
+      return postForFile("/api/ridership/print", print);
+    },
+
     getMissedTripDetectorPromotions() {
       return request<DetectorPromotionView>("/api/missed-trip-detector-promotions", {}, true);
     },
 
+    getMissedTripDeadZones() {
+      return request<MissedTripDeadZones>("/api/missed-trip-dead-zones", {}, true);
+    },
     getMissedTripDetectorScorecard(query: { from?: string; to?: string; group?: DetectorScorecardGrouping } = {}) {
       const params = new URLSearchParams();
       if (query.from) params.set("from", query.from);
@@ -2054,6 +2148,26 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       return request<OtpSettingsRow>(
         "/api/otp-settings",
         { method: "PATCH", body: JSON.stringify({ early_late_bias_threshold: earlyLateBiasThreshold }) },
+        true,
+      );
+    },
+
+    // The measurement standard OTP is polled under, its declaration history,
+    // what each stored month was measured under, and which months are no longer
+    // comparable with today's standard (ADR 0042). Reading needs only
+    // compliance-review.view: explaining a figure must not require the right to
+    // change how it is measured.
+    getOtpMeasurementParameters() {
+      return request<OtpMeasurementParametersResponse>("/api/otp-measurement-parameters", {}, true);
+    },
+
+    // Appends a declaration. Re-pulls NOTHING - the response says which months
+    // fell out of step, and runOtpHistoricalBackfill restates the ones somebody
+    // chooses. service-configuration.edit.
+    declareOtpMeasurementParameters(input: DeclareOtpParametersInput) {
+      return request<DeclareOtpParametersResponse>(
+        "/api/otp-measurement-parameters",
+        { method: "POST", body: JSON.stringify(input) },
         true,
       );
     },

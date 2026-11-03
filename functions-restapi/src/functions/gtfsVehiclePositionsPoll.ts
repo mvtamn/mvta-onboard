@@ -13,7 +13,7 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchGtfsRtFeed, gtfsRtFeedUrl, gtfsRtUrlSetting } from "../lib/gtfsRtReader";
 import { mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
-import { agencyServiceDate } from "../lib/missedTripTime";
+import { loadEvidenceServiceDates } from "../lib/gtfsEvidenceServiceDate";
 import { runFeedIngestion } from "../lib/feedRun";
 
 app.timer("gtfsVehiclePositionsPoll", {
@@ -39,21 +39,28 @@ app.timer("gtfsVehiclePositionsPoll", {
       // vehicle never reaches this count.
       let evidenceEligible = 0;
 
+      const mappedEntities = [];
       for (const entity of feed.Entities) {
-        let mapped;
         try {
-          mapped = mapVehiclePositionEntity(entity);
+          const mapped = mapVehiclePositionEntity(entity);
+          if (mapped) mappedEntities.push({ mapped, observedAt: mapped.source_timestamp_at ?? new Date() });
         } catch (err) {
           context.error(`Failed to map GTFS-RT vehicle position entity ${entity.Id}:`, err);
-          continue;
         }
-        if (!mapped) continue;
+      }
+      // The feed often omits start_date. Dating those from the observation
+      // filed a late trip's after-midnight reports under the next day; see
+      // gtfsEvidenceServiceDate.ts.
+      const undated = mappedEntities.filter((e) => !e.mapped.service_date);
+      const serviceDateFor = evidenceTableExists && undated.length > 0
+        ? await loadEvidenceServiceDates(pool, undated.map((e) => ({ trip_id: e.mapped.trip_id, observedAt: e.observedAt })))
+        : null;
 
+      for (const { mapped, observedAt } of mappedEntities) {
         if (evidenceTableExists) {
           evidenceEligible++;
           try {
-            const observedAt = mapped.source_timestamp_at ?? new Date();
-            const serviceDate = mapped.service_date ?? agencyServiceDate(observedAt).serviceDate;
+            const serviceDate = mapped.service_date ?? serviceDateFor!(mapped.trip_id, observedAt);
             const evidenceReq = pool.request();
             evidenceReq.input("trip_id", sql.NVarChar, mapped.trip_id);
             evidenceReq.input("service_date", sql.NVarChar, serviceDate);

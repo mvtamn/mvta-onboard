@@ -36,6 +36,9 @@ app.http("missedTripsList", {
         return { status: 200, jsonBody: { missed_trips: [], diagnostics: { configured: false } } };
       }
       const { cases, totals } = read;
+      if (read.evidenceError !== undefined) {
+        context.error("GET /missed-trips: case evidence could not be read; listing without it:", read.evidenceError);
+      }
 
       // Resolved through the shared KPI trust contracts rather than a local
       // freshness rule: only the feeds missed-trip detection actually depends
@@ -68,6 +71,9 @@ app.http("missedTripsList", {
             limit: query.limit,
             offset: query.offset,
             returned_count: cases.length,
+            // The page lists without its start evidence; the console says so
+            // rather than showing the absence as evidence.
+            case_evidence_unavailable: read.evidenceError !== undefined,
             view_count: viewCount(query.view, totals),
             total_count: totals?.total_count ?? 0,
             active_count: totals?.active_count ?? 0,

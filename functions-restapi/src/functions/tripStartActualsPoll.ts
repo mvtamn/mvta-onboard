@@ -48,9 +48,11 @@ export function indexTripUpdates(entities: ReadonlyArray<{ TripUpdate: GtfsRtTri
   for (const entity of entities) {
     const update = entity.TripUpdate;
     if (!update) continue;
+    // A producer that omits StartDate still names the trip, so it lands under
+    // the bare id. One that dates it is only ever that date's: MVTA reuses trip
+    // ids every day, and a late trip still in the feed after midnight must not
+    // become the next day's start.
     byKey.set(`${update.Trip.StartDate ?? ""}|${update.Trip.TripId}`, update);
-    // A producer that omits StartDate still names the trip; keep that reachable.
-    if (!byKey.has(`|${update.Trip.TripId}`)) byKey.set(`|${update.Trip.TripId}`, update);
   }
   return byKey;
 }

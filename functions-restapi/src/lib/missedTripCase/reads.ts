@@ -19,7 +19,8 @@
 import { sql } from "../db";
 import { occurrenceSourceRefSql } from "../occurrenceIntake/sources";
 import { missedTripCaseSql } from "./classify";
-import { detectorPromotionWindows } from "./promotion";
+import { readCaseEvidence, type GtfsCaseEvidence } from "./caseEvidence";
+import { detectorPromotionWindows, promotionWindowsSql } from "./promotion";
 import type { MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome } from "./types";
 
 export type CaseView = "queue" | "history" | "all";
@@ -86,6 +87,9 @@ export interface CaseListRow {
   // this yet; the queue carries it so it can.
   evidence_conflict: boolean;
   evidence_conflict_reason: string | null;
+  // Whether this case's detector had left Shadow detection on its service
+  // date, so the case can say whether a confirmation is charged.
+  detector_promoted: boolean;
   condition_late_start: boolean | null;
   condition_superseded: boolean | null;
   condition_late_arrival: boolean | null;
@@ -96,7 +100,25 @@ export interface CaseListRow {
   // trip isn't in that reference table yet, or the static feed couldn't
   // determine a direction for it.
   direction_label: string | null;
+  // What a reviewer has to go on for a GTFS case (caseEvidence.ts). Null on a
+  // Spare case, and where the evidence tables are missing or could not be read.
+  gtfs_evidence: GtfsCaseEvidence | null;
+  // The times a Spare case is decided on: what the rider was promised at
+  // booking, what Spare last scheduled, and when the vehicle arrived. Null on
+  // a GTFS case.
+  spare_times: SpareCaseTimes | null;
 }
+
+export interface SpareCaseTimes {
+  original_pickup_at: Date | null;
+  scheduled_pickup_at: Date | null;
+  pickup_arrived_at: Date | null;
+  original_dropoff_at: Date | null;
+  scheduled_dropoff_at: Date | null;
+  dropoff_arrived_at: Date | null;
+}
+
+type SpareTimeColumns = { [K in keyof SpareCaseTimes as `spare_${K}`]: SpareCaseTimes[K] };
 
 export interface CaseTotals {
   total_count: number;
@@ -138,21 +160,27 @@ export interface CaseTablesReady {
    * columns rather than failing.
    */
   occurrences: boolean;
+  /**
+   * SpareMissedTripSource exists, so a Spare case carries its promised and
+   * actual times. Absent, spare_times is null rather than the read failing.
+   */
+  spareSource: boolean;
 }
 
 // Both probes in one round trip. Each handler used to ask separately.
 export async function caseTablesReady(pool: sql.ConnectionPool): Promise<CaseTablesReady> {
-  const result = await pool.request().query<{ cases: number; occurrences: number }>(`
+  const result = await pool.request().query<{ cases: number; occurrences: number; spare_source: number }>(`
     SELECT CASE WHEN OBJECT_ID('dbo.MonitoredMissedTrips', 'U') IS NULL THEN 0 ELSE 1 END AS cases,
-           CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences', 'U') IS NULL THEN 0 ELSE 1 END AS occurrences
+           CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences', 'U') IS NULL THEN 0 ELSE 1 END AS occurrences,
+           CASE WHEN OBJECT_ID('dbo.SpareMissedTripSource', 'U') IS NULL THEN 0 ELSE 1 END AS spare_source
   `);
   const row = result.recordset[0];
-  return { cases: row?.cases === 1, occurrences: row?.occurrences === 1 };
+  return { cases: row?.cases === 1, occurrences: row?.occurrences === 1, spareSource: row?.spare_source === 1 };
 }
 
 export type CaseReadResult =
   | { ready: false }
-  | { ready: true; cases: CaseListRow[]; totals: CaseTotals };
+  | { ready: true; cases: CaseListRow[]; totals: CaseTotals; evidenceError?: unknown };
 
 // Legacy missed-trip records stay out of the queue: they came from the
 // superseded detector and their outcome is unknown, not false. Held cases
@@ -167,6 +195,8 @@ function viewFilter(view: CaseView): string {
 export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQuery): Promise<CaseReadResult> {
   const ready = await caseTablesReady(pool);
   if (!ready.cases) return { ready: false };
+  // detector_promoted reads the promotion history.
+  const promoted = await detectorPromotionWindows(pool);
 
   // Where each reviewed trip ended up in the performance assessment. The join
   // is by source_ref, the one reference lib/occurrenceIntake builds.
@@ -185,10 +215,26 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
       ON period.contractor_id = occ.contractor_id AND period.service_month = occ.service_month`
     : "";
 
+  // A Spare case's times, where this environment has the table that holds them.
+  const spareColumns = ready.spareSource
+    ? `sms.original_scheduled_pickup_at AS spare_original_pickup_at,
+           sms.scheduled_pickup_at AS spare_scheduled_pickup_at,
+           sms.pickup_arrived_at AS spare_pickup_arrived_at,
+           sms.original_scheduled_dropoff_at AS spare_original_dropoff_at,
+           sms.scheduled_dropoff_at AS spare_scheduled_dropoff_at,
+           sms.dropoff_arrived_at AS spare_dropoff_arrived_at`
+    : ["original_pickup_at", "scheduled_pickup_at", "pickup_arrived_at", "original_dropoff_at", "scheduled_dropoff_at", "dropoff_arrived_at"]
+      .map((c) => `CAST(NULL AS DATETIME2) AS spare_${c}`).join(", ");
+  const spareJoin = ready.spareSource
+    ? `
+    LEFT JOIN SpareMissedTripSource sms
+      ON mmt.source_system = 'spare' AND sms.request_id = mmt.source_record_id`
+    : "";
+
   const listReq = pool.request();
   listReq.input("offset", sql.Int, query.offset);
   listReq.input("limit", sql.Int, query.limit);
-  const result = await listReq.query<CaseListRow>(`
+  const result = await listReq.query<Omit<CaseListRow, "gtfs_evidence" | "spare_times"> & SpareTimeColumns>(`
     SELECT mmt.trip_id, mmt.service_date, mmt.route_id, mmt.scheduled_departure_at,
            mmt.grace_deadline_at, mmt.status, mmt.detection_type, mmt.detected_late_arrival_at,
            mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
@@ -196,14 +242,16 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
            mmt.detector_version, mmt.data_quality_status, mmt.undecided_reason,
            mtc.lifecycle, mtc.evidence_finding, mtc.review_outcome, mtc.held_reason, mtc.in_queue, mtc.concluded,
            mtc.evidence_conflict, mmt.evidence_conflict_reason,
+           CAST(CASE WHEN (${promotionWindowsSql("mtc.detector", "mmt.service_date", promoted)}) THEN 1 ELSE 0 END AS BIT) AS detector_promoted,
            mmt.source_system, mmt.source_record_id,
            sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
            sme.start_delay_seconds, sme.arrival_delay_seconds,
+           ${spareColumns},
            td.direction_label${occurrenceColumns}
     FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
     LEFT JOIN GtfsTripDirections td ON td.trip_id = mmt.trip_id
     LEFT JOIN SpareMissedTripEvaluations sme
-      ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id${occurrenceJoin}
+      ON mmt.source_system = 'spare' AND sme.request_id = mmt.source_record_id${spareJoin}${occurrenceJoin}
     ${viewFilter(query.view)}
     ORDER BY
       CASE mmt.validation_status WHEN 'unreviewed' THEN 0 ELSE 1 END,
@@ -235,7 +283,35 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
     FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
   `);
 
-  return { ready: true, cases: result.recordset, totals: totals.recordset[0] };
+  // The evidence is a second read over just this page. Failing it leaves the
+  // queue usable - the cases still list, without their evidence - and the
+  // handler says why.
+  let evidence = new Map<string, GtfsCaseEvidence>();
+  let evidenceError: unknown;
+  try {
+    evidence = await readCaseEvidence(pool, result.recordset.filter((row) => row.source_system !== "spare"));
+  } catch (err) {
+    evidenceError = err;
+  }
+  const cases: CaseListRow[] = result.recordset.map(({
+    spare_original_pickup_at, spare_scheduled_pickup_at, spare_pickup_arrived_at,
+    spare_original_dropoff_at, spare_scheduled_dropoff_at, spare_dropoff_arrived_at, ...row
+  }) => ({
+    ...row,
+    gtfs_evidence: evidence.get(`${row.trip_id}|${row.service_date}`) ?? null,
+    spare_times: row.source_system === "spare"
+      ? {
+        original_pickup_at: spare_original_pickup_at,
+        scheduled_pickup_at: spare_scheduled_pickup_at,
+        pickup_arrived_at: spare_pickup_arrived_at,
+        original_dropoff_at: spare_original_dropoff_at,
+        scheduled_dropoff_at: spare_scheduled_dropoff_at,
+        dropoff_arrived_at: spare_dropoff_arrived_at,
+      }
+      : null,
+  }));
+
+  return { ready: true, cases, totals: totals.recordset[0], ...(evidenceError === undefined ? {} : { evidenceError }) };
 }
 
 /** How many cases the chosen view holds, for the paging footer. */

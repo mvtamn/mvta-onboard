@@ -6,7 +6,7 @@ import test from "node:test";
 import { parseConnectionString, sql } from "./db";
 import { walkLocation } from "./decisionMatrixLocationSync";
 import type { LibraryEntry, LibraryListing } from "./sharepointLibrary";
-import { ensureSopLocation, recordSopFolderWalk, unreferencedSopReport, type SopLocation } from "./unreferencedSops";
+import { chooseSopLocation, ensureSopLocation, recordSopFolderWalk, unreferencedSopReport, watchedSopLocation, type SopLocation } from "./unreferencedSops";
 
 // The SOP folder walk and the Unreferenced SOP report against a real SQL
 // Server (the CI contract job's container). The contract database is shared
@@ -139,6 +139,73 @@ test("the SOP folder walk records what it saw, and the report names only the SOP
       await pool.request().input("procedure_id", sql.NVarChar, procedureId).query("DELETE FROM Procedures WHERE procedure_id=@procedure_id").catch(() => undefined);
     }
     await pool.request().input("site_id", sql.NVarChar, site).query("DELETE FROM DecisionMatrixDocumentLocations WHERE site_id=@site_id").catch(() => undefined);
+    await pool.close();
+  }
+});
+
+test("a folder an Admin chooses outranks the setting, and the daily walk leaves it alone", { skip: !connectionString }, async () => {
+  if (!connectionString) return;
+  const pool = new sql.ConnectionPool(parseConnectionString(connectionString));
+  const run = randomUUID();
+  const site = `mvtamn.sharepoint.com,site-${run},web`;
+  const drive = `drive-${run}`;
+  const library = { site_id: site, drive_id: drive };
+
+  await pool.connect();
+  try {
+    await applyMigration(pool, "migration-116-decision-matrix-document-locations.sql");
+
+    // Nothing chosen: the setting seeds the watch, exactly as before.
+    const seeded = await ensureSopLocation(pool, site, drive, "_SOPs");
+    const afterSeed = await watchedSopLocation(pool, library);
+    assert.equal(afterSeed?.location_id, seeded.location_id);
+    assert.equal(afterSeed?.folder_path, "_SOPs");
+    assert.equal(afterSeed?.chosen, false, "a seeded folder is not a chosen one");
+
+    // An Admin browses to the real folder and chooses it.
+    const chosen = await chooseSopLocation(pool, library, "Operations/SOPs", "admin-1");
+    assert.notEqual(chosen.location_id, seeded.location_id);
+    const afterChoice = await watchedSopLocation(pool, library);
+    assert.equal(afterChoice?.folder_path, "Operations/SOPs");
+    assert.equal(afterChoice?.chosen, true);
+    assert.equal(afterChoice?.added_by, "admin-1");
+
+    // THE REGRESSION THIS GUARDS: the daily walk calls ensureSopLocation with
+    // the setting's folder every morning. It must return the chosen location
+    // untouched rather than dragging the watch back to `_SOPs`.
+    const reasserted = await ensureSopLocation(pool, site, drive, "_SOPs");
+    assert.equal(reasserted.folder_path, "Operations/SOPs", "the setting must not reclaim the watch");
+    assert.equal(reasserted.location_id, chosen.location_id);
+
+    // Exactly one active location, and the seeded one is retired rather than
+    // deleted. Asserted by is_active rather than by sort order: `ORDER BY
+    // folder_path` puts `_SOPs` first under SQL Server's collation, and both
+    // localeCompare and code-unit order disagree with it and each other. The
+    // claim here is "one active, one retired", which needs no ordering.
+    const rows = await pool.request().input("site_id", sql.NVarChar, site)
+      .query<{ folder_path: string; is_active: boolean; added_by: string }>(
+        "SELECT folder_path,is_active,added_by FROM DecisionMatrixDocumentLocations WHERE site_id=@site_id");
+    assert.deepEqual(rows.recordset.filter((r) => r.is_active).map((r) => r.folder_path), ["Operations/SOPs"]);
+    assert.deepEqual(rows.recordset.filter((r) => !r.is_active).map((r) => r.folder_path), ["_SOPs"]);
+
+    // Re-choosing the same folder keeps the location, so the walk's history
+    // survives, and records who stands behind it now.
+    const again = await chooseSopLocation(pool, library, "Operations/SOPs", "admin-2");
+    assert.equal(again.location_id, chosen.location_id, "re-choosing must not discard what the walk learned");
+    assert.equal((await watchedSopLocation(pool, library))?.added_by, "admin-2");
+
+    // The whole library is a legal choice: "" is the root.
+    const whole = await chooseSopLocation(pool, library, "", "admin-1");
+    assert.equal(whole.folder_path, "");
+    assert.equal((await watchedSopLocation(pool, library))?.folder_path, "");
+
+    // And the report follows the chosen folder, not the setting's.
+    const report = await unreferencedSopReport(pool, library, { configured: true, folder_path: "_SOPs" }, null);
+    assert.equal(report.walk.folder, "", "the report is about the chosen folder");
+    assert.equal(report.walk.status, "not_walked", "a newly chosen folder has not been walked");
+  } finally {
+    await pool.request().input("site_id", sql.NVarChar, site)
+      .query("DELETE FROM DecisionMatrixDocumentLocations WHERE site_id=@site_id").catch(() => undefined);
     await pool.close();
   }
 });

@@ -98,6 +98,9 @@ param spareWebhookOnRestApi bool = true
 @description('Run the REST API app\'s timers. False disables every one of them, so a new environment can be deployed and signed in to before it starts polling feeds or writing to its database. Flip to true at cutover. See plans/production-environment-plan.md, steps 20 and 23.')
 param restApiTimersEnabled bool = true
 
+@description('Timers that run even while restApiTimersEnabled is false, so one feature can go live in a new environment before cutover. Names from restApiTimerNames.')
+param restApiTimersEnabledEarly array = []
+
 @description('GTFS-Realtime VehiclePosition feed used for fixed-route vehicle monitoring.')
 param gtfsRtVehicleUrl string = 'https://srv.mvta.com/infoPoint/GTFS-realtime.ashx?&Type=VehiclePosition&debug=true'
 
@@ -227,7 +230,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     availPulloutUrl: availPulloutUrl
     // Retired here only once Spare delivers to the receiver's own app below;
     // switching it off first would drop deliveries.
-    disabledFunctions: concat(spareWebhookOnRestApi ? [] : ['onDemandSpareWebhook'], restApiTimersEnabled ? [] : restApiTimerNames)
+    disabledFunctions: concat(spareWebhookOnRestApi ? [] : ['onDemandSpareWebhook'], restApiTimersEnabled ? [] : filter(restApiTimerNames, name => !contains(restApiTimersEnabledEarly, name)))
   }
 }
 
