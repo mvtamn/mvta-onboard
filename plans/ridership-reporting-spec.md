@@ -36,8 +36,9 @@ Settled earlier and not reopened here:
 ## 1. Today's reports (inventory)
 
 Source: Planning's *Updating the Monthly Ridership Report* and *Updating the
-Ridership Database* procedures (both dated 2026-03), plus the
-`FixedTotals` export for Jan–Sep 2026.
+Ridership Database* procedures (both dated 2026-03), the `FixedTotals` export
+for Jan–Sep 2026, and Planning's Access screenshots (counting spec §16, added
+2026-11-02).
 
 The workbook itself, the Reporting Tracker and the external-report how-to are
 **not** in the files reviewed. Rows marked *to verify* are settled by the
@@ -81,6 +82,7 @@ report review (§2).
 | B | **External monthly and quarterly reports** in Planning's *Reporting Tracker* | Planning | *to verify*, presumably workbook A | Separate how-to (*Monthly and Quarterly Ridership Reports_2025*) | Monthly / quarterly | Agencies, *to verify* | Not reviewed (#459 Q2) |
 | C | **NTD ridership**: unlinked passenger trips (UPT), and passenger miles if any | Planning, *to verify* | *to verify*. The SOP draft marks NTD use as `[Decide]` | *to verify* | Monthly and annual | FTA | Unknown whether manual counts are treated as a 100% count, how uncounted trips are handled, and where passenger miles come from (#459 Q3–Q5) |
 | D | **Met Council and other agency reports** | *to verify* | *to verify* | *to verify* | *to verify* | Met Council, others | Listed in tracker B, *to verify* |
+| F | **Planning's crosstab, "Riders by Trip > Direction > Date"** (Access) | Planning | The Access `Riders` table | Open the crosstab → review → export to Excel | Monthly, before the roll-up | Planning (accuracy review) | One row per trip (Days, Route, Direction, TripID, `Vehtypgrp`, `MaxOfVariation`, `FirstOfTerm`, `LastOfStart`), one column per service date. Review is by eye; a blank cell can't be told apart as "not counted", "did not operate" or "not keyed yet" (#459 T7) |
 | E | **Power BI** | — | — | — | — | — | **No ridership Power BI exists.** OnBoard's views in migrations 031 and 106 have no reader: there is no `mvta_reporting_ro` login, no gateway, and dev SQL public access is disabled |
 
 ## 2. Report review (Q1, Q9)
@@ -107,6 +109,7 @@ and the workbook keeps working from it.
 
 | Report | Carries over on the export? | What changes |
 |---|---|---|
+| F (trip × date crosstab) | **Replaced** by OnBoard's trip × date grid and its Excel export (§4.4) | Cells show status (Not counted / Did not operate) instead of blanks; rows carry the Access-style TripID |
 | A (paste into *Raw – Rte Month*) | **Yes** | Rows come from OnBoard's export instead of the Access table. The 9 columns are in the same order |
 | A1, A2, A4, A6 | **Yes** | — |
 | A3 averages | **Yes** | Column J comes from the export's `ServiceDays` sheet instead of being typed (Q6) |
@@ -171,6 +174,32 @@ the `OtpMonthlyRestatements` pattern). Reporting adds one thing:
 - A reopen of a reported month shows the marker and asks for the reason.
   Whether to revise the external submission stays a Planning decision (R9).
 
+### 4.4 Trip × date grid (Planning's crosstab replacement)
+
+Planning reviews a month from Access's "Riders by Trip > Direction > Date"
+crosstab, not from monthly totals. OnBoard gives an equivalent:
+
+- **On screen:** a tab in Ridership (manager and recorder, plus anyone with
+  `ridership.view` for the name-free version) for one month and day type. One
+  row per trip; one column per service date; each cell holds the boardings.
+  A cell that is not a number shows why: **NC** (Not counted), **DNO** (Did
+  not operate), **—** (no sheet entered yet) or blank (trip not scheduled
+  that date). Flagged counts are marked, and a cell opens its Count Sheet.
+- **Row keys:** day type, route, direction, scheduled start, GTFS `trip_id`,
+  block, and the **Access-style TripID** (day type + route + direction +
+  start HHMM, e.g. `243610748` = Sat, 436, N, 07:48; counting spec §16).
+  Rows are matched across the month on route + direction + start + day type,
+  so a `trip_id` change at a service change does not split a row. Added
+  trips appear as their own rows, marked added.
+- **Row totals and column totals,** with trips counted / not counted per
+  column, so the grid balances against the `FixedTotals` export for the same
+  month.
+- **Excel export** of exactly what is on screen, one sheet per day type, with
+  the same row keys. No operator names.
+- **Delivery: Jan 1,** with month close: it is the screen Planning closes the
+  month from. During the December parallel run it is also how Planning lines
+  OnBoard up against Access trip by trip, on the Access TripID.
+
 ## 5. Power BI through the reporting API (Q10, Q11, Q12)
 
 The user's direction: review the existing reports, build on them, and **open
@@ -217,6 +246,7 @@ report page unless Power BI is not adopted.
 | Priority | Enhancement | Increment | Notes |
 |---|---|---|---|
 | 1 | `FixedTotals` export (3 sheets) | **Jan 1** | §4.1. The January close (by Feb 10) is the first one from OnBoard as the record |
+| 1a | Trip × date grid with Excel export | **Jan 1** | §4.4. Replaces Planning's Access crosstab; the screen month close is reviewed from |
 | 2 | History import with control totals | **Jan 1** | §4.2. Needs Planning's full Access export |
 | 3 | Reporting API: monthly totals, service days and month log, plus the function key | **Jan 1** | §5 |
 | 4 | Report review with Planning | **Before early Feb** | §2. Produces the Power BI build list |
@@ -267,7 +297,13 @@ the December comparison is already in the build plan (PR 3).
    key, and is the PDF of the green tabs still needed once the charts live in
    Power BI?
 9. **ServiceType (Q15) and Connect (v2).** These are unchanged here. A5, and
-   possibly A7, wait on Q15.
+   possibly A7, wait on Q15. **Possible source:** the crosstab's `Vehtypgrp`
+   (seen: R), `MaxOfVariation` (seen: blank) and `FirstOfTerm` (seen: S) —
+   what does each mean, and is one of them ServiceType?
+10. **Access TripID.** Which day-type digits do Sunday and Special Saturday
+    use, how is a route that isn't three digits written, and is direction
+    always N/E = 1 and S/W = 2 (counting spec §16)? The grid's TripID column
+    depends on it.
 
 ## Decision log (2026-11-01)
 
@@ -289,3 +325,4 @@ the December comparison is already in the build plan (PR 3).
 | Q14 | Riders per scheduled trip-hour, not "revenue hour"; v2 |
 | Q15 | APC overlay v2, manager-only, kept out of Power BI until validated |
 | Q16 | NTD figures v2, gated on Planning's answers |
+| Added 2026-11-02 | Trip × date grid + Excel export (replacing the Access crosstab), Jan 1, rows carry the Access TripID |
