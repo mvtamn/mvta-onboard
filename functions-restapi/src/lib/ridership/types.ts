@@ -58,10 +58,23 @@ export interface PulloutRun {
   pullout_scheduled: Date | null;
 }
 
+/**
+ * A relief operator or bus change part way through the block (migration 162):
+ * from this trip on, the named operator and bus ran it. A field left null
+ * carries on from the header - a bus swap names no operator.
+ */
+export interface SheetChange {
+  from_trip_id: string;
+  operator_name: string | null;
+  operator_id: string | null;
+  bus: string | null;
+}
+
 export interface SheetHeader {
   operator_name: string | null;
   operator_id: string | null;
   bus: string | null;
+  change: SheetChange | null;
   prefill_run: number | null;
   operator_overridden: boolean;
   reconstructed: boolean;
@@ -185,6 +198,7 @@ export interface SheetDetail {
     operator_name: string | null;
     operator_id: string | null;
     bus: string | null;
+    change: SheetChange | null;
     prefill_run: number | null;
     operator_overridden: boolean;
     reconstructed: boolean;
@@ -216,6 +230,8 @@ export interface SheetSave {
   operator_name: string | null;
   operator_id: string | null;
   bus: string | null;
+  /** Absent or null: nobody took over and the bus stayed. */
+  change: SheetChange | null;
   reconstructed: boolean;
   trips: { trip_id: string; count_status: CountStatus; boardings: number | null }[];
   /** The whole list. A saved row whose id is missing here is removed. */

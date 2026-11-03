@@ -15,6 +15,7 @@ import {
   garagePercent,
   garageValue,
   isOverridden,
+  newChange,
   normalizeBlock,
   parseBlockSelection,
   parseClock,
@@ -107,10 +108,26 @@ describe("the draft", () => {
 
   it("opens a saved sheet with what was saved", () => {
     const saved = sheet({
-      header: { operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402", prefill_run: 1, operator_overridden: true, reconstructed: true, entered_at: null, entered_by: null, updated_at: null, updated_by: null },
+      header: { operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402", change: { from_trip_id: "t2", operator_name: null, operator_id: null, bus: "4403" }, prefill_run: 1, operator_overridden: true, reconstructed: true, entered_at: null, entered_by: null, updated_at: null, updated_by: null },
       trips: sheet().trips.map((t) => (t.trip_id === "t1" ? { ...t, entry: { count_status: "counted", boardings: 0 } } : t.trip_id === "t2" ? { ...t, entry: { count_status: "not_counted", boardings: null } } : t)),
     });
     expect(draftFromSheet(saved)).toMatchObject({ operator_name: "Test Operator Relief", reconstructed: true, cells: { t1: "0", t2: "N", t3: "" } });
+    expect(draftFromSheet(saved).change).toEqual({ from_trip_id: "t2", operator_name: "", operator_id: "", bus: "4403" });
+    expect(draftFromSheet(sheet()).change).toBeNull();
+  });
+
+  it("starts a relief line from Avail's next run, and saves it once it names its trip", () => {
+    const relieved = sheet({ pullout: { prefill: sheet().pullout.prefill, other_runs: [{ run: 2, operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" }] } });
+    const change = newChange(relieved);
+    expect(change).toEqual({ from_trip_id: "", operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" });
+    expect(newChange(sheet())).toEqual({ from_trip_id: "", operator_name: "", operator_id: "", bus: "" });
+
+    const draft = { ...draftFromSheet(relieved), cells: { t1: "3", t2: "4", t3: "" }, change };
+    expect(saveFromDraft(relieved, draft).problems).toEqual([{ target: "change", message: expect.stringContaining("From trip #") }]);
+    const busOnly = saveFromDraft(relieved, { ...draft, change: { from_trip_id: "t2", operator_name: " ", operator_id: "", bus: "4410" } });
+    expect(busOnly.save?.change).toEqual({ from_trip_id: "t2", operator_name: null, operator_id: null, bus: "4410" });
+    expect(saveFromDraft(relieved, { ...draft, change: { from_trip_id: "t2", operator_name: "", operator_id: "", bus: "" } }).problems.map((p) => p.target)).toEqual(["change"]);
+    expect(saveFromDraft(relieved, { ...draft, change: null }).save?.change).toBeNull();
   });
 
   it("will not save while a required trip is blank, and points at the first", () => {

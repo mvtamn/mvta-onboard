@@ -5,11 +5,23 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.20] - 2026-11-02
+## [1.7.23] - 2026-11-02
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.22] - 2026-11-03
+
+A relief operator or bus change on a Count Sheet (migration 162). Check-in staff assign operators in Avail on the day and the bus joins at MDT login, after the desk prints the sheet the evening before, so operator and bus stay handwritten and entry pre-fills them from Avail's pull-out. A block that changed hands or buses part way had nowhere to say so, and the bus matters for comparing counts with the bus's passenger counter.
+
+- **Migration 162** adds `change_from_trip_id`, `change_operator_name`, `change_operator_id` and `change_bus` to `RidershipSheets`, with `CK_RidershipSheets_Change`: all NULL, or a trip plus at least one of the three. One change per sheet, matching the one line on the paper.
+- **The API reads the columns only once they exist** (`sheetChangeReady`, the same `COL_LENGTH` probe as `scheduled_end_seconds`). Before migration 162 every sheet loads with `change: null` and saves as before; a save carrying a change answers 503 naming the migration. Schema drift lists 162.
+- **`SheetSave.change` / `header.change`**: `{ from_trip_id, operator_name, operator_id, bus }`. `checkSheetSave` refuses a trip not on the sheet, and the first trip (that is the header). The four fields are flattened into the history, one row per field that moved.
+- **The printed sheet** gets a second operator row: "Relief or bus change: operator name", Operator ID, Bus #, Initials and From trip # (the row number). `TRIP_ROW` goes from 26 to 24 so a full 14-trip last page still clears the footer; the print fingerprint is the trips, not the layout, so printed sheets do not flip to changed.
+- **Enter sheets**: "Add relief or bus change" opens the row, pre-filled from Avail's next run (`newChange`); From trip lists the sheet's trips from #2; the chosen trip is marked "Relief or bus change from here".
+
+**Restarts the REST app on merge.**
+
 ## [1.7.18] - 2026-11-02
 
 - **Both SQL servers have their Entra admin declared in Bicep.** Dev's admin was set by hand and prod had none, and without an Entra admin nobody can run `CREATE USER ... FROM EXTERNAL PROVIDER` for the Function Apps' managed identities. `sql.bicep` now declares `administrators/ActiveDirectory` from `sqlEntraAdminLogin` / `sqlEntraAdminObjectId`, which `infra.yml` passes from the `SQL_ENTRA_ADMIN_LOGIN` / `SQL_ENTRA_ADMIN_OBJECT_ID` GitHub environment variables (not a parameter file: the repository is public). Both empty leaves the server's admin alone. What-if: no change on dev, prod gains the admin.
