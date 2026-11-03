@@ -26,7 +26,8 @@ the BI defaults you listed.
 counted a departure 1–2 minutes early as early, where MVTA's standard counts it
 on time. The outlier values had been taken from the example in your API
 specification during an earlier investigation and never aligned to MVTA's
-configuration. We corrected all four on 27 October and re-pulled every month of
+configuration. We corrected the three that were wrong on 27 October - the late
+threshold was already 5 - and re-pulled every month of
 2026.
 
 **With both fixes in, our figures and your BI report agree.** September 2026,

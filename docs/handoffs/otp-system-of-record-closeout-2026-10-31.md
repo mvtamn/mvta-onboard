@@ -40,6 +40,39 @@ step 1b.
 
 ---
 
+## Answers received from Ty, 2026-11-02
+
+Eleven of the fourteen are answered. Three changed the plan rather than filling it in.
+
+| Q | Answer | Effect |
+| --- | --- | --- |
+| 1 Departures or arrivals | **Departures** | Tier A is a valid comparison. Gate cleared. |
+| 2 Which manual artifact | **The canned monthly report. The CSV is a download from that report.** | **A0 collapses.** They are not two methods, they are one source at two grains - so there is nothing to reconcile. A0 becomes an arithmetic check that the weekly rows sum to the monthly figure, boundary weeks split. The plan's gate was built on a misreading. |
+| 3 Acceptance standard | **0.5 kept.** Once OnBoard is the system of record there is no second figure to differ from | The "no month tiers differently" clause is still unresolved - see below. |
+| 4 Are 2/5/10/60 contractual | **No - Avail's BI defaults** | **MVTA's OTP measurement standard has no contractual anchor.** The register agrees: its source reads "Avail confirmation 2026-10-27", not a contract clause. Whoever changes Avail's BI defaults changes MVTA's reported OTP and nothing in the contract contradicts them. A governance gap to put in front of Rob, not a blocker. |
+| 5 Weather days | **The OCC manager approves, when there is a snow event** | Event-driven, no standing process. Needs the name for the role grant. |
+| 6 Exclusion queue | "should be clear" - read as *the queue should be being worked* | Confirm before building a nudge. |
+| 7 Route classification | **The OCC manager** | Same person as Q5; separate permission. |
+| 8 Reason codes | **Wants to see them first** | Served 2026-11-02: 6 stop + 6 date for OTP exclusions, plus 6 missed-trip outcomes in the same table. All admin-editable. |
+| 9 Contractor notification | **No. Weather days should surface from the OTP module and the Performance Assessment** | Half exists. The OTP module surfaces them; `report/buildReportModel.ts` and `renderAssessmentReport.ts` carry **no weather concept at all**. The Weather page's "notified / acknowledged" fields are now known to be decoration. |
+| 10 Closed months | **Yes, unless there is a dispute** | `performanceAssessmentWorkflow.ts` already has a `reopened` state and only a finalized period may enter it. Unverified: whether reopening recomputes the OTP figure or only unlocks the period. |
+| 11 Did figures go out externally | **Yes, via the Avail report** | **Nothing needs restating.** MVTA's BI was always on 2/5/10/60 and Avail's month-boundary defect was API-only, which September confirms - BI's 81.3 was never wrong. It was OnBoard's figures that were understated, and those did not go out. |
+| 12 Retired keys | **Closed by ADR 0044 / PR #456** | Migration 152 applied on dev 2026-11-02; 11 rows archived, the re-pull list is empty. |
+
+### Still open
+
+- **Q3's materiality clause.** A month at 85.30 against a manual 84.90 is inside 0.5 but falls either side of the 85 boundary. Pass or fail? The whole point of the clause was that only a tier change alters what the contractor owes.
+- **Q6**, confirming the reading above.
+- **The OCC manager's name**, to check the two role grants.
+
+### What this does to the seven steps
+
+Step 2 was the gate and is now largely discharged: Q1 is answered, and Q2 turns A0 from a reconciliation into an arithmetic check. **The critical path is now Step 1** - the ground-clearing that needs nobody but us - plus producing the canned monthly report for 2026-05, 2026-06 and 2026-08.
+
+Two new build items fall out, neither blocking the decision: weather days in the Performance Assessment report (Q9), and confirming what reopening a period actually recomputes (Q10).
+
+---
+
 ## The questions
 
 ### Gate questions — nothing downstream means anything until these two are answered
