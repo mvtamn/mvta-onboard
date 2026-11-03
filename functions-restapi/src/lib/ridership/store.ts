@@ -533,10 +533,14 @@ export interface PrintWrite {
   scope: PrintScope;
   blank_backs: boolean;
   page_count: number;
-  sheets: { block: string; fingerprint: string; pages: number }[];
+  /** trip_ids: the trips printed on the sheet, row 1 first (migration 161). */
+  sheets: { block: string; fingerprint: string; pages: number; trip_ids: string[] }[];
 }
 
-/** Records one PDF and the blocks in it. */
+/**
+ * Records one PDF and the blocks in it, with each block's printed trips once
+ * migration 161 has added the column; before that, printing still works.
+ */
 export async function writePrintRun(tx: sql.Transaction, write: PrintWrite, actor: string, at: Date): Promise<void> {
   const run = new sql.Request(tx);
   run.input("service_date", sql.Char(8), write.service_date);
@@ -555,6 +559,10 @@ export async function writePrintRun(tx: sql.Transaction, write: PrintWrite, acto
     SELECT CONVERT(NVARCHAR(36), print_id) AS print_id FROM @ids;
   `);
   const printId = inserted.recordset[0].print_id;
+  const column = await new sql.Request(tx).query<{ ok: number }>(
+    "SELECT CASE WHEN COL_LENGTH('dbo.RidershipPrintedSheets', 'trip_ids') IS NULL THEN 0 ELSE 1 END AS ok",
+  );
+  const withTripIds = column.recordset[0]?.ok === 1;
   for (const sheet of write.sheets) {
     const req = new sql.Request(tx);
     req.input("print_id", sql.UniqueIdentifier, printId);
@@ -562,9 +570,17 @@ export async function writePrintRun(tx: sql.Transaction, write: PrintWrite, acto
     req.input("block", sql.Char(3), sheet.block);
     req.input("fingerprint", sql.Char(64), sheet.fingerprint);
     req.input("pages", sql.Int, sheet.pages);
-    await req.query(`
-      INSERT INTO dbo.RidershipPrintedSheets (print_id, service_date, block, fingerprint, pages)
-      VALUES (@print_id, @service_date, @block, @fingerprint, @pages)
-    `);
+    if (withTripIds) {
+      req.input("trip_ids", sql.NVarChar(sql.MAX), JSON.stringify(sheet.trip_ids));
+      await req.query(`
+        INSERT INTO dbo.RidershipPrintedSheets (print_id, service_date, block, fingerprint, pages, trip_ids)
+        VALUES (@print_id, @service_date, @block, @fingerprint, @pages, @trip_ids)
+      `);
+    } else {
+      await req.query(`
+        INSERT INTO dbo.RidershipPrintedSheets (print_id, service_date, block, fingerprint, pages)
+        VALUES (@print_id, @service_date, @block, @fingerprint, @pages)
+      `);
+    }
   }
 }

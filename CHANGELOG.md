@@ -5,6 +5,26 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.16] - 2026-11-02
+
+A relief operator or bus change on a Count Sheet (migration 162). Check-in staff assign operators in Avail on the day and the bus joins at MDT login, after the desk prints the sheet the evening before, so operator and bus stay handwritten and entry pre-fills them from Avail's pull-out. A block that changed hands or buses part way had nowhere to say so, and the bus matters for comparing counts with the bus's passenger counter.
+
+- **Migration 162** adds `change_from_trip_id`, `change_operator_name`, `change_operator_id` and `change_bus` to `RidershipSheets`, with `CK_RidershipSheets_Change`: all NULL, or a trip plus at least one of the three. One change per sheet, matching the one line on the paper.
+- **The API reads the columns only once they exist** (`sheetChangeReady`, the same `COL_LENGTH` probe as `scheduled_end_seconds`). Before migration 162 every sheet loads with `change: null` and saves as before; a save carrying a change answers 503 naming the migration. Schema drift lists 162.
+- **`SheetSave.change` / `header.change`**: `{ from_trip_id, operator_name, operator_id, bus }`. `checkSheetSave` refuses a trip not on the sheet, and the first trip (that is the header). The four fields are flattened into the history, one row per field that moved.
+- **The printed sheet** gets a second operator row: "Relief or bus change: operator name", Operator ID, Bus #, Initials and From trip # (the row number). `TRIP_ROW` goes from 26 to 24 so a full 14-trip last page still clears the footer; the print fingerprint is the trips, not the layout, so printed sheets do not flip to changed.
+- **Enter sheets**: "Add relief or bus change" opens the row, pre-filled from Avail's next run (`newChange`); From trip lists the sheet's trips from #2; the chosen trip is marked "Relief or bus change from here".
+
+**Restarts the REST app on merge.**
+
+## [1.7.14] - 2026-11-02
+
+A Count Sheet's QR code names the block and date, not the copy, and migration 157 kept only a fingerprint of each printed sheet: enough to say a reprint differs, not how. Scanned sheets (the Burnsville capture pilot agreed 2026-11-02, `plans/count-sheet-scan-upload.md` decision 8) are read row by row, so each row has to map to the trip printed on it. **The REST app restarts on merge.**
+
+- **Migration 161** adds `RidershipPrintedSheets.trip_ids`: a JSON array of the GTFS trip_ids printed on the sheet, row 1 first, checked with `ISJSON`. Sheets printed earlier stay NULL.
+- **`writePrintRun`** writes it from the sheet's trips in print order, and only once the column exists, so printing keeps working until 161 is applied on dev and prod. `SCHEMA_REQUIREMENTS` lists the column, so Integrations & Data Health says when it is missing.
+- Tests: `ridership.db.contract.test.ts` applies migration 161 and checks that the evening copy and the reprint after a late tripper record their own trips in row order.
+
 ## [1.7.10] - 2026-11-02
 
 The printed Count Sheet's Trip ID column carried the 16-18 character GTFS trip_id (`t140-b1F5-sl1B-v64`), which nobody at the desk or in dispatch uses. Avail's event log and dispatch call the same trip **320-E**. MVTA's GTFS id encodes that number: its first part is the trip number in hexadecimal (0x140 = 320), and the number is the scheduled start as H:MM (3:20 AM). The block part encodes the block the same way (0x1F5 = 501). This held for all 847 Dispatch Log trips on 2026-11-01/02. **The REST app restarts on merge.**
