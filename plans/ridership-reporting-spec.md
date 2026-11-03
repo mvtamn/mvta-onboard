@@ -28,6 +28,18 @@ Settled earlier and not reopened here:
 - **Operator names.** Visible only to `ridership-recorder`,
   `ridership-manager` and the compliance roles.
 
+- **Transition (plan A, decided 2026-11-03).** OnBoard-printed Count Sheets
+  start on the **7 December 2026 service change**. December is a **parallel
+  run by scanning**:
+  - the incumbent keys **Access only**, and Access is the record for December;
+  - garage management scans every sheet daily;
+  - Keolis's OCC keys scanned December sheets in OnBoard during training
+    (9–18 Dec), and Planning compares those entries with Access before the
+    18 Dec conditional cutover notice.
+
+  OnBoard is the record from **1 January 2027**. Keolis never keys Access
+  (`plans/contractor-ridership-briefing.md`, PR #463).
+
 **Deliberately unsettled, and not designed around here:**
 
 - **ServiceType** (L/MX/RC/SX/DX), Q15.
@@ -105,7 +117,11 @@ already known: it is the `FixedTotals` paste.
 ## 3. Carry-over: what keeps working unchanged
 
 From January 2027 OnBoard is the record. Its closed months feed the export,
-and the workbook keeps working from it.
+and the workbook keeps working from it. **December 2026 is still an Access
+month:** Planning closes and reports it from Access exactly as today, and its
+`FixedTotals` rows reach OnBoard through the history import (§4.2). OnBoard's
+December entries are Keolis training data, never the record, and are never
+served as totals.
 
 | Report | Carries over on the export? | What changes |
 |---|---|---|
@@ -157,8 +173,16 @@ One Excel file per request, with three sheets:
 
 ### 4.2 History (Q5)
 
-- Access `FixedTotals` is imported once, as it is, into its own table with
+- Access `FixedTotals` is imported as it is into its own table with
   `source = access`. It is never recomputed.
+- **Timing:** the import that counts is taken **after Planning closes
+  December 2026 in Access** (early January), so the history runs through
+  December. A trial import of the Jan–Oct 2026 export can run earlier to
+  prove the control totals.
+- **Repeatable per month.** If the 18 Dec cutover notice is withheld and
+  Access stays the record into 2027 (the briefing's fallback), each further
+  Access month is imported the same way. A month is never held in both
+  sources: OnBoard's totals start at the first month OnBoard is the record.
 - A view unions the history with OnBoard's closed months, so one export or one
   chart covers the full history through the current month.
 - **Acceptance:** rows, trips and riders per month in OnBoard equal the
@@ -196,9 +220,15 @@ crosstab, not from monthly totals. OnBoard gives an equivalent:
   month.
 - **Excel export** of exactly what is on screen, one sheet per day type, with
   the same row keys. No operator names.
+- **Scans:** where a sheet's scan is held (counting spec §15, PR #488), a
+  cell also opens the scan, so a review checks the number against the page.
 - **Delivery: Jan 1,** with month close: it is the screen Planning closes the
-  month from. During the December parallel run it is also how Planning lines
-  OnBoard up against Access trip by trip, on the Access TripID.
+  month from, starting with January.
+- **December comparison does not wait for it.** The 9–18 Dec comparison of
+  Keolis's training entries with Access uses the build plan's daily totals CSV,
+  which carries both trip IDs (build plan decision 6). Only the sheets Keolis
+  keyed are compared, so the comparison is trip by trip on those sheets, not
+  a month total.
 
 ## 5. Power BI through the reporting API (Q10, Q11, Q12)
 
@@ -261,15 +291,18 @@ report page unless Power BI is not adopted.
 | 13 | Automatic NTD figures | **v2** | Gated on §7 Q3–Q5. Until then OnBoard provides only monthly fixed-route boardings with not-counted trips shown, not "NTD-ready" UPT. A per-trip total cannot give passenger miles (Q16) |
 | — | OnBoard PDF report page | Only if Power BI is not adopted | Q12 |
 
-**Dec 1 adds nothing for reporting.** The parallel-run daily totals CSV for
-the December comparison is already in the build plan (PR 3).
+**The 7 December start adds nothing for reporting.** The daily totals CSV
+used for the December comparison is already in the build plan (PR 3). The
+first month OnBoard closes is January 2027 (by 10 Feb), so everything marked
+Jan 1 must be ready for that close, not for 1 January itself.
 
 ### Steps outside the code (numbered, owner in brackets)
 
 1. Send the latest workbook (`.xlsx`), the Reporting Tracker and the
    external-report how-to, and hold the report review (§2). [Planning]
-2. Export the full Access `FixedTotals` table for the history import. This is
-   the same as counting spec §11 step 4. [Planning]
+2. Export the full Access `FixedTotals` table for the history import, **after
+   closing December 2026 in Access**. This is the same as counting spec §11
+   step 4. A Jan–Oct trial export already exists. [Planning]
 3. Create the Power BI function key in Key Vault and give it to the Power BI
    dataset owner. Record who holds it. [Engineering + Planning]
 4. Build the first Power BI ridership report on the feeds. [Planning]
@@ -325,4 +358,5 @@ the December comparison is already in the build plan (PR 3).
 | Q14 | Riders per scheduled trip-hour, not "revenue hour"; v2 |
 | Q15 | APC overlay v2, manager-only, kept out of Power BI until validated |
 | Q16 | NTD figures v2, gated on Planning's answers |
+| Added 2026-11-03 | Plan A: December stays an Access month; history import taken after December's Access close and repeatable if cutover slips; December comparison uses the daily CSV, not the grid |
 | Added 2026-11-02 | Trip × date grid + Excel export (replacing the Access crosstab), Jan 1, rows carry the Access TripID |
