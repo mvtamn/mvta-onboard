@@ -468,9 +468,59 @@ faulty, and a gap like that belongs in §14, not in the accuracy figure:
   `142510626` is the 06:46 N trip and `142520735` the 07:55 S. Match on
   block + start, not on TripID alone.
 
-**Next:** repeat on a second weekday and a Saturday before the gap is relied
-on, with the faulty buses above left out. `ridership/avail-apc-sample/fetch_apc_sample.sh`
-fetches a day, and the user runs it with the key.
+### Four more days (2026-10-24 to 10-27)
+
+Added 2026-11-03, using the same method. Access was fully entered on every
+day. **Trips matched one to one on every day** (606 on weekdays, 241 at
+weekends), with no trip on only one side.
+
+| Day | Comparable trips | Manual | APC | APC ÷ manual | Local | Express (MX) | No-APC trips |
+|---|---|---|---|---|---|---|---|
+| Sat 10/24 | 234 | 1,310 | 1,491 | 1.14 | 1.14 | — | 7 |
+| Sun 10/25 | 227 | 959 | 1,258 | 1.31 | 1.31 | — | 14 |
+| Mon 10/26 | 554 | 5,333 | 5,482 | 1.03 | 1.26 | 0.93 | 52 |
+| Tue 10/27 | 559 | 6,118 | 6,356 | 1.04 | 1.27 | 0.94 | 47 |
+| Wed 10/28 | 563 | 6,046 | 6,263 | 1.04 | 1.27 | 0.93 | 43 |
+| **3 weekdays** | 1,676 | 17,497 | 18,101 | **1.03** | **1.27** | **0.94** | |
+| **Weekend** | 461 | 2,269 | 2,749 | **1.21** | 1.21 | — | |
+
+What the five days show:
+
+- **The 10/28 result repeats.** Every weekday is +3 to +4% overall, with
+  locals about 1.27× and express about 0.94×.
+- **The size pattern repeats.** Trips under 5 manual riders read 1.40–1.51×;
+  trips with 30 or more read 0.90–0.94×.
+- **Weekends are local-only, so the gap shows openly:** +14% on Saturday and
+  +31% on Sunday. Route ratios swing from day to day: route 444 was 0.97 on
+  Saturday and 1.33 on Sunday. A single route-day isn't a reliable measure.
+- **Still not concentrated.** On weekdays, APC is higher on 76–78 blocks and
+  lower on 50–56. The ten blocks with the largest excess hold 31–42% of it.
+  Weekends lean more one way (28–32 of 36 blocks higher), as expected when
+  every trip is local.
+
+**Faulty counters across days:**
+
+| Bus | Pattern |
+|---|---|
+| **4509** | Every weekday it's on, boardings are mostly missing or alights only: 45 vs 94 on 10/26, 7 vs 52 on 10/27, 5 vs 56 on 10/28. A failed counter, not a calibration gap. |
+| **4143** | No APC on any of its trips on 10/26 and 10/28. On Saturday it reads low: 26 vs 45 on block 563. |
+| **4129, 4142, 4766, 4846** | Several all-zero trips on at least one day. |
+
+**APC isn't available for every day.** Fetched on 2026-11-03:
+
+- 10/24–10/28 returned data.
+- **10/29 failed inside Avail's report** with a SQL error: "Conversion failed
+  when converting the varchar value 'null' to data type int".
+- **10/30, 10/31 and 11/01 returned no rows.**
+
+So the data either arrives five or more days late, or stopped after 10/28.
+Both go to Avail with the questions below.
+
+**Next:** get Avail's answers, and repeat once later days return data, with
+bus 4509 left out. Only a ride check on a few trips can say which side is
+wrong: a near-empty local versus a full express at a Park & Ride.
+`ridership/avail-apc-sample/fetch_apc_sample.sh` fetches days, and the user
+supplies the key.
 
 How it fits OnBoard:
 
@@ -502,6 +552,9 @@ How it fits OnBoard:
 - How soon after the service day the data is complete, and whether it is
   restated later (compare ADR 0039 for OTP).
 - Whether MVTA's APC data is certified for NTD reporting.
+- Why the report fails for 10/29 (SQL error, "varchar value 'null' to
+  int") and returns no rows for 10/30–11/01 when fetched on 11/03.
+- Why some trips record alights but no boardings, as on bus 4509 most days.
 - The troubleshooting questions in §14.
 
 **Decisions for later,** once the answers are in: the tolerance and number of
@@ -792,9 +845,16 @@ So OnBoard can compute an Access-style TripID for every Dispatch Log trip. Uses:
 - **D1 (blank `TripID` on route 495):** the blank is an Access-side gap, not a
   missing rule; check whether those rows were keyed at all.
 
-Still unknown: the digits for Sunday and Special Saturday, and how a route
-number other than three digits is written. The 10/28 rows settle the
-direction digits as N = 1, S = 2, E = 3, W = 4 (§12, same-day comparison).
+The Access rows for 10/24–11/01 (§12, same-day comparison) settle more of
+the rule:
+
+- **Day digit:** 1 = Monday–Thursday weekday, **3 = Friday**, 2 = Saturday
+  **and Sunday**. Friday has its own pattern with 559 trips against 606, but
+  its `Days` value is still `Wk`.
+- **Direction digit:** N = 1, S = 2, E = 3, W = 4.
+
+Still unknown: the digit for Special Saturday, and how a route number other
+than three digits is written.
 
 ### OCC entry form (Ridership Data Manager)
 
