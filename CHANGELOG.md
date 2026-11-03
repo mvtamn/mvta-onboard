@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.19] - 2026-11-02
+## [1.7.23] - 2026-11-03
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,18 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.22] - 2026-11-03
+
+A relief operator or bus change on a Count Sheet (migration 162). Check-in staff assign operators in Avail on the day and the bus joins at MDT login, after the desk prints the sheet the evening before, so operator and bus stay handwritten and entry pre-fills them from Avail's pull-out. A block that changed hands or buses part way had nowhere to say so, and the bus matters for comparing counts with the bus's passenger counter.
+
+- **Migration 162** adds `change_from_trip_id`, `change_operator_name`, `change_operator_id` and `change_bus` to `RidershipSheets`, with `CK_RidershipSheets_Change`: all NULL, or a trip plus at least one of the three. One change per sheet, matching the one line on the paper.
+- **The API reads the columns only once they exist** (`sheetChangeReady`, the same `COL_LENGTH` probe as `scheduled_end_seconds`). Before migration 162 every sheet loads with `change: null` and saves as before; a save carrying a change answers 503 naming the migration. Schema drift lists 162.
+- **`SheetSave.change` / `header.change`**: `{ from_trip_id, operator_name, operator_id, bus }`. `checkSheetSave` refuses a trip not on the sheet, and the first trip (that is the header). The four fields are flattened into the history, one row per field that moved.
+- **The printed sheet** gets a second operator row: "Relief or bus change: operator name", Operator ID, Bus #, Initials and From trip # (the row number). `TRIP_ROW` goes from 26 to 24 so a full 14-trip last page still clears the footer; the print fingerprint is the trips, not the layout, so printed sheets do not flip to changed.
+- **Enter sheets**: "Add relief or bus change" opens the row, pre-filled from Avail's next run (`newChange`); From trip lists the sheet's trips from #2; the chosen trip is marked "Relief or bus change from here".
+
+**Restarts the REST app on merge.**
 
 ## [1.7.18] - 2026-11-02
 
