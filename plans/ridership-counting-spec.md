@@ -358,7 +358,119 @@ average manual weekday by route, from `FixedTotals`; indicative only):
   on the local routes 436, 440 and 497. A gap that is systematic in one
   direction points to manual undercounting or APC over-counting, not to
   random error. This needs a same-day comparison: one October day of Access
-  trip-level counts against this sample.
+  trip-level counts against this sample. **Superseded by the same-day
+  comparison below: the 16% was mostly the day, not the counters.**
+
+### Same-day comparison (2026-10-28)
+
+Added 2026-11-03. Manual counts are the 10/28 rows of the Access `Riders`
+table, read from a copy of the back end (`Ridership Data Entry_be.mdb`; OCC's
+"Recent Riders SST DATA ENTRY" reads the same table). Bus per block is from
+`FixedRouteDepartures` on dev. The working files are kept outside the repo.
+
+**The manual day was complete.** All 606 rows for 10/28 have a Riders value
+(49 are 0, none blank). Access creates each day's rows ahead of time with
+Riders blank: blanks appear only from 11/02 onwards, so blanks can't be
+mistaken for disagreement here.
+
+**Trips match one to one.** Matching on block + route + direction + start
+HHMM: **606 APC trips, 606 Access trips, 606 matched, none on only one
+side.** The 460 07:50 N trip on blocks 23 and 41 is in Access too, so the
+manual roster carries it. The extra express trips in the first comparison
+were a gap in September's `FixedTotals` trip count, not trips missing from
+the roster. MBlock = SBlock on every row.
+
+**No APC.** 43 trips have every row zero (boards and alights). These are
+treated as no APC, not 0 riders. Manual counted 83 riders on them, and 26 of
+the 43 were also 0 manually. A further 19 trips have alights but no
+boardings (manual 68 riders), which points to a counter seeing only one door.
+These are kept in the comparison as 0 boardings.
+
+**Totals.**
+
+| | Trips | Manual | APC | APC ÷ manual |
+|---|---|---|---|---|
+| All trips | 606 | 6,129 | 6,263 | 1.02 |
+| Comparable (APC not all zero) | 563 | 6,046 | 6,263 | **1.04** |
+| Local (`ServiceType` L) | 375 | 1,788 | 2,272 | 1.27 |
+| Express (MX) | 174 | 4,096 | 3,826 | 0.93 |
+| Express (SX) | 14 | 162 | 165 | 1.02 |
+
+**Trip agreement** on the 563 comparable trips: 124 exact, 403 within ±2
+riders, median difference 0; APC higher on 279 and lower on 160. Of the 204
+trips with 10 or more manual riders, 112 are within ±10% and 165 within ±20%.
+
+**By route** (comparable trips only; ratio = APC ÷ manual):
+
+| Route | Trips | Comparable | Manual | APC | Ratio | Manual on no-APC trips |
+|---|---|---|---|---|---|---|
+| 420 | 30 | 27 | 61 | 68 | 1.11 | 4 |
+| 425 | 28 | 23 | 87 | 117 | 1.34 | 13 |
+| 436 | 34 | 34 | 149 | 188 | 1.26 | 0 |
+| 440 | 36 | 35 | 197 | 240 | 1.22 | 0 |
+| 442 | 29 | 25 | 37 | 48 | 1.30 | 0 |
+| 444 | 65 | 65 | 497 | 625 | 1.26 | 0 |
+| 445 | 34 | 31 | 141 | 164 | 1.16 | 15 |
+| 446 | 38 | 37 | 209 | 246 | 1.18 | 2 |
+| 447 | 16 | 15 | 61 | 79 | 1.30 | 0 |
+| 460 | 30 | 30 | 481 | 471 | 0.98 | 0 |
+| 465 | 51 | 51 | 1,020 | 992 | 0.97 | 0 |
+| 470 | 12 | 12 | 323 | 291 | 0.90 | 0 |
+| 475 | 28 | 28 | 809 | 730 | 0.90 | 0 |
+| 477 | 32 | 32 | 975 | 900 | 0.92 | 0 |
+| 480 | 14 | 14 | 162 | 165 | 1.02 | 0 |
+| 490 | 21 | 21 | 488 | 442 | 0.91 | 0 |
+| 495 | 40 | 36 | 289 | 398 | 1.38 | 44 |
+| 497 | 34 | 24 | 39 | 57 | 1.46 | 1 |
+| 499 | 34 | 23 | 21 | 42 | 2.00 | 4 |
+
+**By trip size** (manual riders on the trip): under 5, 212 trips, APC 1.48×;
+5–14, 217 trips, 1.12×; 15–29, 81 trips, 0.97×; 30 or more, 53 trips, 0.92×.
+
+**Does the +16% hold? No.** On the same day the gap is **+4%** on comparable
+trips (+2% on all trips). Most of the earlier 16% is the day itself: 10/28's
+manual total (6,129) is 14% above September's weekday average (5,396), in line
+with the other late-October weekdays in Access (5,420–6,369).
+
+The "higher on every route" finding does not hold either. The gap **splits by
+route type and load**:
+
+- **Local routes, light trips:** APC reads higher, 1.1–2.0×. The ratios are
+  large but the riders are few: 499's 2.0× is 42 vs 21.
+- **Express routes, heavy trips:** APC reads 2–10% lower.
+
+The two directions nearly cancel in the day total. This one day can't say
+which side is wrong. Possible explanations are operators rounding down or
+missing boardings on near-empty local trips, APC counting non-riders on
+quiet trips, and APC under-counting crowded boardings at Park & Rides. The
+answers to Avail's questions and a second day are needed first.
+
+**Not concentrated on particular blocks or buses.** On 142 blocks, APC is
+higher on 72 and lower on 59. The ten blocks with the largest APC excess
+account for 42% of it, spread across routes 444, 445, 440/446 and 495. No
+single bus explains the gap. Where one bus stands out, the counter looks
+faulty, and a gap like that belongs in §14, not in the accuracy figure:
+
+- **Bus 4143:** no APC on any of its 10 trips (manual 61 riders).
+- **Bus 4509** (blocks 18 and 358): 6 trips all zero and most of the rest
+  alights only. Its boardings read 5 vs 56 manual.
+- **Bus 4838** (block 65): 490 07:35 N reads 3 vs 32 manual.
+- **Bus 4142:** 5 of 12 trips all zero.
+
+**What the Access rows show about the TripID rule (§16):**
+
+- Weekday digit is **1**.
+- Direction digits are **N = 1, S = 2, E = 3, W = 4** on all 566 rows that
+  have a TripID.
+- All **40 blank TripIDs are route 495**. Riders were entered on all of them,
+  so the rows were keyed: the TripID is the only gap.
+- Two route 425 TripIDs on block 013 carry an **old start time**:
+  `142510626` is the 06:46 N trip and `142520735` the 07:55 S. Match on
+  block + start, not on TripID alone.
+
+**Next:** repeat on a second weekday and a Saturday before the gap is relied
+on, with the faulty buses above left out. `ridership/avail-apc-sample/fetch_apc_sample.sh`
+fetches a day, and the user runs it with the key.
 
 How it fits OnBoard:
 
@@ -680,9 +792,9 @@ So OnBoard can compute an Access-style TripID for every Dispatch Log trip. Uses:
 - **D1 (blank `TripID` on route 495):** the blank is an Access-side gap, not a
   missing rule; check whether those rows were keyed at all.
 
-Still unknown: the digits for Sunday and Special Saturday, how a route number
-other than three digits is written, and whether direction digits are always
-N/E = 1 and S/W = 2.
+Still unknown: the digits for Sunday and Special Saturday, and how a route
+number other than three digits is written. The 10/28 rows settle the
+direction digits as N = 1, S = 2, E = 3, W = 4 (§12, same-day comparison).
 
 ### OCC entry form (Ridership Data Manager)
 
