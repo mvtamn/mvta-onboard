@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.13] - 2026-11-02
+## [1.7.15] - 2026-11-02
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,14 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.14] - 2026-11-02
+
+A Count Sheet's QR code names the block and date, not the copy, and migration 157 kept only a fingerprint of each printed sheet: enough to say a reprint differs, not how. Scanned sheets (the Burnsville capture pilot agreed 2026-11-02, `plans/count-sheet-scan-upload.md` decision 8) are read row by row, so each row has to map to the trip printed on it. **The REST app restarts on merge.**
+
+- **Migration 161** adds `RidershipPrintedSheets.trip_ids`: a JSON array of the GTFS trip_ids printed on the sheet, row 1 first, checked with `ISJSON`. Sheets printed earlier stay NULL.
+- **`writePrintRun`** writes it from the sheet's trips in print order, and only once the column exists, so printing keeps working until 161 is applied on dev and prod. `SCHEMA_REQUIREMENTS` lists the column, so Integrations & Data Health says when it is missing.
+- Tests: `ridership.db.contract.test.ts` applies migration 161 and checks that the evening copy and the reprint after a late tripper record their own trips in row order.
 
 ## [1.7.10] - 2026-11-02
 

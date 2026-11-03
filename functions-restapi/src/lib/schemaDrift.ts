@@ -139,6 +139,12 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     table: "RidershipPrintedSheets",
     breaks: "Ridership: a block changed in the Dispatch Log since printing is not flagged for reprint",
   },
+  {
+    migration: "161",
+    table: "RidershipPrintedSheets",
+    column: "trip_ids",
+    breaks: "Ridership: printed Count Sheets do not record which trips were on each row, so a scanned sheet cannot be matched row by row",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */
