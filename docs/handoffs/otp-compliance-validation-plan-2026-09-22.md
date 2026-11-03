@@ -118,11 +118,32 @@ response that accounted for at least 90% of what the month already held; a short
 reported and removes nothing. Migration 152 retires the 11 already stranded.
 
 **What that does to these figures: less than the comparison can resolve, and not all one
-way.** 2026-05 rises from 87.560% to 87.574%, because its eight retired rows sat below the
-month's average; 2026-08 falls by 0.001 and 2026-09 by 0.005. The direction depends on the
-rows, which is why the archive exists — `vw_OtpMonthlyRetiredKeys` is where a figure that
-moved for this reason is explained. Record each month's figure before and after applying
-migration 152, as part of Tier 1 rather than Tier 4.
+way.** The direction depends on the rows, which is why the archive exists —
+`vw_OtpMonthlyRetiredKeys` is where a figure that moved for this reason is explained.
+
+**Migration 152 was applied to dev on 2026-11-02, and the figures either side were recorded
+as this plan asks (Tier 1, not Tier 4):**
+
+| Service month | Rows before → after | Departures before → after | Figure before | Figure after |
+|---|---|---|---|---|
+| 2026-05 | 999 → 991 | 67,532 → 67,465 | 87.560% | **87.574%** |
+| 2026-06 | 910 → 910 | 65,284 | 85.925% | **85.925%** (held no stranded rows) |
+| 2026-08 | 912 → 910 | 62,748 → 62,746 | 85.305% | **85.304%** |
+| 2026-09 | 860 → 859 | 62,538 → 62,521 | 81.200% | **81.195%** |
+
+2026-05 rose because its eight retired rows sat below the month's average. Every move is
+smaller than the Avail comparison can resolve, and they are not all in one direction, so no
+Tier 1 or Tier 4 result above is disturbed by them.
+
+The 11 archived rows cluster by day of week rather than by stop, which is what a feed that
+stops publishing a series looks like: 2026-05's eight are all **Mon**, last written
+2026-08-06; 2026-08's two are both **Tues**, last written 2026-09-22; 2026-09's one is
+**Thur** (route 499 at Shakopee Walmart, 17 departures, all on time), last written
+2026-10-28. All 11 are readable in `vw_OtpMonthlyRetiredKeys` with the date and reason.
+
+After the migration no month holds an unstamped row: every month from 2026-01 to 2026-11
+reads `2/5/10/60/0/1/1`, so the re-pull list is empty. Re-running the migration retired
+nothing further and changed no figure, as it is written to.
 
 **What is now guarded.** Both the poll and the backfill count distinct keys, add records that
 share one together, and report any key that carried more than one — in the log, and in the
@@ -228,12 +249,16 @@ month to compare.
 
 ## Can the system be baselined today? No — and the blocker is not OnBoard
 
+*The closeout — every open question, who answers it, and the order — is in
+`otp-system-of-record-closeout-2026-10-31.md`. This section states the gate; that
+document states the path.*
+
 As of 2026-10-28, **do not freeze a baseline. Proceed and confirm by test.**
 
 | Gate | State |
 | --- | --- |
 | **A0 — the two manual artifacts agree with each other** | **Not done.** This is the gate. There is nothing to baseline against until it is. |
-| Tier 1 — OnBoard holds what Avail published | **Passed for 2026-08 and 2026-09; failed for 2026-03** until it is re-pulled — see "What changed on 2026-10-30" |
+| Tier 1 — OnBoard holds what Avail published | **Passed** for 2026-08 and 2026-09; 2026-03 failed and was **repaired by the 2026-10-30 re-pull** (90.46% → 90.50%, 67,330 departures) |
 | Tier 2 — rule correctness | Passed 2026-09-22, except T2.4 |
 | Months measured consistently | **Yes** — all backfilled 2026-10-29 |
 | Acceptance standard still valid | **No** — needs restating against corrected figures |

@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.16] - 2026-11-02
+## [1.7.22] - 2026-11-03
 
 A relief operator or bus change on a Count Sheet (migration 162). Check-in staff assign operators in Avail on the day and the bus joins at MDT login, after the desk prints the sheet the evening before, so operator and bus stay handwritten and entry pre-fills them from Avail's pull-out. A block that changed hands or buses part way had nowhere to say so, and the bus matters for comparing counts with the bus's passenger counter.
 
@@ -16,6 +16,12 @@ A relief operator or bus change on a Count Sheet (migration 162). Check-in staff
 - **Enter sheets**: "Add relief or bus change" opens the row, pre-filled from Avail's next run (`newChange`); From trip lists the sheet's trips from #2; the chosen trip is marked "Relief or bus change from here".
 
 **Restarts the REST app on merge.**
+
+## [1.7.18] - 2026-11-02
+
+- **Both SQL servers have their Entra admin declared in Bicep.** Dev's admin was set by hand and prod had none, and without an Entra admin nobody can run `CREATE USER ... FROM EXTERNAL PROVIDER` for the Function Apps' managed identities. `sql.bicep` now declares `administrators/ActiveDirectory` from `sqlEntraAdminLogin` / `sqlEntraAdminObjectId`, which `infra.yml` passes from the `SQL_ENTRA_ADMIN_LOGIN` / `SQL_ENTRA_ADMIN_OBJECT_ID` GitHub environment variables (not a parameter file: the repository is public). Both empty leaves the server's admin alone. What-if: no change on dev, prod gains the admin.
+- **`SQL_CONNECTION_STRING` can sign in without a password.** `Authentication=Active Directory Default` in the connection string makes both `db.ts` files connect as the app's own identity (managed identity in Azure, `az login` on a laptop). Without the key, or with `Authentication=Sql Password`, the login and password are used as before; any other value is refused. The REST API's connect retry also retries a failed token fetch (`EFEDAUTH`, which mssql wraps in an AggregateError with no code of its own) but not a rejected login. The password parser now ends a password at `Authentication=`.
+- **Nothing switches over in this release.** Key Vault's `sql-connection-string` still holds the password. The database users for the managed identities, the switch to the new connection string, and Entra-only auth follow.
 
 ## [1.7.14] - 2026-11-02
 

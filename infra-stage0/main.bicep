@@ -23,6 +23,10 @@ param sqlAllowPublicNetworkAccess bool = false
 @description('Public IPs allowed through the SQL firewall. Passed from the SQL_FIREWALL_ALLOWED_IPS GitHub environment variable.')
 param sqlFirewallAllowedIps array = []
 
+@description('SQL server Entra admin. Passed from the SQL_ENTRA_ADMIN_LOGIN / SQL_ENTRA_ADMIN_OBJECT_ID GitHub environment variables, not a parameter file, because the repository is public.')
+param sqlEntraAdminLogin string = ''
+param sqlEntraAdminObjectId string = ''
+
 module network 'modules/network.bicep' = {
   name: 'network-deployment'
   params: {
@@ -63,6 +67,8 @@ module sql 'modules/sql.bicep' = {
     manageSqlConnectionStringSecret: manageSqlConnectionStringSecret
     allowPublicNetworkAccess: sqlAllowPublicNetworkAccess
     sqlFirewallAllowedIps: sqlFirewallAllowedIps
+    sqlEntraAdminLogin: sqlEntraAdminLogin
+    sqlEntraAdminObjectId: sqlEntraAdminObjectId
   }
 }
 
