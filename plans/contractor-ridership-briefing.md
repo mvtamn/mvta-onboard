@@ -37,6 +37,21 @@ recorded decisions you made that this briefing had left open:
 
 The sections below follow those decisions.
 
+**Plan A, decided 2026-11-03.** The new Count Sheets start on the
+**7 December 2026 service change** rather than on 1 December. December is a
+**parallel run by scanning**:
+
+- The desks print OnBoard sheets, and the incumbent's OCC keys Access as today.
+- Garage management scans every sheet daily.
+- Keolis's OCC staff key real scanned December sheets in OnBoard during their
+  training, and Planning compares those entries with Access before the
+  cutover notice.
+- OnBoard entry, the deadline and flags start with Keolis on 1 January. Keolis
+  never keys Access.
+
+Changes 1 and 2, the actions and decisions O-4 to O-6 follow this. The SOP's
+Transition section is updated to match in `plans/sop-drafts/`.
+
 The briefing sets out what MVTA tells its operations contractor about
 fixed-route ridership counting, in two parts:
 
@@ -52,7 +67,7 @@ and the decisions MVTA still has to make.
 
 | Audience | Period | Their part |
 |---|---|---|
-| **Incumbent contractor** (SST, today's OCC and garages) | Now through 2026-12-31 | Today's process, then the **December parallel run**: OnBoard-printed sheets, entered in both Access and OnBoard |
+| **Incumbent contractor** (SST, today's OCC and garages) | Now through 2026-12-31 | Today's process to 6 December, then the **parallel run by scanning** from the 7 December service change: OnBoard-printed sheets, keyed into Access as today, scanned daily |
 | **Keolis** | From 2027-01-01 | OnBoard only, with flags, month close and, later, `INCIDENT_REPORTING` occurrences, the kiosk and phones |
 
 **Sources.** Gap IDs (C1–C8, P1–P7, D1–D6, H1–H2) are from
@@ -212,15 +227,22 @@ notice** rather than fixed dates (SOP decision record), so that the SOP stays
 correct if a date slips. The dates below are the planned dates for those
 notices.
 
-### Change 1 — 2026-12-01: OnBoard Count Sheets, OnBoard entry, the deadline
+### Change 1 — 2026-12-07 (the service change): OnBoard Count Sheets, scanned
 
-**Audience: the incumbent contractor.** Keolis is told the same rules now, and
-performs them from 2027-01-01 (change 3).
+**Audience: the incumbent contractor.** Decided 2026-11-03 (plan A): the new
+sheets start on the **7 December 2026 service change**, not on 1 December, and
+December is a **parallel run by scanning** rather than double keying.
 
-**What changes:**
+- **1–6 December:** the current process continues (the packet, photocopied,
+  keyed into Access).
+- **No new packet is made for 7 December.** OnBoard's sheets replace it, so
+  the photocopy habit ends on the day the schedule changes.
+
+**What changes from 7 December:**
 
 - **Each garage's check-in desk prints the next day's Count Sheets every
-  evening** from OnBoard (Print sheets).
+  evening** from OnBoard (Print sheets). The first live print is the evening
+  of **6 December**, for 7 December.
   - The output is one PDF per garage, in pull-out order, with one sheet per
     block. Each sheet is dated and carries a QR code that links to that block
     and date.
@@ -231,17 +253,86 @@ performs them from 2027-01-01 (change 3).
     operate) tick box.
   - The unscheduled-trip rows take a time, a circled direction, and a tick
     for Tripper, Extra or OCC.
-  - Corner marks let a future scan straighten the page.
+  - A second operator line records a relief or bus change part way (#490).
+  - Corner marks let a scan straighten the page.
 - **The morning desk reprints** before the first pull-out. The Dispatch Log
   re-runs at 03:30 and marks any sheet it changed. The desk reprints those
   sheets with *Reprint just those N sheets*.
 - **Photocopying stops.** A copied sheet carries the wrong date and QR code,
-  so its counts would be filed under the wrong day. This ends today's
-  packet-and-copier routine (T-1).
-- The desk staff who print hold a new OnBoard role, **Ridership Printer**
-  (#483).
-- **This is already live on prod.** So the training and the dry run can use
-  the real system with a test service date.
+  so its counts would be filed under the wrong day.
+- The desk staff who print hold the **Ridership Printer** role (#483).
+- **The incumbent's OCC keys Access as today**, from the new sheet. Access
+  stays the record. The incumbent's OCC does **not** key OnBoard and needs no
+  OnBoard account.
+- **Garage management scans each day's sheets** on the garage multifunction
+  printer, one batch per garage, after OCC has keyed them.
+  - Until OnBoard's upload page is live, each batch is saved to a shared
+    folder MVTA names, and loaded into OnBoard later. So nothing waits on the
+    upload build (#488).
+  - Once upload is live, the batch goes straight into OnBoard.
+- **OPR-038 is amended**: one boardings total per trip; the Garage Manager's
+  APC exception is removed; the full procedure is OPR-RID-00.
+
+**Precondition to check:** OnBoard writes 7 December's trips at 03:30 on
+6 December, from the schedule it holds. The 7 December schedule must be
+published and loaded into OnBoard before then, or the first night prints the
+old schedule (A-7b).
+
+| Who at the contractor | Must do | Training needed | Evidence MVTA will look at |
+|---|---|---|---|
+| **Operators** | Take the dated sheet from the desk with the paddle, and **no longer photocopy one**. Write name, Operator ID and bus. Record one boardings total per trip in the digit boxes, at the end of the trip, with the bus stopped. **Tick DNO** for a trip that did not run, and write 0 only for a trip that ran empty. Put unscheduled trips in the bottom rows, and use the relief or bus-change line if the block changes hands or buses. Write **Reconstructed** across the top of a rewritten sheet. Count on APC buses too | A short briefing at check-in or in a bulletin, with a filled-in example sheet. The count itself (one total per trip) is what they already do | The scans; reconstructed rate by garage and Operator |
+| **Check-in desk / Garage Managers** (`Ridership Printer`) | **Evening:** print the next day's sheets, and act on the warning about blocks with no garage (*Unassigned*). **Morning, before the first pull-out:** reprint any sheet marked changed. Then issue the right sheet at check-in. Check each returned sheet (name, ID, bus, every row filled) before the Operator leaves. Chase missing sheets the same day | Hands-on: the evening print, the morning reprint, reprinting one block or any past date for a lost sheet, and what to do if OnBoard can't print (SOP decision 4) | OnBoard's print log, which records each sheet printed and reprinted, and any sheet changed but not reprinted |
+| **Contractor OCC staff** | Key every sheet into Access as today, reading the new layout | A short briefing on the new sheet: where each trip's total, DNO, unscheduled trips and the relief line are | Access, as today |
+| **Contractor operations management** | **Scan each day's sheets** after OCC has keyed them; save or upload each batch; keep the paper | Scanner and folder (later upload) routine at each garage | Sheets printed but never scanned, by garage and date |
+| **Contractor Training and Safety** | Brief every Operator and desk person before 7 December; record it | Train-the-trainer from MVTA | Training records, on request |
+
+### Change 2 — 7–31 December 2026: the parallel run by scanning
+
+**Audience: the incumbent contractor, and Keolis's OCC in training.**
+
+**What changes:**
+
+- **Access remains the record for December.** The incumbent's only extra
+  work is printing and scanning, not a second round of keying.
+- **Keolis's OCC staff enter real scanned December sheets in OnBoard** as
+  part of their December training (A-14). That gives them practice on real
+  sheets before 1 January, and gives Planning OnBoard entries to compare.
+- **MVTA Planning compares those entries with Access, trip by trip.** The
+  Access TripID rule is known (day type + route + direction + start time, spec
+  §16), so the match is mechanical. Not every sheet needs keying in OnBoard:
+  Planning decides how many service dates are enough.
+- The comparison of **7–15 December** is the basis for the conditional
+  cutover notice on **18 December** (A-15).
+- The deadline, flags and month close **do not apply** in December. OnBoard is
+  not the entry system yet (OPR-RID-00, Transition step 7).
+- **December's filled-in sheets and scans are also the handwriting sample**
+  for the scan-reading trial (spec §15, #488). That is a second reason to
+  keep every one of them and hand them over at contract end (A-17).
+
+| Who | Must do | Training needed | Evidence MVTA will look at |
+|---|---|---|---|
+| **Incumbent garage management** | Scan every sheet daily; keep the paper and hand it over by 2027-01-08 | As change 1 | Scans by garage and date; handover receipt |
+| **Incumbent OCC** | Key Access as today | As change 1 | Access |
+| **Keolis OCC staff** (`ridership-recorder`) | Key scanned December sheets in OnBoard during training | The OnBoard entry session, using the scans | Their entries against Access |
+| **MVTA Planning** | Compare OnBoard entries with Access and recommend the cutover | — | The comparison |
+
+**Risks particular to the incumbent:** December is the last month of its
+contract, so staff turnover is likely. Its new work is small (print, issue,
+scan), and Access being the record protects December's reporting whatever
+happens. If scanning slips at a garage, the paper is still kept, and the
+sheets can be scanned when the paper is handed over.
+
+### Change 3 — 2027-01-01: Keolis takes over; OnBoard entry, flags and month complete
+
+**Audience: Keolis.**
+
+**What changes:**
+
+- **OnBoard is the only record** (the Cutover Date), if MVTA accepts
+  December's comparison (decision O-4). The Access data-entry form is
+  retired, and Keolis never keys Access.
+- **The desks, Operators and scanning carry on** exactly as in change 1, now
+  done by Keolis staff.
 - **OCC enters in OnBoard**, from a worklist of sheets still to enter, late
   first. The Operator, Operator ID and bus are **pre-filled from Avail's
   pull-out report**; OCC changes them when the sheet says otherwise, and the
@@ -252,60 +343,6 @@ performs them from 2027-01-01 (change 3).
   it is not entered by **the end of the calendar day after the service date**
   (Central). Monday's service is due by 11:59 p.m. Tuesday. The completeness
   view shows gaps and late sheets by garage and date.
-- **OPR-038 is amended**: one boardings total per trip; the Garage Manager's
-  APC exception is removed; the full procedure is OPR-RID-00.
-
-| Who at the contractor | Must do | Training needed | Evidence MVTA will look at |
-|---|---|---|---|
-| **Operators** | Take the dated sheet from the desk with the paddle, and **no longer photocopy one**. Write name, Operator ID and bus. Record one boardings total per trip in the digit boxes, at the end of the trip, with the bus stopped. **Tick DNO** for a trip that did not run, and write 0 only for a trip that ran empty. Put unscheduled trips in the bottom rows. Write **Reconstructed** across the top of a rewritten sheet. Count on APC buses too | A short briefing at check-in or in a bulletin, with a filled-in example sheet. The count itself (one total per trip) is what they already do | Sheets on request; reconstructed rate by garage and Operator; Not counted rate |
-| **Check-in desk / Garage Managers** (`Ridership Printer`) | **Evening:** print the next day's sheets, and act on the warning about blocks with no garage (*Unassigned*). **Morning, before the first pull-out:** reprint any sheet marked changed. Then issue the right sheet at check-in. Check each returned sheet (name, ID, bus, every row filled) before the Operator leaves. Chase missing sheets the same day | Hands-on: the evening print, the morning reprint, reprinting one block or any past date for a lost sheet, and what to do if OnBoard can't print (SOP decision 4) | OnBoard's print log, which records each sheet printed and reprinted, and any sheet changed but not reprinted. Also every block that operated has a sheet entered, and missing sheets by garage |
-| **Contractor OCC staff** (`ridership-recorder`) | Enter every sheet in OnBoard by the deadline; override operator or bus to match the sheet; add unscheduled trips; tick Reconstructed; review the completeness view daily | OnBoard entry session plus the dry run (actions A-9, A-10) | OnBoard entry timestamps; late sheets; overrides recorded with who and when |
-| **Contractor operations management** | Review completeness and timeliness at least weekly, by garage and Operator; act on repeat failures; request and remove OnBoard access | A walk-through of the completeness view | A weekly or monthly note of what was found and done |
-| **Contractor Training and Safety** | Train every Operator, desk and OCC person on their part before they do it; record it | Train-the-trainer from MVTA | Training records, on request |
-
-### Change 2 — December 2026: the parallel run
-
-**Audience: the incumbent contractor only.** Keolis may observe (decision O-6).
-
-**What changes:**
-
-- Every sheet is entered in **both** OnBoard and Access, matched by block and
-  start time. **Access remains the record for December.** The Access TripID
-  rule is now known (day type + route + direction + start time, spec §16), so
-  Planning can match the two systems trip by trip. OCC doesn't have to do
-  that matching.
-- December's filled-in sheets are also the **handwriting sample** for the
-  future scan-reading trial (spec §15). That is a second reason to keep every
-  one of them and hand them over at the end of the contract.
-- MVTA Planning compares December's totals across the two systems, by route,
-  direction and day type, using the daily comparison export (build plan PR 5).
-- The deadline, completeness and reconstructed rules are **practised and
-  reported, not assessed** (OPR-RID-00, Transition step 6).
-- Flags and month close are **not yet in OnBoard** in December; they ship by
-  2027-01-01 (spec §11). The incumbent keeps answering Planning's monthly
-  questions by email as today.
-
-| Who at the contractor | Must do | Training needed | Evidence MVTA will look at |
-|---|---|---|---|
-| **Contractor OCC staff** | Key every sheet twice, once in each system, by the OnBoard deadline | As change 1; plus how to match an OnBoard trip to its Access row | Daily comparison: sheets in OnBoard but not Access and the reverse; trip-level differences |
-| **Contractor operations management** | Staff the extra keying; tell MVTA early if the deadline is at risk | None new | Late-sheet rate through December |
-| **Garage Managers** | Keep every December sheet until MVTA releases it, **and hand them over at contract end** (action A-17) | None | A sheet count by garage and date at handover |
-
-**Two risks particular to the incumbent:** December is the last month of its
-contract, so staff turnover is likely, and the double keying is new work at the
-end of the term. Access being the record for December protects December's
-reporting whatever happens in OnBoard. MVTA should still expect the incumbent
-to ask whether the double keying is in scope (decision O-5).
-
-### Change 3 — 2027-01-01: Keolis takes over; flags and month complete
-
-**Audience: Keolis.**
-
-**What changes:**
-
-- **OnBoard is the only record** (the Cutover Date), if MVTA accepts
-  December's comparison (decision O-4). The Access data-entry form is retired.
-- Everything in change 1, now done by Keolis staff from day one.
 - **Outlier flags.** OnBoard compares each count with the same trip over the
   previous 4 weeks, and flags one that is more than 3× the median and at
   least 10 above it, or 0 when the median is 5 or more. Planning can flag any
@@ -323,9 +360,9 @@ to ask whether the double keying is in scope (decision O-5).
 | Who at Keolis | Must do | Training needed | Evidence MVTA will look at |
 |---|---|---|---|
 | **Operators** | As change 1 | Ridership counting in new-hire and transition training, with the example sheet | Sheets on request; reconstructed and Not counted rates by Operator |
-| **Check-in desk / Garage Managers** | As change 1 | Printing and issue, hands-on, before 2027-01-01 | Missing sheets by garage |
-| **OCC staff** (`ridership-recorder`) | As change 1, plus: answer every flag from the paper sheet; mark the month complete by the 5th | OnBoard entry before 2027-01-01; flags and month complete in the first week of January, once they ship | Entry timestamps; flag answers and their dates; the month-complete date |
-| **Operations management** | Weekly completeness review; corrective action on repeat failures; access requests and removals the day someone leaves | Completeness view walk-through | Their review notes; access removals on time |
+| **Check-in desk / Garage Managers** (`Ridership Printer`) | As change 1 | Printing and issue, hands-on, before 2027-01-01 | Print log; missing sheets by garage |
+| **OCC staff** (`ridership-recorder`) | Enter every sheet in OnBoard by the deadline; override operator or bus to match the sheet; add unscheduled trips; tick Reconstructed; review completeness daily; answer every flag from the paper; mark the month complete by the 5th | OnBoard entry in December, on the scanned sheets; flags and month complete in the first week of January | Entry timestamps; late sheets; overrides; flag answers; the month-complete date |
+| **Operations management** | Scan each day's sheets; weekly completeness review; corrective action on repeat failures; access requests and removals the day someone leaves | Scanner routine; completeness view walk-through | Scans by garage; review notes; access removals on time |
 | **Training and Safety** | Train and record, including annual refreshers | Train-the-trainer | Training records |
 
 ### Change 4 — early February 2027: `INCIDENT_REPORTING` occurrences
@@ -423,24 +460,26 @@ Thanksgiving falls on **2026-11-26**.
 | A-1 | Settle the SOP's **[Decide]** items still open before issue: whose staff the OCC are (6), the Attachment G route (7), what "accepts the Parallel Run" means (15), who gives the notices (16), the contract number (13), the SOP code (1), and scan-and-upload entry (19). Notice, printing, the print fallback and the desk-to-OCC frequency are already decided (#486) | Internal | Operations + Planning | 2026-11-06 | Decision note on the SOP draft |
 | A-1a | ~~Update the SOP drafts with the decided print process~~ **Done in #486** (merged): evening print, morning reprint, Ridership printer role, no photocopies, DNO tick box. Left: check that the Word versions in `ridership/` match before they go out | Internal | Planning + Operations | 2026-11-11 (before A-5) | Revised OPR-RID-00 and OPR-038 redline |
 | A-2 | Fact-finding meeting with the incumbent's operations and OCC leads: the eight questions in §1.6 | Incumbent | Operations | 2026-11-09 | Meeting, with notes |
-| A-3 | Confirm with Contracts whether ridership reporting failures fall under `INCIDENT_REPORTING` as written in **both** contracts, and whether the December double keying is within the incumbent's scope (decisions O-3, O-5) | Both | Contracts | 2026-11-10 | Written opinion |
-| A-4 | **Transition and kick-off meeting with Keolis** on ridership: today's process, the December run they inherit, the rules from 2027-01-01, the occurrence start, the kiosk later. Use §4's talking points | Keolis | COO, with Planning and Compliance | 2026-11-13 | Meeting, with talking points and the SOP drafts as read-ahead |
-| A-5 | **Formal notice to the incumbent**: the amended OPR-038 and OPR-RID-00, the Parallel Run starting 2026-12-01, Access remaining the record, December practised and not assessed, and the paper handover at contract end | Incumbent | COO | 2026-11-13 (≥ 14 days before 12-01) | Letter, with OPR-038 redline and OPR-RID-00 |
+| A-3 | Confirm with Contracts whether ridership reporting failures fall under `INCIDENT_REPORTING` as written in **both** contracts, and whether the December printing and scanning are within the incumbent's scope (decisions O-3, O-5) | Both | Contracts | 2026-11-10 | Written opinion |
+| A-4 | **Transition and kick-off meeting with Keolis** on ridership: today's process, the December run by scanning (and Keolis's OCC keying the scans in training), the rules from 2027-01-01, the occurrence start, the kiosk later. Use §4's talking points | Keolis | COO, with Planning and Compliance | 2026-11-13 | Meeting, with talking points and the SOP drafts as read-ahead |
+| A-5 | **Formal notice to the incumbent**: the amended OPR-038 and OPR-RID-00; the Parallel Run starting on the **7 December** service change (OnBoard sheets printed by the desks, keyed into Access as today, scanned daily by garage management); no new packet for 7 December; Access remaining the record; nothing assessed in December; and the paper handover at contract end | Incumbent | COO | 2026-11-13 recommended; **2026-11-23 at the latest** (14 days before 12-07) | Letter, with OPR-038 redline and OPR-RID-00 |
 | A-6 | **Formal notice to Keolis**: the amended OPR-038 and OPR-RID-00 as MVTA's procedure under the contract clause, effective for Keolis from 2027-01-01, with the planned Cutover Date and the compliance start and grace period (decision O-1) | Keolis | COO | 2026-11-20 | Letter, with OPR-038 redline, OPR-RID-00 and a sign-off copy (the SOP's Contractor Representative row) |
-| A-7 | From each contractor, collect the named **OCC staff** who will enter sheets, and the named **check-in desk staff** at Burnsville and Eagan who will print in the evening and reprint in the morning | Both | Operations | Incumbent 2026-11-13; Keolis 2026-12-04 | Email request with a fixed template (name, work email, role, garage, shift) |
-| A-7a | **Enter the block-to-garage list on prod** for the current service change. Schedule v65 started 2026-11-02 with 144 weekday blocks, and the list is empty today. Use the bulk assign on Ridership setup. A list inferred from where buses park overnight is a ready starting point (on v64: Eagan 160 blocks, Burnsville 20). Check every block for both garages: an unassigned block prints under *Unassigned*, which no desk owns | Internal | Planning | 2026-11-16 (before the print rehearsal) | OnBoard Ridership setup |
-| A-8 | **OnBoard access, as numbered steps:** (1) migrations 153 and 154 (roles) and 157 (print log) are **already applied on prod**; apply **migration 159** (the Ridership Printer role) to prod. (2) MVTA IT creates **Entra B2B guest accounts** (Guest Sponsorship) on prod for the names from A-7. (3) An access administrator assigns **`ridership-recorder`** to each OCC person in Access & Identity on prod. (4) Assigns **Ridership Printer** to each check-in desk person. (5) Assigns **`ridership-manager`** to the named Planning staff. (6) Each person signs in at onboard.mvta.com and confirms they see their tab: Enter sheets, or Print sheets. **The incumbent's staff need this too**, because they print and key December. The build plan names only Keolis OCC staff | Both | MVTA IT + an access administrator; the user or Engineering for step 1 | Incumbent **2026-11-16** (before the print rehearsal); Keolis **2026-12-11** | OnBoard access |
-| A-8a | **Print rehearsal at both garages**: each desk prints a real next-day stack (not issued), tries the morning reprint, scans a QR code with a phone, and checks the Unassigned warning. The system is already live, so this can run before OCC training | Incumbent | Operations + Planning | Week of 2026-11-16 | Rehearsal, with a short checklist |
-| A-9 | **Training for the incumbent's OCC staff on OnBoard entry**: the worklist, the "scan or type block" box (with the USB scanner and the sheet's QR code), the sheet form, override, unscheduled trips, Reconstructed, Not counted, the completeness view, and keying the same sheet into Access in December | Incumbent | Planning, with Engineering | 2026-11-23 → 11-24 | Training session (hands-on on prod with a test service date), with a one-page quick guide |
-| A-10 | **Dry run before 2026-12-01**: (a) OCC keys a test service date end to end on prod; (b) each garage prints the next day's stack on the night of 2026-11-29, checks it against the pull-out list and **does not issue it**; (c) the morning desk on 11-30 runs the reprint check; (d) go/no-go | Incumbent | Planning + Operations | (a) 11-24, (b) 11-29, (c) 11-30 morning, (d) go/no-go 2026-11-30 | Dry run, with a go/no-go checklist |
-| A-11 | Train the incumbent's check-in desks, evening and morning shifts, on the evening print, the morning reprint, issue with the paddle, the returned-sheet check and the print fallback | Incumbent | Operations | 2026-11-20 (with A-8a) | Training session at each garage |
-| A-12 | Operator briefing on the new sheet: **stop photocopying**, take the dated sheet from the desk, the digit boxes, the DNO tick box, the unscheduled rows, Reconstructed, name/ID/bus, and no writing while moving | Incumbent | Operations, through the contractor's Training and Safety | 2026-11-30 | Operational Bulletin with an example sheet |
-| A-13 | Weekly December check-in with the incumbent: late and missing sheets, comparison differences | Incumbent | Planning | Each Friday in December | Meeting (30 min), with the comparison export |
-| A-14 | Keolis training: OCC on OnBoard entry; check-in desks on the evening print and morning reprint (Ridership Printer); Operators on counting in their transition training; Training and Safety train-the-trainer | Keolis | Planning (OCC), Operations (desks, Operators) | 2026-12-18 | Training sessions on prod with a test service date; quick guides |
-| A-15 | **Cutover notice**: OnBoard is the only record from 2027-01-01, based on the comparison of 12-01 → 12-15 (decision O-4) | Both | COO, on Planning's recommendation | 2026-12-18 | Letter |
+| A-7 | Collect named staff. From the **incumbent**: the check-in desk staff at Burnsville and Eagan who will print in the evening and reprint in the morning. Its OCC needs no OnBoard account. From **Keolis**: OCC staff and check-in desk staff | Both | Operations | Incumbent 2026-11-13; Keolis 2026-12-04 | Email request with a fixed template (name, work email, role, garage, shift) |
+| A-7a | **Enter the block-to-garage list on prod**, first for the current schedule (for the rehearsal), then for the **7 December service change**. The list is empty today. Use the bulk assign on Ridership setup. A list inferred from where buses park overnight is a ready starting point (on v64: Eagan 160 blocks, Burnsville 20). Check every block for both garages: an unassigned block prints under *Unassigned*, which no desk owns | Internal | Planning | Current schedule 2026-11-16; 7 December blocks by **2026-12-04** | OnBoard Ridership setup |
+| A-7b | **Load the 7 December schedule into OnBoard ahead of time.** Confirm the date the GTFS for the service change is published, and that OnBoard's Dispatch Log has 7 December's trips by 03:30 on 6 December. Check on the 6th before the evening print | Internal | Planning + Engineering | Date confirmed 2026-11-13; checked 2026-12-06 | The Dispatch Log for 2026-12-07 |
+| A-7c | **Scanning route at each garage**: the multifunction printer scans a batch PDF to a shared folder MVTA names, with access limited to the ridership roles (the scans carry Operator names). Then build OnBoard's capture page (upload, split by QR code, store) per #488, and load the folder's batches into it once it is live | Internal | MVTA IT (route and folder); Engineering (capture page) | Route by **2026-12-04**; capture page as soon as built | Shared folder; OnBoard upload |
+| A-8 | **OnBoard access, as numbered steps:** (1) migrations 153, 154, 157, 159, 161 and 162 are **already applied on prod**. (2) MVTA IT creates **Entra B2B guest accounts** (Guest Sponsorship) on prod for the names from A-7. (3) An access administrator assigns **Ridership Printer** to each check-in desk person (incumbent, then Keolis). (4) Assigns **`ridership-recorder`** to each **Keolis** OCC person. The incumbent's OCC needs none under plan A. (5) Assigns **`ridership-manager`** to the named Planning staff. (6) Each person signs in at onboard.mvta.com and confirms they see their tab: Print sheets, or Enter sheets | Both | MVTA IT + an access administrator | Incumbent desks **2026-11-16** (before the print rehearsal); Keolis **2026-12-11** | OnBoard access |
+| A-8a | **Print rehearsal at both garages**: each desk prints a real next-day stack (not issued), tries the morning reprint, scans a QR code with a phone, and checks the Unassigned warning. Garage management scans the stack to the folder as a test | Incumbent | Operations + Planning | Week of 2026-11-16 | Rehearsal, with a short checklist |
+| A-9 | **Briefing for the incumbent's OCC on the new sheet layout**, for keying Access from it: where each trip's total, DNO, unscheduled trips and the relief or bus-change line are | Incumbent | Planning | 2026-11-30 | 30-minute briefing with an example sheet |
+| A-10 | **Dress rehearsal and go/no-go**: (a) each garage prints the next day's stack on the night of 2026-11-29, checks it against the pull-out list and **does not issue it**; (b) the morning desk on 11-30 runs the reprint check; (c) garage management scans the stack; (d) go/no-go for 7 December | Incumbent | Planning + Operations | (a)–(c) 11-29/30; (d) go/no-go **2026-12-04** | Dress rehearsal, with a go/no-go checklist |
+| A-11 | Train the incumbent's check-in desks (evening and morning shifts) and garage management: the evening print, the morning reprint, issue with the paddle, the returned-sheet check, the print fallback, and the daily scan | Incumbent | Operations | 2026-11-20 (with A-8a) | Training session at each garage |
+| A-12 | Operator briefing on the new sheet from 7 December: **stop photocopying**, take the dated sheet from the desk, the digit boxes, the DNO tick box, the unscheduled rows, the relief or bus-change line, Reconstructed, name/ID/bus, and no writing while moving | Incumbent | Operations, through the contractor's Training and Safety | 2026-12-04 | Operational Bulletin with an example sheet |
+| A-13 | Weekly December check-in with the incumbent: sheets printed, returned and scanned by garage; anything the desks or Operators found hard | Incumbent | Planning | Each Friday from 2026-12-11 | Meeting (30 min) |
+| A-14 | Keolis training: **OCC on OnBoard entry, keying real scanned December sheets** (this is the comparison data for A-15); check-in desks on the evening print and morning reprint; garage management on the daily scan; Operators on counting in their transition training; Training and Safety train-the-trainer | Keolis | Planning (OCC), Operations (desks, Operators) | OCC keying 2026-12-09 → 12-18; the rest by 2026-12-18 | Training sessions on prod with real scanned sheets; quick guides |
+| A-15 | **Cutover notice**: OnBoard is the only record from 2027-01-01, based on Planning's comparison of Keolis's OnBoard entries from the 7–15 December scans with Access (decision O-4) | Both | COO, on Planning's recommendation | 2026-12-18 | Letter |
 | A-16 | Keolis OCC training on flags and month complete, once they ship | Keolis | Planning | 2027-01-08 | Training session |
-| A-17 | Paper handover: the incumbent delivers every Count Sheet not yet released (at least November and December) to MVTA Planning, filed by garage and date. December's sheets are also the handwriting sample for the scan-reading trial (spec §15) | Incumbent | Planning | 2027-01-08 | Letter (in A-5); signed handover receipt |
-| A-18 | Remove the incumbent's guest accounts and their `ridership-recorder` and Ridership Printer grants | Incumbent | MVTA IT + an access administrator | 2027-01-01 (or after December's Access entry is done, decision O-4) | OnBoard access |
+| A-17 | Paper handover: the incumbent delivers every Count Sheet not yet released (at least November and December) to MVTA Planning, filed by garage and date, and confirms every December batch is in the scan folder. December's sheets are also the handwriting sample for the scan-reading trial (spec §15, #488) | Incumbent | Planning | 2027-01-08 | Letter (in A-5); signed handover receipt |
+| A-18 | Remove the incumbent's guest accounts and their Ridership Printer grants | Incumbent | MVTA IT + an access administrator | 2027-01-01 | OnBoard access |
 | A-19 | Transition Period (January–March 2027): confirm each month's candidates and report them to Keolis, with no charge | Keolis | Compliance manager | 2027-02-12, 03-12, 04-12 | The monthly assessment, with ridership shown and not charged |
 | A-20 | First charged month (April 2027, at 50% in the Ramp-Up Period) closed and candidates confirmed | Keolis | Compliance manager | 2027-05-12 | Contractor Performance Assessment |
 | A-21 | Monthly ridership line in the regular Keolis performance meeting: completeness, late sheets, flags, reconstructed rate | Keolis | Planning | Monthly from February 2027 | Standing agenda item |
@@ -471,9 +510,12 @@ For action A-4. Plain enough to read aloud.
 
 **What you inherit on 2027-01-01**
 
-5. Your check-in desks print the next day's Count Sheets from OnBoard every
-   evening, one per block and dated, and reprint any that change before the
-   morning pull-out. No photocopies: a copied sheet carries the wrong date.
+5. The new Count Sheets start on the 7 December service change, under the
+   incumbent, so by 1 January your desks inherit a routine that is already
+   running. They print the next day's sheets from OnBoard every evening, one
+   per block and dated, and reprint any that change before the morning
+   pull-out. No photocopies: a copied sheet carries the wrong date. Your
+   garage management scans each day's sheets.
 6. Operators write their name, ID and bus, then one boardings total per trip,
    at the end of the trip, with the bus stopped. Tick DNO if a trip did not
    run. Write 0 only for a trip that ran empty.
@@ -508,8 +550,10 @@ For action A-4. Plain enough to read aloud.
     2026-12-18; Operators in their onboarding.
 15. A named lead at Keolis for ridership, who attends the monthly
     performance meeting.
-16. [If decision O-6 is accepted:] your OCC staff to sit with the incumbent's
-    OCC during the December parallel run.
+16. Your OCC staff available from about 9 December, to key real scanned
+    December sheets in OnBoard as their training. Their entries are what we
+    compare with Access before we confirm OnBoard as the record from
+    1 January.
 
 **What's coming later**
 
@@ -537,9 +581,9 @@ Each has a recommendation.
 | **O-1** | ~~Compliance start date and grace period~~ **Decided 2026-11-02 (#486):** from the Cutover Date, under Attachment G's Transition Period (months 1–3, not charged) and Ramp-Up Period (months 4–6, 50%) | — | Gives a longer start than the one-month grace first recommended here, and needs no special rule for ridership. State it in the Keolis notice (A-6). |
 | O-2 | Accept the per-sheet exposure | Keep one occurrence per sheet as agreed, but **check it with Contracts before A-6**, and consider whether a day's systemic failure (OnBoard down, a whole garage late) should be treated as one occurrence. | 144 sheets a weekday at $500 each makes one bad day large. Better settled before the notice than in the first dispute. |
 | O-3 | Does `INCIDENT_REPORTING` cover ridership reporting failures as written, in **Keolis's** Attachment G? (SOP decision 7, gap C4) | Ask Contracts (A-3). If it does not, the occurrence stage waits for an amendment, and the rest goes ahead. | Without it, change 4 has no legal basis. |
-| O-4 | ~~Cutover before December has closed~~ **Decided 2026-11-02 (#486):** MVTA may set the Cutover Date on a partial-month comparison, and Access stays available until the full month is accepted. Still to settle: who finishes keying December in Access after 12-31. Recommended: the incumbent, by 2027-01-02 | Issue the conditional cutover notice on **2026-12-18**, based on 12-01 → 12-15 (A-15). | The SOP says cutover follows acceptance of a full month, but December is not complete until after the Keolis start. Keolis is not trained on Access, so a January in Access would need training nobody has planned. |
-| O-5 | Is the December double keying within the incumbent's scope? | Treat it as within the clause ("procedures provided by MVTA"), but raise it at A-2 and agree it in A-5 rather than discover a claim later. | It is new work in the last month of a contract. |
-| O-6 | Keolis OCC shadowing in December | Yes, if Keolis has staff in place and the incumbent agrees. Give Keolis guest accounts before shadowing. | It is the only way Keolis sees real entry before it counts. |
+| O-4 | ~~Cutover before December has closed~~ **Decided 2026-11-02 (#486)**, and shaped by plan A (2026-11-03): the cutover notice rests on Keolis's OnBoard entries of the 7–15 December scans against Access. The incumbent keys Access through 31 December | Issue the conditional cutover notice on **2026-12-18** (A-15). | Keolis never keys Access. Access stays available as a fallback until December is accepted. |
+| O-5 | ~~December double keying in the incumbent's scope~~ **Removed by plan A (2026-11-03):** the incumbent no longer double keys. Its new work is printing and daily scanning, which still needs agreeing in A-5 | Raise printing and scanning at A-2, and agree them in A-5. | Small new work in the last month of a contract, best agreed rather than assumed. |
+| O-6 | ~~Keolis OCC shadowing in December~~ **Replaced by plan A (2026-11-03):** Keolis's OCC keys real scanned December sheets in OnBoard during training (A-14) | Ask at kick-off when Keolis's OCC staff are available, and whether 12-09 → 12-18 works. | Real practice for Keolis, comparison data for MVTA, and no extra load on the incumbent. |
 | O-7 | ~~Notice period~~ **Decided 2026-11-02 (#486): 14 calendar days.** | — | The incumbent's notice must go by 2026-11-17; A-5 sends it on 11-13. |
 | O-8 | ~~Who prints sheets~~ **Decided 2026-11-02:** each garage's check-in desk prints in the evening and reprints in the morning, under the Ridership Printer role (#483) | — | — |
 | O-9 | Paper sheets from the incumbent at contract end | Handover to MVTA Planning by **2027-01-08** (A-17). MVTA then holds them until each month is released. | Nobody at the incumbent is left to keep them, and they carry Operator names and IDs (H2). |
