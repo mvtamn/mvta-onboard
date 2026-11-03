@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.11] - 2026-11-02
+## [1.7.17] - 2026-11-02
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,14 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.7.14] - 2026-11-02
+
+A Count Sheet's QR code names the block and date, not the copy, and migration 157 kept only a fingerprint of each printed sheet: enough to say a reprint differs, not how. Scanned sheets (the Burnsville capture pilot agreed 2026-11-02, `plans/count-sheet-scan-upload.md` decision 8) are read row by row, so each row has to map to the trip printed on it. **The REST app restarts on merge.**
+
+- **Migration 161** adds `RidershipPrintedSheets.trip_ids`: a JSON array of the GTFS trip_ids printed on the sheet, row 1 first, checked with `ISJSON`. Sheets printed earlier stay NULL.
+- **`writePrintRun`** writes it from the sheet's trips in print order, and only once the column exists, so printing keeps working until 161 is applied on dev and prod. `SCHEMA_REQUIREMENTS` lists the column, so Integrations & Data Health says when it is missing.
+- Tests: `ridership.db.contract.test.ts` applies migration 161 and checks that the evening copy and the reprint after a late tripper record their own trips in row order.
 
 ## [1.7.10] - 2026-11-02
 
