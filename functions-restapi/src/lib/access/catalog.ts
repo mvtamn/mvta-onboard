@@ -66,6 +66,19 @@ export const MODULES: AccessModule[] = [
   },
   { key: "speed-alerts", label: "Speed Alerts", section: "Specialist Operations", actions: [] },
   {
+    key: "ridership",
+    label: "Ridership",
+    section: "Specialist Operations",
+    // Contractor OCC staff key and print Count Sheets; Planning also keeps the
+    // block-to-garage list. Flags, month close and operator names add actions
+    // with the January increment (ADR 0043, plans/ridership-build-plan.md).
+    actions: [
+      { key: "enter", label: "Key and correct Count Sheets" },
+      { key: "print", label: "Print Count Sheets" },
+      { key: "configure", label: "Maintain the block-to-garage list" },
+    ],
+  },
+  {
     key: "event-avl",
     label: "Event AVL",
     section: "Events",

@@ -4,6 +4,7 @@ import {
   availRecallText,
   dispatcherText,
   draftFromWeek,
+  backlogText,
   featuredWeek,
   heldReasonsText,
   precisionText,
@@ -40,9 +41,9 @@ describe("what the scorecard says", () => {
     expect(dispatcherText({ dispatcher: { not_observed: 0, observed_on_time: 0, observed_left_late: 0, agreement: null } }))
       .toBe("None observed");
     expect(availRecallText({ whole_misses: 0, caught: 0, linked_not_flagged: 0, awaiting_reviewer: 0, unmatched: 0, recall: null, unmatched_rate: null }))
-      .toBe("No Avail misses");
+      .toBe("Avail recorded no whole misses");
     expect(availRecallText({ whole_misses: 10, caught: 6, linked_not_flagged: 1, awaiting_reviewer: 1, unmatched: 2, recall: 6 / 9, unmatched_rate: 0.2 }))
-      .toBe("66.7% · 2 unmatched · 1 probable");
+      .toBe("Caught 66.7% of Avail's 10 whole misses · 2 with no case · 1 possible matches to confirm");
   });
 });
 
@@ -81,6 +82,17 @@ describe("reading a detector's weeks", () => {
     const weeks = [period("1", { complete: false, meets_bar: false }), period("2", null)];
     expect(featuredWeek(weeks, "spare")?.start).toBe("2");
     expect(featuredWeek([], "spare")).toBeNull();
+  });
+
+  it("says when a review backlog holds the verdict on an older week", () => {
+    const week = (start: string, waiting: number) =>
+      ({ start, detectors: [{ detector: "gtfs_silent_no_show" as const, cases: { awaiting_review: waiting, open: 0 } as never }] });
+    const weeks = [week("1", 0), week("2", 4), week("3", 0), week("4", 37)];
+    expect(backlogText(weeks, "gtfs_silent_no_show", weeks[0]))
+      .toBe("2 later weeks are waiting on 41 cases to be reviewed. Until then the verdict reads this older week.");
+    expect(backlogText(weeks, "gtfs_silent_no_show", weeks[3])).toBeNull();
+    expect(backlogText([week("1", 1)], "gtfs_silent_no_show", null))
+      .toBe("A later week is waiting on 1 case to be reviewed. Until then the verdict reads no week.");
   });
 
   it("tones a week met, short, or open", () => {

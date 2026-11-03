@@ -23,8 +23,10 @@
 // wanted.
 import { sql } from "../db";
 import type { Executor } from "../otpMonth";
+import { readDeclarationHistory } from "../otpMeasurementParameters";
 import type {
   ExclusionAuditEntry,
+  MeasurementParameterRecord,
   StopExclusionDecision,
   StopExclusionRecord,
   WeatherDayRecord,
@@ -137,11 +139,12 @@ export async function resetStopExclusionsForMonth(executor: Executor, month: str
   return result.rowsAffected[0] ?? 0;
 }
 
-/** Interleave two kinds of record into one timeline, newest first. */
+/** Interleave the kinds of record into one timeline, newest first. */
 export function mergeAuditEntries(
   stops: readonly StopExclusionRecord[],
   weatherDays: readonly WeatherDayRecord[],
   limit: number,
+  declarations: readonly MeasurementParameterRecord[] = [],
 ): ExclusionAuditEntry[] {
   const entries: ExclusionAuditEntry[] = [
     ...stops.map((row): ExclusionAuditEntry => ({
@@ -162,6 +165,15 @@ export function mergeAuditEntries(
       scope: row.scope,
       route_id: row.route_id,
       service_date: row.service_date,
+    })),
+    ...declarations.map((row): ExclusionAuditEntry => ({
+      kind: "measurement_parameters",
+      at: row.declared_at,
+      actor: row.declared_by,
+      effective_from: row.effective_from,
+      segments: row.segments,
+      source: row.source,
+      notes: row.notes,
     })),
   ];
   entries.sort((a, b) => b.at.localeCompare(a.at));
@@ -220,5 +232,11 @@ export async function timeline(
     weatherDays.push(...result.recordset);
   }
 
-  return mergeAuditEntries(stops, weatherDays, limit);
+  // Declarations are deliberately NOT filtered by month. A declaration applies
+  // to every month polled after it, so a reviewer asking "what was September
+  // measured under?" needs to see it in September's stream even though it was
+  // written in October.
+  const declarations = await readDeclarationHistory(executor);
+
+  return mergeAuditEntries(stops, weatherDays, limit, declarations);
 }

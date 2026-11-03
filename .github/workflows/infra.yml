@@ -54,8 +54,10 @@ jobs:
             az deployment group what-if \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-stage0/main.bicep \
+              --parameters sqlEntraAdminLogin="${{ vars.SQL_ENTRA_ADMIN_LOGIN }}" sqlEntraAdminObjectId="${{ vars.SQL_ENTRA_ADMIN_OBJECT_ID }}" \
               --parameters "infra-stage0/parameters/$ENVIRONMENT.parameters.json" \
-              --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+              --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+              --parameters sqlFirewallAllowedIps='${{ vars.SQL_FIREWALL_ALLOWED_IPS || '[]' }}'
 
       - name: Deploy stage 0 (network, KV, SQL, monitoring)
         uses: azure/cli@v2
@@ -64,8 +66,10 @@ jobs:
             az deployment group create \
               --resource-group "$RESOURCE_GROUP" \
               --template-file infra-stage0/main.bicep \
+              --parameters sqlEntraAdminLogin="${{ vars.SQL_ENTRA_ADMIN_LOGIN }}" sqlEntraAdminObjectId="${{ vars.SQL_ENTRA_ADMIN_OBJECT_ID }}" \
               --parameters "infra-stage0/parameters/$ENVIRONMENT.parameters.json" \
-              --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+              --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+              --parameters sqlFirewallAllowedIps='${{ vars.SQL_FIREWALL_ALLOWED_IPS || '[]' }}'
 
       # Every environment here is live: dev until production cuts over, and
       # production after. what-if before every phase-1 deploy so changes to the

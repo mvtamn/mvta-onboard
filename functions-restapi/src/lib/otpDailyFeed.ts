@@ -189,7 +189,38 @@ export function otpDailyCoverage(
 // direction a route serves a stop in an hour, and the original key let the
 // second direction overwrite the first. NULL matches NULL, as the unique
 // constraint treats it.
-export async function upsertOtpDailyReport(pool: sql.ConnectionPool, mapped: MappedOtpDaily): Promise<void> {
+/**
+ * Whether migration 151's stamp column exists on the daily table. Probed once
+ * per run by the caller: the code can be deployed before the migration is
+ * applied, and a poll that cannot record its measurement standard must still
+ * store the day.
+ */
+export async function dailyMeasurementStampReady(pool: sql.ConnectionPool): Promise<boolean> {
+  const probe = await pool.request().query<{ ready: number }>(`
+    SELECT CASE WHEN COL_LENGTH('dbo.OtpDailyRouteStopHour','measurement_parameters') IS NULL
+      THEN 0 ELSE 1 END ready
+  `);
+  return probe.recordset[0]?.ready === 1;
+}
+
+export interface UpsertOtpDailyOptions {
+  /**
+   * The measurement standard this poll asked Avail for, as URL segments (ADR
+   * 0042). The daily and monthly feeds are different Avail operations taking
+   * the same seven numbers, and ADR 0038's reconciliation between them is only
+   * valid while both were measured the same way. Stamping both makes that
+   * checkable rather than assumed.
+   */
+  measurementParameters: string;
+  /** From `dailyMeasurementStampReady`. */
+  stampReady: boolean;
+}
+
+export async function upsertOtpDailyReport(
+  pool: sql.ConnectionPool,
+  mapped: MappedOtpDaily,
+  options: UpsertOtpDailyOptions,
+): Promise<void> {
   const request = pool.request();
   request.input("calendar_date", sql.Char(8), mapped.calendar_date);
   request.input("hour_of_day", sql.TinyInt, mapped.hour_of_day);
@@ -211,6 +242,8 @@ export async function upsertOtpDailyReport(pool: sql.ConnectionPool, mapped: Map
   request.input("latitude", sql.Float, mapped.latitude);
   request.input("longitude", sql.Float, mapped.longitude);
   request.input("direction", sql.NVarChar(20), mapped.direction);
+  const stamp = options.stampReady;
+  if (stamp) request.input("measurement_parameters", sql.NVarChar(40), options.measurementParameters);
   await request.query(`
     MERGE OtpDailyRouteStopHour WITH (HOLDLOCK) AS target
     USING (
@@ -228,6 +261,7 @@ export async function upsertOtpDailyReport(pool: sql.ConnectionPool, mapped: Map
         early = @early, ontime = @ontime, late = @late, missed = @missed,
         actual_departures = @actual_departures, total = @total,
         latitude = @latitude, longitude = @longitude,
+        ${stamp ? "measurement_parameters = @measurement_parameters," : ""}
         updated_at = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN
       INSERT (
@@ -235,12 +269,14 @@ export async function upsertOtpDailyReport(pool: sql.ConnectionPool, mapped: Map
         pct_early, pct_ontime, pct_late, pct_not_ontime, pct_missed,
         early, ontime, late, missed, actual_departures, total,
         latitude, longitude, direction
+        ${stamp ? ", measurement_parameters" : ""}
       )
       VALUES (
         @calendar_date, @hour_of_day, @route_id, @stop_id, @stop_name, @route_label,
         @pct_early, @pct_ontime, @pct_late, @pct_not_ontime, @pct_missed,
         @early, @ontime, @late, @missed, @actual_departures, @total,
         @latitude, @longitude, @direction
+        ${stamp ? ", @measurement_parameters" : ""}
       );
   `);
 }

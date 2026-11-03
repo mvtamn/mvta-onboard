@@ -3,7 +3,174 @@
 **Purpose: decide whether OnBoard replaces the manual process as the official system of
 record for fixed-route OTP.**
 Written 2026-09-22 against dev and revised the same day for what shipped after the first
-draft. Current to **v1.5.295**. Read `otp-compliance-explainer-2026-09-22.md` first.
+draft. **Figures restated 2026-10-28, and 2026-03 found short on 2026-10-30 — read "What changed
+on 2026-10-28" and "What changed on 2026-10-30" below before any number in this document.** Current to **v1.6.48**. Read
+`otp-compliance-explainer-2026-09-22.md` first.
+
+---
+
+## What changed on 2026-10-28 — read this first
+
+Every OTP figure in this document was measured wrongly, for two independent reasons. Both
+are now fixed at source, but the consequences reach the acceptance standard itself.
+
+**Defect 1, ours.** OnBoard sent Avail an early threshold of **1 minute** where MVTA's
+configured standard is **2**. A departure 1–2 minutes early was counted early when MVTA's
+own rule counts it on time — we were measuring the agency against a stricter rule than the
+one it is held to. The outlier values (15/30) had been copied from the example in Avail's
+API specification and never aligned to MVTA's 10/60. Corrected to `2/5/10/60` in PR #448
+(v1.6.39), deployed 2026-10-28.
+
+**Defect 2, Avail's.** The monthly endpoint `OtpByRouteStopDayAgg` returned a 31-day span
+for a 30-day month — a September request pulled 09/01–10/01. Found and fixed by Avail
+(Charlie Flynn), live 2026-10-28. Worth roughly one service day, about 4% of departures,
+in every month.
+
+**Restated figures:**
+
+| Month | Was | Now | Move |
+| --- | --- | --- | --- |
+| 2026-05 | 85.80% | **87.56%** | +1.76 |
+| 2026-06 | 84.42% | **85.92%** | +1.50 |
+| 2026-08 | 83.62% | **85.30%** | +1.68 |
+| 2026-09 (raw) | 80.18% | **81.20%** | +1.02 |
+
+**Every month is now corrected.** 2026-01 through 2026-07 were backfilled on 2026-10-29;
+the rest were picked up by the daily poller. Every 2026 figure now reads 1.6–2.4 points
+better than it did, and all ten months are measured the same way.
+
+**An independent check that the fix is what we think it is.** The size of each month's
+correction is explained entirely by what day of the week the *following* month's 1st fell
+on — the surplus day Avail was wrongly including. A weekday surplus removed 3.6–4.0% of
+departures (Mar, Apr, May, Jun, Aug, Sep); a weekend one removed 1.6–1.7% (Jan and Feb,
+both Sundays; Jul, a Saturday). Nine months out of nine, derived from MVTA's stored data
+alone. That is why January, February and July barely moved.
+
+> **The backfill panel reports failure on success.** It will say
+> `Request failed (504), 0 rows upserted` while the month has in fact been written
+> completely. The handler does OTP first, then Missed Trips, whose sequential inserts run
+> long enough for the gateway to kill the request before the success response returns.
+> Confirm in SQL (`OtpMonthlyRestatements.detected_at`, or `updated_at` on
+> `OtpMonthlyRouteStopDay`) rather than believing the panel. Nothing is lost — the Missed
+> Trips reload is transactional.
+
+---
+
+## What changed on 2026-10-30 — March 2026 is short by 855 departures
+
+**Tier 1 asserts that OnBoard faithfully holds what Avail published. For 2026-03 it does
+not.** Found on dev 2026-10-30, fixed in code the same day (v1.6.48); the month itself is
+corrected only when it is re-pulled.
+
+**What happened.** Avail reports a month per route, stop and day of the week. OnBoard stored
+one row per route, stop and day of the week, on the assumption that Avail sends one record
+per key. It does not: for 2026-03 it sent **1,108 records carrying 1,081 distinct keys**. The
+27 repeated keys were each written twice, the second write overwrote the first, and the
+poll still reported `1108 reports seen, 1108 rows upserted`, because an overwrite is a
+successful upsert. No feed check, restatement or console figure could have shown it.
+
+**Why there are two records.** They partition the month — they are not duplicates:
+
+| Route | Stop | Monday, as sent | Sum | Same route's reference stop |
+| --- | --- | --- | --- | --- |
+| 425 | 30435 | 28 and 41 | 69 | 30451 (one record): **70** |
+| 442 | 30435 | 32 and 45 | 77 | 30451 (one record): 70 |
+| 497 | 31768 | 30 and 48 | 78 | 31723 (one record): **78** |
+| 497 | 31780 | 34 and 54 | 88 | 31860 (same split): 88 |
+
+Across all 27 keys the two values sum to the neighbouring stop's own total, day by day. The
+split follows the count of each weekday before and after about **18 March** — three Mondays
+and two, three Tuesdays and two, two Wednesdays and two, two Thursdays and two — which is
+what a mid-month schedule change looks like through a per-day-of-week aggregate. Routes
+affected: **425** (5 keys), **442** (7), **497** (15), at stops 30435, 31768, 31780 and
+31860.
+
+**The correction.** +855 departures and +805 on-time departures, all 27 keys:
+
+| 2026-03 | As stored | After re-pull |
+| --- | --- | --- |
+| Departures | 66,475 | **67,330** |
+| On time | 60,131 | **60,936** |
+| Raw OTP | 90.46% | **90.50%** |
+
+The discarded records were 94.2% on time, so the stored figure understates March slightly
+as well as under-counting it.
+
+**What to do.** Re-pull **03/2026** from the OTP Compliance administration page
+("Run backfill", from 03/2026 to 03/2026) once v1.6.48 is deployed. The change is recorded
+in `OtpMonthlyRestatements` like any other restatement. Until then, treat March's stored
+figure as short by roughly 1.3%.
+
+**The other nine months of 2026 are unaffected.** Every month's own re-pull delivered
+exactly as many records as it has rows (2026-01 997/997, 2026-02 1,002/1,002, 2026-04
+984/984, 2026-06 910/910, 2026-07 908/908, 2026-10 878/878), and the restatement ledger
+carries same-run pairs for 2026-03 alone. **2026-08 — the Tier 1 control month — is clean**,
+as is 2026-09, the month compared against Avail BI, so neither of those results is in
+question.
+
+**11 rows across three months that Avail no longer reports — decided and fixed 2026-10-30
+(1.6.73, ADR 0044).** 2026-05 held 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 held
+912 against 910; 2026-09 held 860 against 859. The upsert never deleted, so a route/stop/day
+Avail has stopped reporting kept its last figure indefinitely — and, after 1.6.43, a figure
+nothing could ever stamp, which would have held all three months on the re-pull list for good.
+Such a key is now archived to `OtpMonthlyRetiredKeys` and removed from the month, but only by a
+response that accounted for at least 90% of what the month already held; a shorter response is
+reported and removes nothing. Migration 152 retires the 11 already stranded.
+
+**What that does to these figures: less than the comparison can resolve, and not all one
+way.** The direction depends on the rows, which is why the archive exists —
+`vw_OtpMonthlyRetiredKeys` is where a figure that moved for this reason is explained.
+
+**Migration 152 was applied to dev on 2026-11-02, and the figures either side were recorded
+as this plan asks (Tier 1, not Tier 4):**
+
+| Service month | Rows before → after | Departures before → after | Figure before | Figure after |
+|---|---|---|---|---|
+| 2026-05 | 999 → 991 | 67,532 → 67,465 | 87.560% | **87.574%** |
+| 2026-06 | 910 → 910 | 65,284 | 85.925% | **85.925%** (held no stranded rows) |
+| 2026-08 | 912 → 910 | 62,748 → 62,746 | 85.305% | **85.304%** |
+| 2026-09 | 860 → 859 | 62,538 → 62,521 | 81.200% | **81.195%** |
+
+2026-05 rose because its eight retired rows sat below the month's average. Every move is
+smaller than the Avail comparison can resolve, and they are not all in one direction, so no
+Tier 1 or Tier 4 result above is disturbed by them.
+
+The 11 archived rows cluster by day of week rather than by stop, which is what a feed that
+stops publishing a series looks like: 2026-05's eight are all **Mon**, last written
+2026-08-06; 2026-08's two are both **Tues**, last written 2026-09-22; 2026-09's one is
+**Thur** (route 499 at Shakopee Walmart, 17 departures, all on time), last written
+2026-10-28. All 11 are readable in `vw_OtpMonthlyRetiredKeys` with the date and reason.
+
+After the migration no month holds an unstamped row: every month from 2026-01 to 2026-11
+reads `2/5/10/60/0/1/1`, so the re-pull list is empty. Re-running the migration retired
+nothing further and changed no figure, as it is written to.
+
+**What is now guarded.** Both the poll and the backfill count distinct keys, add records that
+share one together, and report any key that carried more than one — in the log, and in the
+backfill panel with each record's figures. `OtpDailyRouteStopHour` was checked for the same
+problem and is clean (80,326 rows, 80,326 keys; its key carries `direction`, migration 123),
+and its poll now warns if that ever stops being true.
+
+---
+
+**What this does NOT undermine.** The corrected figures are the ones that reconcile with
+Avail's own BI report (see Tier 1 below). The restatement makes OnBoard's number *more*
+trustworthy, not less. What it invalidates is the acceptance standard, which was calibrated
+against the wrong numbers.
+
+> **Expect every month to appear on the re-pull list once migration 151 is applied — and
+> ignore it.** 1.6.43 (ADR 0042) stamps each stored row with the parameter set it was polled
+> under, and treats an unstamped row as "not recorded", which `monthsNeedingRepull` reports
+> as needing a re-pull. The 2026-10-28/29 backfills ran *before* that stamping existed, so
+> every row is correct but unstamped. The months are genuinely current; the list is
+> reporting absence of a stamp, not a stale figure. Either re-pull once more after the
+> migration purely to acquire the stamps, or confirm from this document and the restatement
+> ledger that the figures are already on `2/5/10/60/0/1/1`. Do not read the list as evidence
+> the backfill failed.
+
+*(Note for anyone reading 1.6.43's changelog entry: its statement that the Tier A months
+"all still hold `1/5/15/30` figures" was true when written on 2026-10-27 and was overtaken
+by the backfills on 2026-10-28/29.)*
 
 **How to use this:** **Tier A is the decision** — OnBoard's figure against the manual one,
 for three months, against an agreed tolerance. Tiers 1 and 3 are the evidence that makes a
@@ -39,22 +206,98 @@ only the first changes what the contractor owes.
 
 The tier boundaries are **85% (meets)**, **80% (warning)** and **75% (tier 1)**.
 
+> **This standard must be restated before Tier A is run.** It was agreed against figures
+> measured with the wrong early threshold and a one-day-too-wide window. Under the
+> corrected figures, **two of the three decision months cross the 85% boundary**: 2026-06
+> (84.42 → 85.92) and 2026-08 (83.62 → 85.30). All three decision months now read "meets"
+> where only one did before.
+>
+> Criterion 2 compares OnBoard's tier against the *manual* figure's tier, so it is not
+> automatically broken — but it was calibrated on the assumption that two months sat below
+> 85, and that assumption is gone. Ty and Rob should re-agree both the tolerance and the
+> tier criterion against the corrected figures before any comparison is recorded, so that a
+> pass or fail means what it was intended to mean.
+
 ### The three months, and why these
 
 | Month | OnBoard assessable OTP | Tier | Distance to the nearest boundary |
 | --- | --- | --- | --- |
-| **2026-05** | 85.80% | Meets | **0.80 above 85** |
-| **2026-06** | 84.42% | Warning | **0.58 below 85** |
-| **2026-08** | 83.62% | Warning | 1.38 below 85 — mid-band |
+| **2026-05** | **87.56%** | Meets | 2.56 above 85 — mid-band |
+| **2026-06** | **85.92%** | Meets | 0.92 above 85 |
+| **2026-08** | **85.30%** | Meets | **0.30 above 85** |
 
-Two of the three sit *inside* the tolerance's danger zone. If the manual figure for 2026-06
-comes in at 85.0%, that is both a 0.58-point gap and a tier change — the test bites rather
-than passing by default. 2026-08 is the stable control: a month where the two methods should
-agree comfortably, so a difference there means something different from a difference at a
-boundary.
+*(Restated 2026-10-28. These months carry no stop or weather exclusions, so assessable and
+raw are identical for all three.)*
+
+**The months still do the job they were chosen for, but the roles have swapped.** The
+original selection put 2026-06 at the boundary and used 2026-08 as the comfortable control.
+Now **2026-08 is the tight one** — 0.30 above 85, well inside the 0.5-point tolerance, so a
+manual figure anywhere in 84.8–85.8 is both "within tolerance" and potentially a tier
+change. That is exactly the bite the design wanted. 2026-05 is now the stable control.
+
+All three now sit above 85, which weakens the spread: the test no longer exercises the
+80–85 band at all. If a warning-band month is wanted, **2026-09 raw (81.20%)** is the
+candidate — but use its **raw** figure only. September's assessable figure (85.27%) is an
+artefact of test data: 178 stop exclusions were approved by one reviewer inside a 3½-minute
+window on 2026-10-15, removing 14,813 departures. Clear those back before using September
+for anything, and see the explainer's section 8 for the control question it raises.
 
 2026-09 is deliberately excluded: the feed covers only 1–20 September, so it is not a whole
 month to compare.
+
+---
+
+## Can the system be baselined today? No — and the blocker is not OnBoard
+
+*The closeout — every open question, who answers it, and the order — is in
+`otp-system-of-record-closeout-2026-10-31.md`. This section states the gate; that
+document states the path.*
+
+As of 2026-10-28, **do not freeze a baseline. Proceed and confirm by test.**
+
+| Gate | State |
+| --- | --- |
+| **A0 — the two manual artifacts agree with each other** | **Not done.** This is the gate. There is nothing to baseline against until it is. |
+| Tier 1 — OnBoard holds what Avail published | **Passed** for 2026-08 and 2026-09; 2026-03 failed and was **repaired by the 2026-10-30 re-pull** (90.46% → 90.50%, 67,330 departures) |
+| Tier 2 — rule correctness | Passed 2026-09-22, except T2.4 |
+| Months measured consistently | **Yes** — all backfilled 2026-10-29 |
+| Acceptance standard still valid | **No** — needs restating against corrected figures |
+
+Two things must happen before Tier A can be recorded, in this order:
+
+1. **Restate the acceptance standard** (Ty + Rob) against the corrected figures.
+2. **Complete A0** — reconcile the weekly CSV against the canned monthly report.
+
+Only then does the Tier A comparison mean anything. Running it before step 2 produces a
+number with no baseline; running it before step 1 produces a pass or fail that answers a
+question nobody is asking.
+
+**Tier 1 is the good news.** The plan treated "OnBoard vs Avail's own export" as the hard
+external dependency only Rob could discharge. Avail discharged it themselves on 2026-10-27:
+Charlie Flynn ran *On-time Departure Performance by Route* from Avail BI for September 2026
+and sent the per-route figures. Against OnBoard's corrected figures:
+
+| Route | OnBoard | Avail BI | Gap |
+| --- | --- | --- | --- |
+| 420 | 89.17 | 89.2 | 0.03 |
+| 465 | 66.33 | 66.4 | 0.07 |
+| 475 | 56.79 | 56.9 | 0.11 |
+| 495 | 80.81 | 80.9 | 0.09 |
+| **Agency** | **81.20** | **81.3** | **0.10** |
+
+Route 465 returns **4,045 departures — the BI report's exact count** (it was 4,271 before
+Avail's month-boundary fix). Every route agrees within 0.11 points. T1.1–T1.3 should still
+be run formally on 2026-08, the control month, but the method is proven and the result is
+not in doubt.
+
+**What this means for the decision.** OnBoard demonstrably holds what Avail published *for
+this month*. That is no longer a claim that can be made about every month on the strength of
+one: 2026-03 did not hold what Avail published, for a reason nothing in this comparison would
+have surfaced (see "What changed on 2026-10-30"). September and August are both clean, so the
+evidence behind Tier A stands. If
+the manual figure still disagrees after A0, the difference is in the *manual process*, not
+in OnBoard — and the open question becomes how MVTA's circulated 73.4% (and 51.8% on route
+465) was produced, since neither Avail product yields it.
 
 ---
 
@@ -66,10 +309,13 @@ run monthly), and they must agree with each other before either can be a baselin
 
 Then:
 
+0. ~~Backfill 2026-01 through 2026-07~~ — **done 2026-10-29.** All months now measured with
+   the corrected parameters.
 1. **Reproduce the manual figure for 2026-05, 2026-06 and 2026-08**, by both manual methods.
 2. **Work Tier A** — the decision test. This is the handoff.
 3. **Work Tier 1** on 2026-08 — it is the evidence that OnBoard holds what Avail published,
-   which is what makes a match in Tier A meaningful rather than coincidental.
+   which is what makes a match in Tier A meaningful rather than coincidental. The September
+   comparison above is most of this evidence already.
 4. **Work Tier 3** with whoever runs the OCC review day to day, and bring **Tier 4** to Ty.
 
 **Tier 2 is already done** — run against dev on 2026-09-22, every case passing except T2.4.
@@ -78,7 +324,33 @@ Each case is stamped with its result. Do not repeat it.
 **What to send back:** the Tier A comparison table filled in, an explanation for every
 difference above 0.1 points, and a recommendation on the acceptance standard above.
 
-**Two things to know before you start.**
+**Three things to know before you start.**
+
+> **The three decision months must be re-pulled before they are compared (added 2026-10-27).**
+> On 2026-10-27 Avail confirmed MVTA's BI measurement parameters are early 2 / late 5 / early
+> outlier 10 / late outlier 60. OnBoard had been asking for 1/5/15/30 — the thresholds were
+> believed fixed by the API schema, and the outlier values came from the example in Avail's own
+> specification, used to rule out our configuration while the feed was being diagnosed and never
+> aligned afterwards. The early threshold is the one that bites: at 1 minute a departure 1–2
+> minutes early counted as early, where MVTA's standard counts it on time, so OnBoard was
+> measuring the agency stricter than its own rule and the correction raises OTP slightly.
+>
+> **2026-05, 2026-06 and 2026-08 all still hold figures polled under the old parameters.** They
+> are outside the poller's trailing window (current month plus two), so nothing refreshed them.
+> Comparing them against the manual figure as they stand compares two different measurement
+> standards, and any gap would read as a defect in OnBoard rather than as the correction it is.
+>
+> Administration → OTP Compliance now lists every month measured under a different standard,
+> with a **Re-pull** button each (ADR 0042). Re-pull all three, note the figure before and after
+> — the move is the correction and belongs in the Tier A table — and then work the comparison.
+> The acceptance standard itself is unchanged: three months, 0.5 points, no tier change.
+>
+> One open question still sits under this. `Include Outliers` is 1 and deliberately unchanged,
+> pending Avail's answer on whether the BI report drops outlying departures from its
+> denominator. It is the likeliest explanation of the gap between the API and the report —
+> 4,271 departures on route 465 against the report's 4,045, 5.6% more. **If that answer has
+> arrived, say so before the comparison is run**: it changes the denominator, and it would be a
+> fourth declared standard rather than a discrepancy to explain.
 
 *The system changed on 2026-09-22.* Weather days now subtract from the figure, they can be
 approved from the console, and a restatement of a closed month is recorded. If anything
@@ -97,6 +369,7 @@ feed rows, and it is not the live figure.
 | Decision months | **2026-05**, **2026-06**, **2026-08** — see "What this is for" |
 | Also useful | **2026-07**, the only other month carrying approved and rejected stop exclusions |
 | Never validate a page reading | "Sample data" — that is mock preview, not the feed |
+| Before comparing a month | Re-pull it if Administration → OTP Compliance lists it as measured under a different standard |
 
 Rob needs two things:
 
@@ -229,9 +502,14 @@ GROUP BY ServiceMonth ORDER BY ServiceMonth;
 
 | Month | OnBoard | Manual (weekly CSV) | Manual (monthly report) | Difference (pts) | Within 0.5? |
 | --- | --- | --- | --- | --- | --- |
-| 2026-05 | 85.80% | | | | |
-| 2026-06 | 84.42% | | | | |
-| 2026-08 | 83.62% | | | | |
+| 2026-05 | **87.56%** | | | | |
+| 2026-06 | **85.92%** | | | | |
+| 2026-08 | **85.30%** | | | | |
+
+*Figures restated 2026-10-28. If the manual figures were produced before that date against
+an Avail report run with MVTA's own BI defaults, they do **not** need restating — MVTA's BI
+was always on `2/5/10/60`. It was OnBoard that was wrong, plus Avail's month boundary on the
+API side only.*
 
 Record the **raw** figure too. If OnBoard's raw and the manual figure agree but the
 assessable figures do not, the difference is entirely in the exclusions — which is a
@@ -242,8 +520,8 @@ conversation about process, not about data.
 | Month | OnBoard tier | Manual tier | Same? |
 | --- | --- | --- | --- |
 | 2026-05 | Meets | | |
-| 2026-06 | Warning | | |
-| 2026-08 | Warning | | |
+| 2026-06 | **Meets** *(was Warning before restatement)* | | |
+| 2026-08 | **Meets** *(was Warning before restatement)* | | |
 
 Boundaries: **85 / 80 / 75**. *Expected:* identical tiers.
 
@@ -269,6 +547,11 @@ understand. For each gap, say which of these it is:
   reconciliation, it is a different metric.
 - **Measurement point** — Avail's own on-time threshold and outlier settings. If the manual
   process runs the report with different parameters, the two are not comparable.
+  **This was a real defect, found 2026-10-27 and fixed 2026-10-28** — OnBoard was sending
+  `1/5/15/30` against MVTA's configured `2/5/10/60`, worth 1.0–1.8 points per month. It is
+  the single largest source of difference found so far, and it is now closed. When checking
+  a gap, confirm which parameters the manual report was run with before looking anywhere
+  else.
 
 ### A4 — Direction
 
@@ -296,7 +579,9 @@ The whole system rests on this. Nothing downstream can be right if it fails.
 
 **T1.1 — Agency totals match Avail, month 2026-08**
 Compare OnBoard's raw agency figure to Avail's own report for the same month.
-*Expected:* 65,278 total departures, 54,588 on time, 83.62% raw.
+*Expected (restated 2026-10-28):* **62,748 total departures, 53,527 on time, 85.30% raw.**
+The pre-restatement expectation was 65,278 / 54,588 / 83.62% — if an export matches those
+instead, it was run before Avail's month-boundary fix.
 *Watch for:* any difference at all. A small one is not rounding — it means the poll caught
 the month at a different moment than Rob's export, so re-pull both and compare again.
 
@@ -377,8 +662,8 @@ WHERE ServiceMonth IN ('202607','202608')
 GROUP BY ServiceMonth;
 ```
 
-*Expected:* 202607 → 83.28% raw / 83.32% assessable; 202608 → 83.62% / 83.62%, and
-`WeatherRemoved` zero on both until a weather day is approved. These must equal the
+*Expected (restated 2026-10-29):* 202607 → **84.86% raw / 84.91% assessable**; 202608 →
+**85.30% / 85.30%**, and `WeatherRemoved` zero on both until a weather day is approved. These must equal the
 console's Route Summary figures to the digit.
 
 *Also worth knowing:* `SUM(CASE WHEN IsAssessable=1 THEN ...)` — the old form — still
@@ -497,9 +782,17 @@ default. Who confirms new Avail RouteIDs are classified before a month closes?
 **T4.6 — Reason code list.** Are the 6 stop and 6 date codes the vocabulary OCC and the
 contractor actually use in disputes?
 
-**T4.7 — Measurement points.** Avail decides what counts as on time (its own threshold and
-outlier settings). Are those settings the governed ones in the contract, and who at MVTA
-holds that?
+**T4.7 — Measurement points. This is no longer hypothetical — it already went wrong.**
+Avail decides what counts as on time via threshold and outlier parameters. OnBoard sent
+`1/5/15/30` for months against MVTA's configured `2/5/10/60`, and nobody noticed because
+nothing declared what the governed values were. It was worth 1.0–1.8 points per month and
+it made the agency look worse than its own standard says it is.
+
+The questions are now concrete: are `2/5/10/60` the values named in the contract, or just
+what Avail's BI happens to default to? Who at MVTA owns a change to them? And how would a
+change be noticed — changing any of them restates every figure the feed has ever stored, so
+it is not a tuning knob. A register that records the values, who set them and from when, is
+in progress (PR #449).
 
 ---
 

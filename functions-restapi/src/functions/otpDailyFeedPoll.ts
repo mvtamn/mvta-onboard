@@ -17,7 +17,14 @@ import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { availConfig, fetchAvail } from "../lib/availClient";
 import { agencyServiceDate } from "../lib/missedTripTime";
-import { mapOtpDailyReport, otpDailyCoverage, otpDailyWindow, upsertOtpDailyReport } from "../lib/otpDailyFeed";
+import {
+  dailyMeasurementStampReady,
+  mapOtpDailyReport,
+  otpDailyCoverage,
+  otpDailyWindow,
+  upsertOtpDailyReport,
+} from "../lib/otpDailyFeed";
+import { readParametersInForce } from "../lib/otpMeasurementParameters";
 import { runFeedIngestion } from "../lib/feedRun";
 
 const RETENTION_DAYS = 90;
@@ -34,8 +41,16 @@ app.timer("otpDailyFeedPoll", {
     const now = new Date();
     const window = otpDailyWindow(now);
     await runFeedIngestion("avail_otp_daily", context, async () => {
-      const reports = await fetchAvail("otp_daily", { start: window.requestStart, end: window.requestEnd }, config);
       const pool = await getPool();
+      // The measurement standard in force, read before the request so the URL
+      // and the stamp cannot disagree (ADR 0042). Same seven numbers as the
+      // monthly feed, from the same register.
+      const parameters = await readParametersInForce(pool);
+      const reports = await fetchAvail(
+        "otp_daily",
+        { start: window.requestStart, end: window.requestEnd, parameters: parameters.segments },
+        config,
+      );
 
       // A missing table is a failure of this feed, not a quiet skip: the ledger
       // would otherwise keep reading as whatever it last said.
@@ -46,7 +61,10 @@ app.timer("otpDailyFeedPoll", {
         return { kind: "failed", reason: "OtpDailyRouteStopHour does not exist (migration 020 not applied)." };
       }
 
+      const stampReady = await dailyMeasurementStampReady(pool);
       let upsertedCount = 0;
+      let duplicateKeys = 0;
+      const keysSeen = new Set<string>();
       const storedByDate = new Map<string, number>();
       for (const report of reports) {
         let mapped;
@@ -58,8 +76,28 @@ app.timer("otpDailyFeedPoll", {
         }
         if (!mapped) continue;
 
+        // The monthly feed's key turned out not to be unique in Avail's own
+        // delivery: for 2026-03 it sent 27 keys twice and each write overwrote
+        // the other silently (see lib/otpMonthlyFeed.ts). This table's key has
+        // held - 2,104 to 2,127 records a day, every one a distinct key on dev
+        // 2026-10-30 - and it has a discriminator the monthly feed lacks
+        // (direction, migration 123), so these records are not summed. But the
+        // check that would have caught the monthly collapse years earlier costs
+        // a Set, so it is here: if this ever fires, a row is being overwritten
+        // and the figures it carried are gone.
+        const key = `${mapped.calendar_date}|${mapped.route_id}|${mapped.stop_id}|${mapped.hour_of_day}|${mapped.direction ?? ""}`;
+        if (keysSeen.has(key)) {
+          duplicateKeys++;
+          context.warn(
+            `Avail OTP Daily poll: ${mapped.calendar_date} route ${mapped.route_id} stop ${mapped.stop_id} ` +
+              `hour ${mapped.hour_of_day} direction ${mapped.direction ?? "none"} arrived more than once ` +
+              `(total=${mapped.total ?? "null"}/ontime=${mapped.ontime ?? "null"}); the earlier record is being overwritten.`,
+          );
+        }
+        keysSeen.add(key);
+
         try {
-          await upsertOtpDailyReport(pool, mapped);
+          await upsertOtpDailyReport(pool, mapped, { measurementParameters: parameters.segments, stampReady });
           upsertedCount++;
           storedByDate.set(mapped.calendar_date, (storedByDate.get(mapped.calendar_date) ?? 0) + 1);
         } catch (err) {
@@ -79,7 +117,9 @@ app.timer("otpDailyFeedPoll", {
 
       const perDay = window.serviceDates.map((date) => `${date}=${storedByDate.get(date) ?? 0}`).join(", ");
       context.log(
-        `Avail OTP Daily poll: ${reports.length} reports seen, ${upsertedCount} rows upserted (${perDay}), ${purgedCount} old rows purged.`,
+        `Avail OTP Daily poll: ${reports.length} reports seen, ${keysSeen.size} keys` +
+          `${duplicateKeys > 0 ? ` (${duplicateKeys} records collided on a key already seen)` : ""}, ` +
+          `${upsertedCount} rows upserted (${perDay}), ${purgedCount} old rows purged.`,
       );
       // MVTA runs service every day, so a completed day with nothing in it is
       // Avail not having published it yet, not a quiet day. The next run

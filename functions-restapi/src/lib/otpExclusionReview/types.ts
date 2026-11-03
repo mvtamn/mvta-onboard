@@ -45,6 +45,22 @@ export interface WeatherDayRecord {
   created_at: Date;
 }
 
+/**
+ * A declared OTP measurement parameter set (ADR 0042), read for the timeline
+ * and never written here - `lib/otpMeasurementParameters` owns the register.
+ */
+export interface MeasurementParameterRecord {
+  id: string;
+  /** 'YYYY-MM-DD'. */
+  effective_from: string;
+  /** The URL segments, which is also what each polled row is stamped with. */
+  segments: string;
+  source: string;
+  notes: string | null;
+  declared_by: string;
+  declared_at: string;
+}
+
 /** What a reviewer is asking to write down. */
 export interface StopExclusionDecision {
   service_month: string;
@@ -87,4 +103,20 @@ export type ExclusionAuditEntry =
       scope: "Agency" | "Route";
       route_id: number | null;
       service_date: string;
+    }
+  /**
+   * A measurement standard was declared. It belongs in this timeline because it
+   * is the one kind of change that moves a figure without anybody deciding
+   * anything about a stop or a date - and because a month's figure cannot be
+   * explained without it (ADR 0042). Unlike the other two it is NOT scoped to a
+   * service month: one declaration governs every month polled after it.
+   */
+  | {
+      kind: "measurement_parameters";
+      at: string;
+      actor: string;
+      effective_from: string;
+      segments: string;
+      source: string;
+      notes: string | null;
     };

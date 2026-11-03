@@ -79,6 +79,15 @@
     },
     "restApiTimersEnabled": {
       "value": false
+    },
+    "restApiTimersEnabledEarly": {
+      "value": [
+        "gtfsStopsSync",
+        "gtfsVehiclePositionsPoll",
+        "gtfsMissedTripsPoll",
+        "tripStartLogMaterialize",
+        "tripStartActualsPoll"
+      ]
     }
   }
 }
