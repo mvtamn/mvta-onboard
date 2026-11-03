@@ -1,7 +1,30 @@
 # Contractor Ridership Briefing
 
-Date: 2026-10-31. **Draft for MVTA. Nothing here has been sent to either
-contractor.** It sets out what MVTA tells its operations contractor about
+Date: 2026-10-31, revised 2026-11-02. **Draft for MVTA. Nothing here has been
+sent to either contractor.**
+
+**What the 2026-11-02 revision changed.** It reflects work that landed after
+the first draft:
+
+- The Count Sheet printing process is decided, and the code is merged
+  (#474–#485). Each garage's check-in desk prints the next day's sheets every
+  evening, under a new **Ridership Printer** role (#483, migration 159). The
+  morning desk reprints any sheet marked changed.
+- Today's sheet turns out to be a **packet printed once per service change
+  that operators photocopy every day**.
+- Spec §16 records the Access screens and the Access TripID rule.
+- The printed sheet design is recorded (digit boxes, a DNO tick box, corner
+  marks, Avail trip numbers).
+- Spec §15 and #458 decision 20 now say **the paper is still handed in and
+  scanned** after the kiosk arrives.
+- OCC entry and printing are **already live on prod** (onboard.mvta.com).
+  Migrations 153, 154 and 157 are applied there; 159 is not yet.
+- The reporting spec (#475) keeps operator names out of every export and out
+  of Power BI.
+
+Decision O-8 (who prints) is settled by the Ridership Printer role.
+
+The briefing sets out what MVTA tells its operations contractor about
 fixed-route ridership counting, in two parts:
 
 1. **The current process**, what the contractor is responsible for today, and
@@ -31,6 +54,11 @@ draft `plans/ridership-counting-procedure-draft.md` and the build plan
 - the reconciliation review (PR #459, gaps R1–R12);
 - the operator app design (PR #458, decisions D1–D25);
 - the kiosk evaluation and hardware notes (PRs #461, #462);
+- spec §15 (the Count Sheet's journey: QR link, submission, scan) and §16
+  (the Access screens and TripID rule), both on #455;
+- the Count Sheet printing work (#474, #476–#478, #482–#485) and its findings
+  note in this session group's shared notes folder;
+- the ridership reporting spec (#475);
 - `INCIDENT_REPORTING` in `migration-030`: Medium priority, entered by hand
   today, $500 per occurrence (`per_unit`);
 - OPR-038-00 as it stands, and the 2026-10-23 → 10-30 "Ridership Database
@@ -69,26 +97,26 @@ the record.
 
 | # | Step | Who at the contractor | What happens today | Where it is written | Can MVTA check it? |
 |---|---|---|---|---|---|
-| T-1 | **Count Sheet issued** | Check-in desk, under the Garage Manager | Each Operator gets a paper Count Sheet in the run packet at check-in. It lists the run's trips by route and time range, one total per trip. **Who produces the sheet is not recorded**: the email thread asked whether the contractor creates it and got no answer. | OPR-038, Check-In step 3 | Partly: ask the desk to show a blank sheet and where it comes from |
+| T-1 | **Count Sheet issued** | Check-in desk, under the Garage Manager; Operators | A packet of sheets is **printed once per service change** (about four times a year). Each Operator **photocopies their run's sheet every day** on the garage copier. The sheet lists the run's trips by route and time range, one total per trip, and **carries no service date**, so a sheet cannot be tied to its day except by what is written on it. OPR-038 says the sheet comes in the run packet at check-in; in practice the Operator makes it. **Who prints the packet and keeps the master is not recorded.** | OPR-038, Check-In step 3 (which does not match the practice) | Partly: ask the desk to show the packet and the copier routine |
 | T-2 | **Counting** | Operator | Writes one boardings total per trip on the sheet. | OPR-038, Ridership Counting. But OPR-038 says boardings **and alightings**, **at each timepoint** (C1) | No: there is no record of how a count was made |
 | T-3 | **APC buses** | Operator, Garage Manager | OPR-038: on a bus with APC, verify it is active at pull-out, and also complete the paper sheet **unless the Garage Manager confirms APC is sufficient** for the route (C8). | OPR-038 | No: no record of any such confirmation, and no criteria for "sufficient" |
 | T-4 | **Hand-in** | Operator → check-in desk | The sheet is handed in at the end of the block or at pull-in, whichever comes first. It must not be altered after hand-in. | OPR-038, Ridership Counting and Pull-In step 3 | No: nothing lists the sheets expected against the sheets returned |
 | T-5 | **Lost or damaged sheet** | Operator, OCC, Garage Manager | The Operator tells the OCC and the Garage Manager at pull-in, and reconstructs the counts "as accurately as possible". | OPR-038, Ridership Counting and Escalation Matrix | No: a reconstructed sheet is not marked as one, and Access cannot record it |
 | T-6 | **Collection to OCC** | Check-in desk → contractor OCC | Contractor OCC staff check the desks **2–3 times a day on average** and collect the sheets. | Email thread only (C5) | No |
-| T-7 | **Entry** | Contractor OCC staff | Each sheet line is keyed into the Access "Recent Riders SST DATA ENTRY" form. OCC matches each line to a roster row **by route and time, by hand**, because the sheet has no trip ID or direction (D2), and some rows have a blank TripID (D1). **There is no deadline** (C2). | Email thread only (C5) | No: Access does not record who keyed a row or when (P6) |
+| T-7 | **Entry** | Contractor OCC staff | In the Access *Ridership Data Manager*, OCC picks the **date and SST block**, and keys **Riders** against each of the block's trips by start time. Each row also has a free-text **Flag**. The form saves automatically. The sheet has no trip ID or direction (D2), so OCC matches each line to a trip by its time. Some route 495 rows have a blank TripID (D1). **What OCC types in Flag is unknown.** **There is no deadline** (C2). | Email thread only (C5) | No: Access does not record who keyed a row or when. Its *View by Date Entered* menu item is greyed out (P6) |
 | T-8 | **Corrections** | Contractor OCC staff | Monthly, MVTA Planning emails missing and outlier trips to the contractor's OCC, who correct them in Access. | Email thread only | No: no record of what was flagged, changed or by whom (P6) |
 | T-9 | **Month close-out** | Contractor OCC with MVTA Planning | Planning "confirms with contractor OCC staff the close-out" of the month. | Email thread only | No: the close records no who or when (P7) |
 | T-10 | **Retention** | Garage Manager | Paper sheets are kept "until monthly ridership is closed out" (email). OPR-038's Required Records says the Garage Manager keeps them at the garage collection point "per MVTA records retention schedule". | Email (C6); OPR-038 Required Records | Partly: MVTA can ask for a past sheet |
 | T-11 | **Handling** | Garage Manager | Sheets carry the Operator's name and ID. No handling rule beyond retention (H2). | Nowhere | No |
 | T-12 | **Special events** | Contractor | Count sheets for special events go to MVTA Planning on paper, "unless otherwise completed digitally", with no rule for which (C7). | Email thread only | No |
 | T-13 | **Training** | Contractor Training and Safety | OPR-038 makes Training and Safety responsible for initial and refresher training on **all** OPR-038 procedures, which includes ridership counting, and for keeping training records. Whether ridership is actually covered, and how, is **unknown**. | OPR-038, Responsibilities and Training | Yes: ask for the training content and records |
-| T-14 | **Supervision and monitoring** | Garage Managers, contractor operations management | No ridership monitoring is described anywhere. Missing sheets show up only as blanks when Planning reviews the month. | Nowhere | No |
+| T-14 | **Supervision and monitoring** | Garage Managers, contractor operations management | No ridership monitoring is described anywhere. Access has a *Find Records Not Yet Entered* menu item, but nothing says who uses it or how often. Missing sheets show up as blanks when Planning reviews the month. | Nowhere | No |
 
 ### 1.3 Measured against the contract clause
 
 | Clause term | Today | Verdict |
 |---|---|---|
-| **"all trips"** | Nobody checks expected sheets against returned sheets (T-4). A blank in Access can mean not counted, did not operate or not keyed yet, and these can't be told apart. Trippers and extras have no roster row, so they cannot be keyed at all. | **Not measurable.** The contractor can't show it counts all trips, and MVTA can't show it doesn't. |
+| **"all trips"** | Nobody checks expected sheets against returned sheets (T-4). The photocopied sheet is the service change's roster, so it can't show a schedule fix made since (T-1). A blank in Access can mean not counted, did not operate or not keyed yet, and these can't be told apart. Trippers and extras have no roster row, so they can't be keyed at all. | **Not measurable.** The contractor can't show it counts all trips, and MVTA can't show it doesn't. |
 | **"accurately"** | Planning's check is to sort largest to smallest and look (C3, P4). September 2026 was +27% on flat trips, and nobody has explained it (D3). Hand matching by route and time (D1, D2) adds keying errors that are not the Operator's. | **No test exists.** An accuracy failure cannot be shown. |
 | **"in a timely manner"** | "2–3 times a day" is a habit, not a standard (C2). Access records no entry time. | **No standard and no evidence.** |
 | **"MVTA's procedures"** | OPR-038 says boardings and alightings at each timepoint. The sheet MVTA's process uses asks for one total per trip (C1). The OCC entry flow is written only in an email thread (C5). | **MVTA's own shortfall.** Two MVTA documents conflict, and the procedure the contractor is meant to follow has not been provided in writing. |
@@ -143,19 +171,24 @@ So that the contractor is not briefed on gaps that are MVTA's own:
 ### 1.6 What to ask the incumbent before December
 
 These facts are not on record, and the December parallel run depends on some
-of them:
+of them, in particular the names of the desk and OCC staff who need OnBoard
+accounts:
 
-1. Who produces the Count Sheet today, and how a run's sheet is matched to the
-   run.
-2. How many garages and check-in desks, their staffed hours, and their printers
-   (sets the overnight print time, SOP decision 3).
-3. How many OCC staff key ridership, on which shifts, and their names for
+1. Who prints the service-change packet and keeps the master, and whether
+   every Operator photocopies their own sheet at both garages.
+2. When the Burnsville and Eagan check-in desks are staffed **in the evening**
+   (the nightly print) and **before the first pull-out** (the morning
+   reprint), and which printer each will use. This sets SOP decision 3.
+3. What OCC types in the Access **Flag** field, and whether anyone uses
+   *Find Records Not Yet Entered*. OnBoard has only *Not counted* and *Did
+   not operate*, so any other use needs a home before December (spec §16).
+4. How many OCC staff key ridership, on which shifts, and their names for
    OnBoard accounts.
-4. Whether ridership counting is in the Operator training content, and the
+5. Whether ridership counting is in the Operator training content, and the
    records.
-5. Where paper sheets are kept now, how far back, and how they are destroyed.
-6. Anything that changed in September 2026 that could explain D3.
-7. Whether any Garage Manager has used the OPR-038 APC exception (C8).
+6. Where paper sheets are kept now, how far back, and how they are destroyed.
+7. Anything that changed in September 2026 that could explain D3.
+8. Whether any Garage Manager has used the OPR-038 APC exception (C8).
 
 ---
 
@@ -173,11 +206,29 @@ performs them from 2027-01-01 (change 3).
 
 **What changes:**
 
-- **Count Sheets are printed from OnBoard** each night for the next service
-  date: one per block, listing each trip's route, direction, scheduled start
-  and end, trip ID and a QR code. Operator and bus are blank. Each row takes a
-  total or **DNO** (did not operate), and three blank rows take unscheduled
-  trips.
+- **Each garage's check-in desk prints the next day's Count Sheets every
+  evening** from OnBoard (Print sheets).
+  - The output is one PDF per garage, in pull-out order, with one sheet per
+    block. Each sheet is dated and carries a QR code that links to that block
+    and date.
+  - Each trip is named by Avail's trip number (for example 320-E), with its
+    direction and scheduled times in AM/PM.
+  - Operator and bus are left blank.
+  - Each trip row has digit boxes for the total and a **DNO** (did not
+    operate) tick box.
+  - The unscheduled-trip rows take a time, a circled direction, and a tick
+    for Tripper, Extra or OCC.
+  - Corner marks let a future scan straighten the page.
+- **The morning desk reprints** before the first pull-out. The Dispatch Log
+  re-runs at 03:30 and marks any sheet it changed. The desk reprints those
+  sheets with *Reprint just those N sheets*.
+- **Photocopying stops.** A copied sheet carries the wrong date and QR code,
+  so its counts would be filed under the wrong day. This ends today's
+  packet-and-copier routine (T-1).
+- The desk staff who print hold a new OnBoard role, **Ridership Printer**
+  (#483).
+- **This is already live on prod.** So the training and the dry run can use
+  the real system with a test service date.
 - **OCC enters in OnBoard**, from a worklist of sheets still to enter, late
   first. The Operator, Operator ID and bus are **pre-filled from Avail's
   pull-out report**; OCC changes them when the sheet says otherwise, and the
@@ -193,8 +244,8 @@ performs them from 2027-01-01 (change 3).
 
 | Who at the contractor | Must do | Training needed | Evidence MVTA will look at |
 |---|---|---|---|
-| **Operators** | Write name, Operator ID and bus on the sheet; one boardings total per trip, at the end of the trip, with the bus stopped; **DNO** for a trip that did not run, never 0; unscheduled trips in the blank rows; **Reconstructed** across the top of a rewritten sheet; count on APC buses too | A short briefing at check-in or in a bulletin, with a filled-in example sheet. The count itself (one total per trip) is what they already do | Sheets on request; reconstructed rate by garage and Operator; Not counted rate |
-| **Check-in desk / Garage Managers** | Print the next day's sheets every night; check one has printed for every block on the pull-out list; issue the right sheet at check-in; check each returned sheet (name, ID, bus, every row filled) before the Operator leaves; chase missing sheets the same day | Hands-on: printing from OnBoard, reprinting one block, what to do if OnBoard can't print (SOP decision 4) | Every block that operated has a sheet entered; missing sheets by garage |
+| **Operators** | Take the dated sheet from the desk with the paddle, and **no longer photocopy one**. Write name, Operator ID and bus. Record one boardings total per trip in the digit boxes, at the end of the trip, with the bus stopped. **Tick DNO** for a trip that did not run, and write 0 only for a trip that ran empty. Put unscheduled trips in the bottom rows. Write **Reconstructed** across the top of a rewritten sheet. Count on APC buses too | A short briefing at check-in or in a bulletin, with a filled-in example sheet. The count itself (one total per trip) is what they already do | Sheets on request; reconstructed rate by garage and Operator; Not counted rate |
+| **Check-in desk / Garage Managers** (`Ridership Printer`) | **Evening:** print the next day's sheets, and act on the warning about blocks with no garage (*Unassigned*). **Morning, before the first pull-out:** reprint any sheet marked changed. Then issue the right sheet at check-in. Check each returned sheet (name, ID, bus, every row filled) before the Operator leaves. Chase missing sheets the same day | Hands-on: the evening print, the morning reprint, reprinting one block or any past date for a lost sheet, and what to do if OnBoard can't print (SOP decision 4) | OnBoard's print log, which records each sheet printed and reprinted, and any sheet changed but not reprinted. Also every block that operated has a sheet entered, and missing sheets by garage |
 | **Contractor OCC staff** (`ridership-recorder`) | Enter every sheet in OnBoard by the deadline; override operator or bus to match the sheet; add unscheduled trips; tick Reconstructed; review the completeness view daily | OnBoard entry session plus the dry run (actions A-9, A-10) | OnBoard entry timestamps; late sheets; overrides recorded with who and when |
 | **Contractor operations management** | Review completeness and timeliness at least weekly, by garage and Operator; act on repeat failures; request and remove OnBoard access | A walk-through of the completeness view | A weekly or monthly note of what was found and done |
 | **Contractor Training and Safety** | Train every Operator, desk and OCC person on their part before they do it; record it | Train-the-trainer from MVTA | Training records, on request |
@@ -206,7 +257,13 @@ performs them from 2027-01-01 (change 3).
 **What changes:**
 
 - Every sheet is entered in **both** OnBoard and Access, matched by block and
-  start time. **Access remains the record for December.**
+  start time. **Access remains the record for December.** The Access TripID
+  rule is now known (day type + route + direction + start time, spec §16), so
+  Planning can match the two systems trip by trip. OCC doesn't have to do
+  that matching.
+- December's filled-in sheets are also the **handwriting sample** for the
+  future scan-reading trial (spec §15). That is a second reason to keep every
+  one of them and hand them over at the end of the contract.
 - MVTA Planning compares December's totals across the two systems, by route,
   direction and day type, using the daily comparison export (build plan PR 5).
 - The deadline, completeness and reconstructed rules are **practised and
@@ -299,8 +356,21 @@ of it starts before the March 2027 close.
   and key each trip's total from a paper tally. For 4 weeks OCC also keys that
   garage's paper and the two are compared. Then that garage stops OCC keying
   and the others follow.
-- **The submission becomes the record.** For a submitted run, the paper is a
-  tally card and is not kept or keyed.
+- **The submission becomes the record. The paper still comes back** (spec
+  §15; #458 decision 20, changed 2026-10-31).
+  - Every sheet, submitted or not, goes to the contractor's operations
+    management at the garage.
+  - Operations management **batch-scans the day's sheets** on the garage
+    multifunction printer.
+  - OnBoard compares each scan with the submission and raises a flag where
+    they differ. Where a run was not submitted, OnBoard pre-fills OCC's form
+    from the scan for OCC to confirm.
+  - Scans are kept under MVTA's retention schedule, so once scanning starts,
+    keeping the paper probably stops being the contractor's job. That depends
+    on the retention period, which is still open.
+- **The kiosk is an operator platform,** not only a ridership device. Other
+  modules (vehicle condition reports, detour information) follow on the same
+  sign-in (#461).
 - **Phones** only after MVTA consults the contractor and amends OPR-038, which
   bans personal devices on duty. Phone use is voluntary; the kiosk stays the
   fallback.
@@ -309,7 +379,7 @@ of it starts before the March 2027 close.
 |---|---|---|---|
 | **Operators** | Sign in, choose the run, key the totals, submit at pull-in | A short hands-on session at the kiosk | Count source (kiosk / phone / OCC from paper / OCC from draft) by garage |
 | **Check-in desk** (`operator-credential-admin`, name pending) | Issue one-time PINs, reset locked PINs, **disable a PIN the day an Operator leaves** | PIN issue and reset | PINs disabled on time |
-| **Operations management** | Agree the work rules: kiosk time at pull-in is paid time; phone use is voluntary | None; a negotiation | A written agreement before the pilot |
+| **Operations management** | Agree the work rules: kiosk time at pull-in is paid time; phone use is voluntary. **Scan each day's sheets** at each garage | A negotiation for the work rules; a short session on the scanner and upload route | A written agreement before the pilot; sheets expected but never scanned, by garage |
 | **OCC staff** | Submitted runs drop off the worklist; OCC submits saved drafts operators left; answers flags as before | Draft submission | Count source; drafts submitted by OCC |
 
 ---
@@ -325,23 +395,26 @@ Thanksgiving falls on **2026-11-26**.
 | # | Action | Audience | Owner at MVTA | By when | Artifact |
 |---|---|---|---|---|---|
 | A-1 | Settle the SOP's open **[Decide]** items needed for issue: notice period (14), print time (3), print fallback (4), sheet trips to OCC per day (9), Contractor OCC staff (6), Attachment G route (7), and parallel-run acceptance (15) | Internal | Operations + Planning | 2026-11-06 | Decision note on the SOP draft |
-| A-2 | Fact-finding meeting with the incumbent's operations and OCC leads: the seven questions in §1.6 | Incumbent | Operations | 2026-11-09 | Meeting, with notes |
+| A-1a | **Update the SOP drafts with the decided print process** before they go out: drop the packet and copier steps, add the evening print and morning reprint, name the Ridership Printer role, and replace "Did not operate" written in the row with the DNO tick box. The SOP drafts are in the ridership-sop session, which is waiting on the user | Internal | Planning + Operations | 2026-11-11 (before A-5) | Revised OPR-RID-00 and OPR-038 redline |
+| A-2 | Fact-finding meeting with the incumbent's operations and OCC leads: the eight questions in §1.6 | Incumbent | Operations | 2026-11-09 | Meeting, with notes |
 | A-3 | Confirm with Contracts whether ridership reporting failures fall under `INCIDENT_REPORTING` as written in **both** contracts, and whether the December double keying is within the incumbent's scope (decisions O-3, O-5) | Both | Contracts | 2026-11-10 | Written opinion |
 | A-4 | **Transition and kick-off meeting with Keolis** on ridership: today's process, the December run they inherit, the rules from 2027-01-01, the occurrence start, the kiosk later. Use §4's talking points | Keolis | COO, with Planning and Compliance | 2026-11-13 | Meeting, with talking points and the SOP drafts as read-ahead |
 | A-5 | **Formal notice to the incumbent**: the amended OPR-038 and OPR-RID-00, the Parallel Run starting 2026-12-01, Access remaining the record, December practised and not assessed, and the paper handover at contract end | Incumbent | COO | 2026-11-13 (≥ 14 days before 12-01) | Letter, with OPR-038 redline and OPR-RID-00 |
 | A-6 | **Formal notice to Keolis**: the amended OPR-038 and OPR-RID-00 as MVTA's procedure under the contract clause, effective for Keolis from 2027-01-01, with the planned Cutover Date and the compliance start and grace period (decision O-1) | Keolis | COO | 2026-11-20 | Letter, with OPR-038 redline, OPR-RID-00 and a sign-off copy (the SOP's Contractor Representative row) |
-| A-7 | Collect named OCC staff (and, if decision O-8 says so, check-in desk staff) who will enter or print, from each contractor | Both | Operations | Incumbent 2026-11-13; Keolis 2026-12-04 | Email request with a fixed template (name, work email, role, garage) |
-| A-8 | **OnBoard access, as numbered steps:** (1) apply migration 153 to prod; (2) MVTA IT creates **Entra B2B guest accounts** (Guest Sponsorship) on prod for the names from A-7; (3) an access administrator assigns **`ridership-recorder`** to each in Access & Identity on prod; (4) assigns **`ridership-manager`** to the named Planning staff; (5) each person signs in and confirms the Ridership tab shows. **The incumbent's OCC staff need this too**: they key December. The build plan names only Keolis | Both | MVTA IT + an access administrator; Engineering for step 1 | Incumbent **2026-11-20** (before the dry run); Keolis **2026-12-11** | OnBoard access |
-| A-9 | **Training for the incumbent's OCC staff on OnBoard entry**: worklist, sheet form, override, unscheduled trips, Reconstructed, Not counted, completeness view, and matching to Access for December | Incumbent | Planning, with Engineering | 2026-11-23 → 11-24 | Training session (hands-on on prod with a test service date), with a one-page quick guide |
-| A-10 | **Dry run before 2026-12-01**: (a) OCC keys a test service date end to end on prod; (b) each garage prints the next day's sheets from OnBoard on the night of 2026-11-29, checks them against the pull-out list and **does not issue them**; (c) go/no-go | Incumbent | Planning + Operations | (a) 11-24, (b) 11-29, (c) go/no-go 2026-11-30 | Dry run, with a go/no-go checklist |
-| A-11 | Train the incumbent's check-in desks on printing, issue, the returned-sheet check and the print fallback | Incumbent | Operations | 2026-11-25 | Training session at each garage |
-| A-12 | Operator briefing on the new sheet (DNO, blank rows, Reconstructed, name/ID/bus, no writing while moving) | Incumbent | Operations, through the contractor's Training and Safety | 2026-11-30 | Operational Bulletin with an example sheet |
+| A-7 | From each contractor, collect the named **OCC staff** who will enter sheets, and the named **check-in desk staff** at Burnsville and Eagan who will print in the evening and reprint in the morning | Both | Operations | Incumbent 2026-11-13; Keolis 2026-12-04 | Email request with a fixed template (name, work email, role, garage, shift) |
+| A-7a | **Enter the block-to-garage list on prod** for the current service change. Schedule v65 started 2026-11-02 with 144 weekday blocks, and the list is empty today. Use the bulk assign on Ridership setup. A list inferred from where buses park overnight is a ready starting point (on v64: Eagan 160 blocks, Burnsville 20). Check every block for both garages: an unassigned block prints under *Unassigned*, which no desk owns | Internal | Planning | 2026-11-16 (before the print rehearsal) | OnBoard Ridership setup |
+| A-8 | **OnBoard access, as numbered steps:** (1) migrations 153 and 154 (roles) and 157 (print log) are **already applied on prod**; apply **migration 159** (the Ridership Printer role) to prod. (2) MVTA IT creates **Entra B2B guest accounts** (Guest Sponsorship) on prod for the names from A-7. (3) An access administrator assigns **`ridership-recorder`** to each OCC person in Access & Identity on prod. (4) Assigns **Ridership Printer** to each check-in desk person. (5) Assigns **`ridership-manager`** to the named Planning staff. (6) Each person signs in at onboard.mvta.com and confirms they see their tab: Enter sheets, or Print sheets. **The incumbent's staff need this too**, because they print and key December. The build plan names only Keolis OCC staff | Both | MVTA IT + an access administrator; the user or Engineering for step 1 | Incumbent **2026-11-16** (before the print rehearsal); Keolis **2026-12-11** | OnBoard access |
+| A-8a | **Print rehearsal at both garages**: each desk prints a real next-day stack (not issued), tries the morning reprint, scans a QR code with a phone, and checks the Unassigned warning. The system is already live, so this can run before OCC training | Incumbent | Operations + Planning | Week of 2026-11-16 | Rehearsal, with a short checklist |
+| A-9 | **Training for the incumbent's OCC staff on OnBoard entry**: the worklist, the "scan or type block" box (with the USB scanner and the sheet's QR code), the sheet form, override, unscheduled trips, Reconstructed, Not counted, the completeness view, and keying the same sheet into Access in December | Incumbent | Planning, with Engineering | 2026-11-23 → 11-24 | Training session (hands-on on prod with a test service date), with a one-page quick guide |
+| A-10 | **Dry run before 2026-12-01**: (a) OCC keys a test service date end to end on prod; (b) each garage prints the next day's stack on the night of 2026-11-29, checks it against the pull-out list and **does not issue it**; (c) the morning desk on 11-30 runs the reprint check; (d) go/no-go | Incumbent | Planning + Operations | (a) 11-24, (b) 11-29, (c) 11-30 morning, (d) go/no-go 2026-11-30 | Dry run, with a go/no-go checklist |
+| A-11 | Train the incumbent's check-in desks, evening and morning shifts, on the evening print, the morning reprint, issue with the paddle, the returned-sheet check and the print fallback | Incumbent | Operations | 2026-11-20 (with A-8a) | Training session at each garage |
+| A-12 | Operator briefing on the new sheet: **stop photocopying**, take the dated sheet from the desk, the digit boxes, the DNO tick box, the unscheduled rows, Reconstructed, name/ID/bus, and no writing while moving | Incumbent | Operations, through the contractor's Training and Safety | 2026-11-30 | Operational Bulletin with an example sheet |
 | A-13 | Weekly December check-in with the incumbent: late and missing sheets, comparison differences | Incumbent | Planning | Each Friday in December | Meeting (30 min), with the comparison export |
-| A-14 | Keolis training: OCC on OnBoard entry; check-in desks on printing; Operators on counting in their transition training; Training and Safety train-the-trainer | Keolis | Planning (OCC), Operations (desks, Operators) | 2026-12-18 | Training sessions on prod with a test service date; quick guides |
+| A-14 | Keolis training: OCC on OnBoard entry; check-in desks on the evening print and morning reprint (Ridership Printer); Operators on counting in their transition training; Training and Safety train-the-trainer | Keolis | Planning (OCC), Operations (desks, Operators) | 2026-12-18 | Training sessions on prod with a test service date; quick guides |
 | A-15 | **Cutover notice**: OnBoard is the only record from 2027-01-01, based on the comparison of 12-01 → 12-15 (decision O-4) | Both | COO, on Planning's recommendation | 2026-12-18 | Letter |
 | A-16 | Keolis OCC training on flags and month complete, once they ship | Keolis | Planning | 2027-01-08 | Training session |
-| A-17 | Paper handover: the incumbent delivers every Count Sheet not yet released (at least November and December) to MVTA Planning, filed by garage and date | Incumbent | Planning | 2027-01-08 | Letter (in A-5); signed handover receipt |
-| A-18 | Remove the incumbent's guest accounts and `ridership-recorder` grants | Incumbent | MVTA IT + an access administrator | 2027-01-01 (or after December's Access entry is done, decision O-4) | OnBoard access |
+| A-17 | Paper handover: the incumbent delivers every Count Sheet not yet released (at least November and December) to MVTA Planning, filed by garage and date. December's sheets are also the handwriting sample for the scan-reading trial (spec §15) | Incumbent | Planning | 2027-01-08 | Letter (in A-5); signed handover receipt |
+| A-18 | Remove the incumbent's guest accounts and their `ridership-recorder` and Ridership Printer grants | Incumbent | MVTA IT + an access administrator | 2027-01-01 (or after December's Access entry is done, decision O-4) | OnBoard access |
 | A-19 | January reported, not assessed: share the would-be candidates with Keolis | Keolis | Compliance manager | 2027-02-12 | Letter with the January figures |
 | A-20 | First assessed month (February 2027) closed and candidates confirmed | Keolis | Compliance manager | 2027-03-12 | Contractor Performance Assessment |
 | A-21 | Monthly ridership line in the regular Keolis performance meeting: completeness, late sheets, flags, reconstructed rate | Keolis | Planning | Monthly from February 2027 | Standing agenda item |
@@ -372,11 +445,12 @@ For action A-4. Plain enough to read aloud.
 
 **What you inherit on 2027-01-01**
 
-5. Count Sheets come out of OnBoard each night, one per block, with every
-   trip on it. Your check-in desks print them and hand them out.
+5. Your check-in desks print the next day's Count Sheets from OnBoard every
+   evening, one per block and dated, and reprint any that change before the
+   morning pull-out. No photocopies: a copied sheet carries the wrong date.
 6. Operators write their name, ID and bus, then one boardings total per trip,
-   at the end of the trip, with the bus stopped. "DNO" if a trip did not
-   run. Never 0 for a trip that did not run.
+   at the end of the trip, with the bus stopped. Tick DNO if a trip did not
+   run. Write 0 only for a trip that ran empty.
 7. Your OCC staff enter every sheet in OnBoard by the **end of the next
    calendar day**. OnBoard pre-fills the Operator and bus from Avail; the
    sheet wins if they differ.
@@ -414,7 +488,9 @@ For action A-4. Plain enough to read aloud.
 
 17. A garage kiosk where Operators enter their own counts at pull-in, piloted
     at one garage no earlier than spring 2027. We will agree the work rules
-    with you first.
+    with you first. The paper still comes back, and your garage management
+    scans each day's sheets on the garage's multifunction printer, so OnBoard can check the
+    two against each other.
 18. Phones only after we consult you and amend OPR-038, and only voluntarily.
 
 **Questions to ask Keolis**
@@ -438,9 +514,11 @@ Each has a recommendation.
 | O-5 | Is the December double keying within the incumbent's scope? | Treat it as within the clause ("procedures provided by MVTA"), but raise it at A-2 and agree it in A-5 rather than discover a claim later. | It is new work in the last month of a contract. |
 | O-6 | Keolis OCC shadowing in December | Yes, if Keolis has staff in place and the incumbent agrees. Give Keolis guest accounts before shadowing. | It is the only way Keolis sees real entry before it counts. |
 | O-7 | Notice period for each transition stage (SOP decision 14) | **14 calendar days.** | Enough for training and accounts; it still lets the incumbent's notice go on 2026-11-13. |
-| O-8 | Who prints sheets: check-in desk staff with their own OnBoard accounts, or OCC printing for every garage | Check-in desk leads get guest accounts with `ridership-recorder`, one per garage per shift. | The spec gives "print sheets" to `ridership-recorder`, which only OCC staff hold, but the SOP has the desk printing. One of the two has to give. |
+| O-8 | ~~Who prints sheets~~ **Decided 2026-11-02:** each garage's check-in desk prints in the evening and reprints in the morning, under the Ridership Printer role (#483) | — | — |
 | O-9 | Paper sheets from the incumbent at contract end | Handover to MVTA Planning by **2027-01-08** (A-17). MVTA then holds them until each month is released. | Nobody at the incumbent is left to keep them, and they carry Operator names and IDs (H2). |
 | O-10 | Special events (C7) | Tell both contractors that today's practice continues unchanged, outside OPR-RID-00, until MVTA writes a rule. | Keeps C7 out of the occurrence rule until it has one. |
+| O-11 | When a garage's desk isn't staffed in the evening (SOP decision 3) | The last desk shift of the day prints. Where there is none, the morning desk prints the whole stack before the first pull-out. Tomorrow's sheets exist from 03:30 the day before. | It keeps one rule, "printed before the Operator arrives", whatever each garage's staffing turns out to be (§1.6 question 2). |
+| O-12 | Tell Keolis now about the scanning duty that comes with the kiosk (spec §15)? | Yes. Mention it at kick-off as coming (talking point 17), and put it in the work-rules consultation (A-22). | It is new daily work for Keolis's garage management. Hearing it in spring would look like scope creep. |
 
 Decisions already open elsewhere, which this briefing does not reopen: the
 remaining SOP [Decide] items (`plans/sop-drafts/03-decisions-before-issue.md`);
