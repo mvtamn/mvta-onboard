@@ -24,6 +24,19 @@ the first draft:
 
 Decision O-8 (who prints) is settled by the Ridership Printer role.
 
+**Aligned with the merged SOP drafts (#486), 2026-11-02.** The SOP session
+recorded decisions you made that this briefing had left open:
+
+- O-1: assessment follows Attachment G's Transition and Ramp-Up Periods.
+- O-4: conditional cutover, with Access kept as a fallback.
+- O-7: 14 days' notice.
+- Sheets go from the desk to OCC up to three times a day.
+- A paper sheet is produced within one business day of MVTA asking.
+- A flag raised after the 5th is answered within one business day.
+- Interlined passengers are not counted again.
+
+The sections below follow those decisions.
+
 The briefing sets out what MVTA tells its operations contractor about
 fixed-route ridership counting, in two parts:
 
@@ -48,9 +61,9 @@ and the decisions MVTA still has to make.
 draft `plans/ridership-counting-procedure-draft.md` and the build plan
 `plans/ridership-build-plan.md`. Other sources:
 
-- the SOP drafts on `claude/ridership-sop-3b06a2` (`plans/sop-drafts/`): the
-  OPR-038 amendment (01), the new SOP **OPR-RID-00** (02, a placeholder code),
-  and the decisions before issue (03);
+- the SOP drafts, merged to main as #486 (`plans/sop-drafts/`): the OPR-038
+  amendment (01), the new SOP **OPR-RID-00** (02, a placeholder code), and
+  the decisions before issue (03);
 - the reconciliation review (PR #459, gaps R1–R12);
 - the operator app design (PR #458, decisions D1–D25);
 - the kiosk evaluation and hardware notes (PRs #461, #462);
@@ -267,7 +280,7 @@ performs them from 2027-01-01 (change 3).
 - MVTA Planning compares December's totals across the two systems, by route,
   direction and day type, using the daily comparison export (build plan PR 5).
 - The deadline, completeness and reconstructed rules are **practised and
-  reported, not assessed** (OPR-RID-00, Transition step 5).
+  reported, not assessed** (OPR-RID-00, Transition step 6).
 - Flags and month close are **not yet in OnBoard** in December; they ship by
   2027-01-01 (spec §11). The incumbent keeps answering Planning's monthly
   questions by email as today.
@@ -329,10 +342,19 @@ to ask whether the double keying is in scope (decision O-5).
   confirms or dismisses it. Confirmed ones go to the Contractor Performance
   Assessment as **Incident and Data Reporting**, **$500 each**, with a
   corrective action plan after 3 or more in 30 days.
-- The first month this could apply to is **January 2027** (closed by
-  2027-02-10). The recommendation is that January is reported but **not
-  assessed**, and assessment starts with **February 2027** service (decision
-  O-1).
+- **Decided 2026-11-02** (SOP 03, decision O-1): reporting failures follow
+  **Attachment G's own Transition and Ramp-Up Periods**, counted from the
+  Cutover Date (2027-01-01):
+  - **Months 1–3 (January–March 2027):** the Transition Period. Occurrence
+    penalties are suspended for non-safety measures, so candidates are
+    raised, confirmed and reported, but not charged.
+  - **Months 4–6 (April–June 2027):** the Ramp-Up Period, charged at 50%
+    ($250 per sheet).
+  - **From July 2027:** charged in full, $500 per sheet.
+- So the first charged month is **April 2027**, closed by 2027-05-10.
+  April is also when the kiosk pilot can start at the earliest. Expect
+  Keolis to ask for the pilot garage to be treated gently, and decide that
+  before the pilot (O-13).
 
 **Scale, so both sides see it.** A weekday is about 144 blocks, so 144 sheets.
 One garage missing a day's deadline could produce dozens of occurrences, each
@@ -368,6 +390,10 @@ of it starts before the March 2027 close.
   - Scans are kept under MVTA's retention schedule, so once scanning starts,
     keeping the paper probably stops being the contractor's job. That depends
     on the retention period, which is still open.
+- **Scan-and-upload entry** is a possible third method: the desk scans
+  sheets up to three times a day and uploads them to OnBoard. It is still
+  open (SOP decision 19), and a session is building it now. If it lands
+  before the kiosk, the scanning duty above reaches Keolis earlier.
 - **The kiosk is an operator platform,** not only a ridership device. Other
   modules (vehicle condition reports, detour information) follow on the same
   sign-in (#461).
@@ -389,13 +415,13 @@ of it starts before the March 2027 close.
 MVTA owners are roles, not names. "Operations" is MVTA Operations under the
 COO; "Contracts" is whoever administers the operations contracts.
 
-Dates assume the notice period recommended in decision O-7 (14 days). Note
+Dates use the 14-day notice period (decided, #486). Note
 Thanksgiving falls on **2026-11-26**.
 
 | # | Action | Audience | Owner at MVTA | By when | Artifact |
 |---|---|---|---|---|---|
-| A-1 | Settle the SOP's open **[Decide]** items needed for issue: notice period (14), print time (3), print fallback (4), sheet trips to OCC per day (9), Contractor OCC staff (6), Attachment G route (7), and parallel-run acceptance (15) | Internal | Operations + Planning | 2026-11-06 | Decision note on the SOP draft |
-| A-1a | **Update the SOP drafts with the decided print process** before they go out: drop the packet and copier steps, add the evening print and morning reprint, name the Ridership Printer role, and replace "Did not operate" written in the row with the DNO tick box. The SOP drafts are in the ridership-sop session, which is waiting on the user | Internal | Planning + Operations | 2026-11-11 (before A-5) | Revised OPR-RID-00 and OPR-038 redline |
+| A-1 | Settle the SOP's **[Decide]** items still open before issue: whose staff the OCC are (6), the Attachment G route (7), what "accepts the Parallel Run" means (15), who gives the notices (16), the contract number (13), the SOP code (1), and scan-and-upload entry (19). Notice, printing, the print fallback and the desk-to-OCC frequency are already decided (#486) | Internal | Operations + Planning | 2026-11-06 | Decision note on the SOP draft |
+| A-1a | ~~Update the SOP drafts with the decided print process~~ **Done in #486** (merged): evening print, morning reprint, Ridership printer role, no photocopies, DNO tick box. Left: check that the Word versions in `ridership/` match before they go out | Internal | Planning + Operations | 2026-11-11 (before A-5) | Revised OPR-RID-00 and OPR-038 redline |
 | A-2 | Fact-finding meeting with the incumbent's operations and OCC leads: the eight questions in §1.6 | Incumbent | Operations | 2026-11-09 | Meeting, with notes |
 | A-3 | Confirm with Contracts whether ridership reporting failures fall under `INCIDENT_REPORTING` as written in **both** contracts, and whether the December double keying is within the incumbent's scope (decisions O-3, O-5) | Both | Contracts | 2026-11-10 | Written opinion |
 | A-4 | **Transition and kick-off meeting with Keolis** on ridership: today's process, the December run they inherit, the rules from 2027-01-01, the occurrence start, the kiosk later. Use §4's talking points | Keolis | COO, with Planning and Compliance | 2026-11-13 | Meeting, with talking points and the SOP drafts as read-ahead |
@@ -415,8 +441,8 @@ Thanksgiving falls on **2026-11-26**.
 | A-16 | Keolis OCC training on flags and month complete, once they ship | Keolis | Planning | 2027-01-08 | Training session |
 | A-17 | Paper handover: the incumbent delivers every Count Sheet not yet released (at least November and December) to MVTA Planning, filed by garage and date. December's sheets are also the handwriting sample for the scan-reading trial (spec §15) | Incumbent | Planning | 2027-01-08 | Letter (in A-5); signed handover receipt |
 | A-18 | Remove the incumbent's guest accounts and their `ridership-recorder` and Ridership Printer grants | Incumbent | MVTA IT + an access administrator | 2027-01-01 (or after December's Access entry is done, decision O-4) | OnBoard access |
-| A-19 | January reported, not assessed: share the would-be candidates with Keolis | Keolis | Compliance manager | 2027-02-12 | Letter with the January figures |
-| A-20 | First assessed month (February 2027) closed and candidates confirmed | Keolis | Compliance manager | 2027-03-12 | Contractor Performance Assessment |
+| A-19 | Transition Period (January–March 2027): confirm each month's candidates and report them to Keolis, with no charge | Keolis | Compliance manager | 2027-02-12, 03-12, 04-12 | The monthly assessment, with ridership shown and not charged |
+| A-20 | First charged month (April 2027, at 50% in the Ramp-Up Period) closed and candidates confirmed | Keolis | Compliance manager | 2027-05-12 | Contractor Performance Assessment |
 | A-21 | Monthly ridership line in the regular Keolis performance meeting: completeness, late sheets, flags, reconstructed rate | Keolis | Planning | Monthly from February 2027 | Standing agenda item |
 | A-22 | Consult Keolis on the kiosk work rules and on amending OPR-038 for phones | Keolis | Operations | Before the kiosk pilot (no earlier than April 2027) | Meeting, then a written agreement |
 
@@ -469,8 +495,9 @@ For action A-4. Plain enough to read aloud.
     plan after three or more in 30 days.
 11. MVTA's compliance manager reviews every one before it counts. A sheet the
     Operator lost and rebuilt, entered on time, is never a failure.
-12. [If decision O-1 is accepted:] January 2027 is reported to you but not
-    assessed. Assessment starts with February 2027 service.
+12. Attachment G's Transition and Ramp-Up Periods apply. January to March
+    2027 are reported to you but not charged. April to June are charged at
+    half ($250 a sheet). Full charges start in July 2027.
 
 **What we need from you, and when**
 
@@ -507,18 +534,19 @@ Each has a recommendation.
 
 | # | Decision | Recommendation | Why |
 |---|---|---|---|
-| **O-1** | **Compliance start date and grace period** | **January 2027 reported, not assessed. Assessment from service date 2027-02-01**, so the first confirmed occurrences come with the February close (by 2027-03-10). State it in the Keolis notice (A-6). | Keolis is new on 2027-01-01, with new staff, and flags and month complete ship only by 2027-01-01, so nobody can practise them in December. The deadline rule is practised in December, but by the incumbent, not Keolis. One month of shadow figures gives Keolis a fair start and gives MVTA a month to check the candidate rule on real data. *Alternative:* assess the deadline and missing sheets from 2027-01-01 and flags from February. |
+| **O-1** | ~~Compliance start date and grace period~~ **Decided 2026-11-02 (#486):** from the Cutover Date, under Attachment G's Transition Period (months 1–3, not charged) and Ramp-Up Period (months 4–6, 50%) | — | Gives a longer start than the one-month grace first recommended here, and needs no special rule for ridership. State it in the Keolis notice (A-6). |
 | O-2 | Accept the per-sheet exposure | Keep one occurrence per sheet as agreed, but **check it with Contracts before A-6**, and consider whether a day's systemic failure (OnBoard down, a whole garage late) should be treated as one occurrence. | 144 sheets a weekday at $500 each makes one bad day large. Better settled before the notice than in the first dispute. |
 | O-3 | Does `INCIDENT_REPORTING` cover ridership reporting failures as written, in **Keolis's** Attachment G? (SOP decision 7, gap C4) | Ask Contracts (A-3). If it does not, the occurrence stage waits for an amendment, and the rest goes ahead. | Without it, change 4 has no legal basis. |
-| O-4 | **Cutover on 2027-01-01 before December has closed** | Issue a conditional cutover notice on **2026-12-18** based on the comparison of the first half of December. Access stays available, but not keyed, as a fallback (OPR-RID-00 Transition step 6). The incumbent finishes keying December in Access by 2027-01-02, or Planning does. | The SOP says cutover follows acceptance of a full month, but December is not complete until after the Keolis start. Keolis is not trained on Access, so a January in Access would need training nobody has planned. |
+| O-4 | ~~Cutover before December has closed~~ **Decided 2026-11-02 (#486):** MVTA may set the Cutover Date on a partial-month comparison, and Access stays available until the full month is accepted. Still to settle: who finishes keying December in Access after 12-31. Recommended: the incumbent, by 2027-01-02 | Issue the conditional cutover notice on **2026-12-18**, based on 12-01 → 12-15 (A-15). | The SOP says cutover follows acceptance of a full month, but December is not complete until after the Keolis start. Keolis is not trained on Access, so a January in Access would need training nobody has planned. |
 | O-5 | Is the December double keying within the incumbent's scope? | Treat it as within the clause ("procedures provided by MVTA"), but raise it at A-2 and agree it in A-5 rather than discover a claim later. | It is new work in the last month of a contract. |
 | O-6 | Keolis OCC shadowing in December | Yes, if Keolis has staff in place and the incumbent agrees. Give Keolis guest accounts before shadowing. | It is the only way Keolis sees real entry before it counts. |
-| O-7 | Notice period for each transition stage (SOP decision 14) | **14 calendar days.** | Enough for training and accounts; it still lets the incumbent's notice go on 2026-11-13. |
+| O-7 | ~~Notice period~~ **Decided 2026-11-02 (#486): 14 calendar days.** | — | The incumbent's notice must go by 2026-11-17; A-5 sends it on 11-13. |
 | O-8 | ~~Who prints sheets~~ **Decided 2026-11-02:** each garage's check-in desk prints in the evening and reprints in the morning, under the Ridership Printer role (#483) | — | — |
 | O-9 | Paper sheets from the incumbent at contract end | Handover to MVTA Planning by **2027-01-08** (A-17). MVTA then holds them until each month is released. | Nobody at the incumbent is left to keep them, and they carry Operator names and IDs (H2). |
 | O-10 | Special events (C7) | Tell both contractors that today's practice continues unchanged, outside OPR-RID-00, until MVTA writes a rule. | Keeps C7 out of the occurrence rule until it has one. |
 | O-11 | When a garage's desk isn't staffed in the evening (SOP decision 3) | The last desk shift of the day prints. Where there is none, the morning desk prints the whole stack before the first pull-out. Tomorrow's sheets exist from 03:30 the day before. | It keeps one rule, "printed before the Operator arrives", whatever each garage's staffing turns out to be (§1.6 question 2). |
 | O-12 | Tell Keolis now about the scanning duty that comes with the kiosk (spec §15)? | Yes. Mention it at kick-off as coming (talking point 17), and put it in the work-rules consultation (A-22). | It is new daily work for Keolis's garage management. Hearing it in spring would look like scope creep. |
+| O-13 | The kiosk pilot garage in the first charged month | Start the pilot no earlier than April 2027 as planned. Pilot-garage sheets are excused only where the kiosk itself fails, with the paper as fallback. Write this into the pilot agreement (A-22). | The pilot and the first charged month (April, Ramp-Up) coincide. A failed submission caused by a new device shouldn't become a $250 occurrence, but an ordinary late sheet should. |
 
 Decisions already open elsewhere, which this briefing does not reopen: the
 remaining SOP [Decide] items (`plans/sop-drafts/03-decisions-before-issue.md`);
