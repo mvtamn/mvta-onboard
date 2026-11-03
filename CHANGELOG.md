@@ -5,6 +5,14 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.14] - 2026-11-02
+
+A Count Sheet's QR code names the block and date, not the copy, and migration 157 kept only a fingerprint of each printed sheet: enough to say a reprint differs, not how. Scanned sheets (the Burnsville capture pilot agreed 2026-11-02, `plans/count-sheet-scan-upload.md` decision 8) are read row by row, so each row has to map to the trip printed on it. **The REST app restarts on merge.**
+
+- **Migration 161** adds `RidershipPrintedSheets.trip_ids`: a JSON array of the GTFS trip_ids printed on the sheet, row 1 first, checked with `ISJSON`. Sheets printed earlier stay NULL.
+- **`writePrintRun`** writes it from the sheet's trips in print order, and only once the column exists, so printing keeps working until 161 is applied on dev and prod. `SCHEMA_REQUIREMENTS` lists the column, so Integrations & Data Health says when it is missing.
+- Tests: `ridership.db.contract.test.ts` applies migration 161 and checks that the evening copy and the reprint after a late tripper record their own trips in row order.
+
 ## [1.7.10] - 2026-11-02
 
 The printed Count Sheet's Trip ID column carried the 16-18 character GTFS trip_id (`t140-b1F5-sl1B-v64`), which nobody at the desk or in dispatch uses. Avail's event log and dispatch call the same trip **320-E**. MVTA's GTFS id encodes that number: its first part is the trip number in hexadecimal (0x140 = 320), and the number is the scheduled start as H:MM (3:20 AM). The block part encodes the block the same way (0x1F5 = 501). This held for all 847 Dispatch Log trips on 2026-11-01/02. **The REST app restarts on merge.**
