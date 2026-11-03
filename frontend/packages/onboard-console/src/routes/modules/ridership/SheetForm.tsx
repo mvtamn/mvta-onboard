@@ -1,5 +1,6 @@
 // One Count Sheet, laid out like the paper (spec §4): Avail's operator and bus
-// with an override, the block's trips in order with their Dispatch Log status,
+// with an override, the sheet's relief or bus change line when it is filled
+// in, the block's trips in order with their Dispatch Log status,
 // one answer per trip, unscheduled trips, and Reconstructed.
 //
 // Keyboard-first: Enter moves down the trips and then to Save; Ctrl/⌘+Enter
@@ -22,6 +23,7 @@ import {
   garageName,
   isDirty,
   isOverridden,
+  newChange,
   REASON_LABEL,
   saveFromDraft,
   timeSpan,
@@ -29,6 +31,7 @@ import {
   STATE_LABEL,
   STATE_TONE,
   type AddedDraft,
+  type ChangeDraft,
   type SheetDraft,
 } from "../../../lib/ridership.js";
 
@@ -71,6 +74,8 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
   const dirty = isDirty(sheet, draft);
   const set = (patch: Partial<SheetDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const setCell = (tripId: string, raw: string) => setDraft((current) => ({ ...current, cells: { ...current.cells, [tripId]: cellFromInput(raw) } }));
+  const setChange = (patch: Partial<ChangeDraft>) =>
+    setDraft((current) => (current.change ? { ...current, change: { ...current.change, ...patch } } : current));
   const setAdded = (key: string, patch: Partial<AddedDraft>) =>
     setDraft((current) => ({ ...current, added: current.added.map((row) => (row.key === key ? { ...row, ...patch } : row)) }));
 
@@ -100,7 +105,9 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
     if (!body) {
       setProblems(found.map((p) => p.message));
       const first = found[0]?.target;
-      const target = first?.startsWith("added:")
+      const target = first === "change"
+        ? root.current?.querySelector<HTMLSelectElement>("[data-change]")
+        : first?.startsWith("added:")
         ? root.current?.querySelector<HTMLInputElement>(`[data-added="${CSS.escape(first.slice(6))}"]`)
         : first ? root.current?.querySelector<HTMLInputElement>(`[data-trip="${CSS.escape(first)}"]`) : null;
       target?.focus();
@@ -186,6 +193,41 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
         </div>
       </fieldset>
 
+      {/* The sheet's "Relief or bus change" line: operators are assigned and buses joined on the day, after it prints. */}
+      {draft.change ? (
+        <fieldset className="ridership-who ridership-change" disabled={readOnly}>
+          <legend>Relief or bus change</legend>
+          <label>From trip
+            <select data-change value={draft.change.from_trip_id} onChange={(e) => setChange({ from_trip_id: e.target.value })}>
+              <option value="">Choose the sheet's trip #</option>
+              {sheet.trips.slice(1).map((trip, i) => (
+                <option key={trip.trip_id} value={trip.trip_id}>
+                  #{i + 2} · {clock(trip.scheduled_start_seconds)} · {trip.trip_number ? `Trip ${trip.trip_number}` : `${trip.route_label ?? "?"} ${directionLetter(trip.direction_label)}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>Operator
+            <input value={draft.change.operator_name} onChange={(e) => setChange({ operator_name: e.target.value })} />
+          </label>
+          <label>Operator ID
+            <input value={draft.change.operator_id} onChange={(e) => setChange({ operator_id: e.target.value })} />
+          </label>
+          <label>Bus
+            <input value={draft.change.bus} onChange={(e) => setChange({ bus: e.target.value })} />
+          </label>
+          <div className="ridership-source">
+            <span className="ridership-dim">Leave the operator blank for a bus swap, or the bus blank for a relief on the same bus.</span>
+            {!readOnly && <button type="button" className="ridership-link" onClick={() => set({ change: null })}>Remove</button>}
+          </div>
+        </fieldset>
+      ) : !readOnly && (
+        <p className="ridership-change-add">
+          <button type="button" className="ridership-secondary" onClick={() => set({ change: newChange(sheet) })}>Add relief or bus change</button>
+          <span className="ridership-dim"> when the sheet's relief line is filled in</span>
+        </p>
+      )}
+
       <div className="ridership-scroll"><table className="ridership-trips">
         <thead>
           <tr><th>Trip</th><th>Route</th><th>Dir</th><th>Dispatch Log</th><th className="num">Boardings</th><th /></tr>
@@ -200,6 +242,7 @@ export function SheetForm({ sheet, readOnly, onSaved, onReload, onDirtyChange, n
                 <td className="ridership-trip">
                   <span className="ridership-trip-time">{timeSpan(trip.scheduled_start_seconds, trip.scheduled_end_seconds)}</span>
                   <span className="ridership-trip-id mono" title={`Avail trip ${trip.trip_number ?? "?"} · GTFS trip ID ${trip.trip_id}`}>{trip.trip_number ? `Trip ${trip.trip_number}` : trip.trip_id}</span>
+                  {draft.change?.from_trip_id === trip.trip_id && <span className="ridership-pill is-accent">Relief or bus change from here</span>}
                 </td>
                 <td title={trip.route_short_name && trip.route_short_name !== trip.route_label ? trip.route_short_name : undefined}>{trip.route_label ?? "-"}</td>
                 <td>{directionLetter(trip.direction_label)}</td>
