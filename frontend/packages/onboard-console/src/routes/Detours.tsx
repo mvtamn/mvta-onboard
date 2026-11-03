@@ -2,8 +2,11 @@ import { Fragment, useEffect, useState } from "react";
 import {
   ApiError,
   DETOUR_STATUS_LABELS,
-  DETOUR_LIFECYCLE_LABELS,
+  DETOUR_AVAIL_RESULT_LABELS,
+  DETOUR_COMMUNICATION_STATUS_LABELS,
   DETOUR_SEVERITY_LABELS,
+  detourChannelLabel,
+  detourLifecycleLabel,
   type Detour,
   type DetourStatus,
   type DetourSeverity,
@@ -17,7 +20,8 @@ import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../config.js";
 import { detourMatchesSearch } from "../lib/detourSearch.js";
 import { actOffer, availEntryOffer } from "../lib/detourActs.js";
-import { communicationStatusLabel, COMMUNICATION_PILL, managedInLabel, nextStepLabel, readinessFlags } from "../lib/detourLabels.js";
+import { communicationStatusLabel, COMMUNICATION_PILL, managedInLabel, nextStepLabel, otherRecordStatusLabel, readinessFlags } from "../lib/detourLabels.js";
+import { apiErrorText } from "../lib/apiErrorText.js";
 import { useAppDialog } from "../components/AppDialog.js";
 import { DetourOperationalRecord } from "../components/DetourOperationalRecord.js";
 import { DetourWorkflowHistorySection } from "../components/DetourWorkflowHistorySection.js";
@@ -208,7 +212,7 @@ function detourToCloneForm(d: Detour): DetourFormState {
 // drift from any other consumer of the same data. See
 // detour-and-event-module-implementation-plan.md (Part B).
 export function Detours() {
-  const { confirm, prompt } = useAppDialog();
+  const { confirm, prompt, choose } = useAppDialog();
   const { can } = useAccess();
   // Who "Assign to me" means. The server records the signed-in principal
   // anyway; this is only so the row can offer the shortcut and hide it from
@@ -331,7 +335,7 @@ export function Detours() {
       setShowForm(false);
       load();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Save failed.";
+      const message = apiErrorText(err, "Save failed.");
       setFormError(detourSaved
         ? `The detour is saved, but not every attachment uploaded (${message}). Save again to retry the files still listed.`
         : message);
@@ -347,23 +351,34 @@ export function Detours() {
       await api.deleteDetour(d.id);
       load();
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : "Delete failed.");
+      setLoadError(apiErrorText(err, "Delete failed."));
     }
   }
 
   async function recordAvailEntry(d: Detour) {
-    const result = await prompt({ title: "Record Avail result", description: "Enter entered, conflict, or not_entered.", label: "Avail result", defaultValue: d.avail_entry_result ?? "entered", confirmLabel: "Continue", required: true });
-    if (result !== "entered" && result !== "conflict" && result !== "not_entered") return;
+    // Three buttons, one per result the server accepts. This used to ask for
+    // the stored value to be typed, and a typo did nothing at all.
+    const result = await choose({
+      title: "Record Avail result",
+      description: "What happened when this detour was entered in Avail?",
+      current: d.avail_entry_result ?? null,
+      choices: [
+        { value: "entered", label: DETOUR_AVAIL_RESULT_LABELS.entered, description: "It is in Avail. You will be asked for the Avail Detour ID." },
+        { value: "conflict", label: DETOUR_AVAIL_RESULT_LABELS.conflict, description: "Avail would not take it. Retry later, or run it manually." },
+        { value: "not_entered", label: DETOUR_AVAIL_RESULT_LABELS.not_entered, description: "Nobody has built it in Avail yet." },
+      ],
+    });
+    if (result === null) return;
     const offer = actOffer(d, `avail_entry.${result}`);
     if (!offer.enabled) {
-      setLoadError(offer.reason ?? `An Avail result of ${result.replace("_", " ")} cannot be recorded for this detour now.`);
+      setLoadError(offer.reason ?? `"${DETOUR_AVAIL_RESULT_LABELS[result]}" cannot be recorded for this detour now.`);
       return;
     }
     const externalId = result === "entered"
       ? await prompt({ title: "Record Avail Detour ID", label: "Avail Detour ID", defaultValue: d.external_detour_id ?? "", confirmLabel: "Continue", required: true })
       : null;
     if (result === "entered" && !externalId?.trim()) return;
-    const detail = await prompt({ title: "Add entry details", label: "Details", placeholder: "Optional entry or conflict details", confirmLabel: "Save result", multiline: true }) || null;
+    const detail = await prompt({ title: "Add entry details", label: "Details", placeholder: result === "conflict" ? "Optional - what Avail said when it refused" : "Optional entry details", confirmLabel: "Save result", multiline: true }) || null;
     try {
       await api.recordAvailEntry(d.id, {
         result,
@@ -372,34 +387,34 @@ export function Detours() {
       });
       load();
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : "Could not record the Avail entry.");
+      setLoadError(apiErrorText(err, "Could not record the Avail result."));
     }
   }
 
   async function useManualFallback(d: Detour) {
-    const reason = await prompt({ title: "Use manual fulfillment", label: "Reason", placeholder: "Why is this detour being fulfilled manually instead of in Avail?", confirmLabel: "Use manual fulfillment", multiline: true, required: true });
+    const reason = await prompt({ title: "Run it manually instead", description: "Avail refused this detour. Operations and operators will carry out the reviewed instructions without Avail.", label: "Reason", placeholder: "Why is this detour being run manually instead of in Avail?", confirmLabel: "Run it manually", multiline: true, required: true });
     if (!reason?.trim()) return;
     try {
       await api.changeDetourFulfillment(d.id, { fulfillment_mode: "fixed_route_manual", reason: reason.trim() });
       load();
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : "Could not change fulfillment path");
+      setLoadError(apiErrorText(err, "Could not switch this detour to running manually."));
     }
   }
 
   async function overrideConflict(d: Detour) {
     const names = (d.conflicts ?? []).map((c) => `${c.label} (${c.shared.join(", ")})`).join("; ");
-    const reason = await prompt({ title: "Override detour conflict", description: `Conflicts with ${names}. Explain why this Detour should proceed anyway; the reason and the conflicts are kept in the audit.`, label: "Override reason", placeholder: "e.g. Different stops on the same route; both can run", confirmLabel: "Record override", multiline: true, required: true });
+    const reason = await prompt({ title: "Override the overlap", description: `This detour overlaps ${names}. Explain why it should go ahead anyway; the reason and the overlapping detours are kept in the audit.`, label: "Override reason", placeholder: "e.g. Different stops on the same route; both can run", confirmLabel: "Record override", multiline: true, required: true });
     if (!reason?.trim()) return;
     try { await api.overrideDetourConflict(d.id, reason.trim()); load(); }
-    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not record the override"); }
+    catch (err) { setLoadError(apiErrorText(err, "Could not record the override")); }
   }
 
   // Taking a Detour, handing it on, or putting it back. Ownership says who acts
   // next; it is not a state, so nothing else about the Detour moves.
   async function assignToMe(d: Detour) {
     try { await api.assignDetour(d.id, me || null); load(); }
-    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not assign this detour"); }
+    catch (err) { setLoadError(apiErrorText(err, "Could not assign this detour")); }
   }
 
   async function assignToSomeone(d: Detour) {
@@ -412,21 +427,21 @@ export function Detours() {
     });
     if (owner === null) return;
     try { await api.assignDetour(d.id, owner.trim() || null); load(); }
-    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not assign this detour"); }
+    catch (err) { setLoadError(apiErrorText(err, "Could not assign this detour")); }
   }
 
   async function completeReview(d: Detour) {
     const notes = await prompt({ title: "Mark OCC re-review complete", description: d.review_reason ?? undefined, label: "Review notes", placeholder: "Optional - what was checked or changed", confirmLabel: "Review complete", multiline: true });
     if (notes === null) return;
     try { await api.completeDetourReview(d.id, notes.trim() || null); load(); }
-    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not complete the review"); }
+    catch (err) { setLoadError(apiErrorText(err, "Could not complete the review")); }
   }
 
   async function closeDetour(d: Detour) {
     const reason = await prompt({ title: "Close detour", label: "Closure reason", placeholder: "Why is this detour being closed?", confirmLabel: "Close detour", multiline: true, required: true });
     if (!reason?.trim()) return;
     try { await api.closeDetour(d.id, reason.trim()); load(); }
-    catch (err) { setLoadError(err instanceof ApiError ? err.message : "Could not close detour"); }
+    catch (err) { setLoadError(apiErrorText(err, "Could not close detour")); }
   }
 
   function updateSegment(i: number, field: keyof DetourSegmentInput, value: string) {
@@ -567,11 +582,13 @@ export function Detours() {
                 </div>
                 <div className="field-grid">
                   <div>
-                    <p className="field-label">Approved by</p>
-                    <input className="f" value={form.approved_by} onChange={(e) => setForm((f) => ({ ...f, approved_by: e.target.value }))} placeholder="Sign-off, if applicable" />
+                    {/* Not OCC approval: that is accepting the intake (ADR-0030).
+                        This is an outside party's sign-off, kept as a fact. */}
+                    <p className="field-label">External sign-off by <span className="hint">(e.g. city permit)</span></p>
+                    <input className="f" value={form.approved_by} onChange={(e) => setForm((f) => ({ ...f, approved_by: e.target.value }))} placeholder="Who signed it off outside MVTA, if anyone" />
                   </div>
                   <div>
-                    <p className="field-label">Approved at</p>
+                    <p className="field-label">External sign-off at</p>
                     <input className="f" type="datetime-local" value={form.approved_at} onChange={(e) => setForm((f) => ({ ...f, approved_at: e.target.value }))} />
                   </div>
                 </div>
@@ -663,7 +680,7 @@ export function Detours() {
                         {canWrite && d.lifecycle_state !== "closed" ? (
                           <div onClick={(e) => e.stopPropagation()} className="detour-assign">
                             {d.workflow_owner === me ? null : <button className="btn-link" onClick={() => void assignToMe(d)}>Assign to me</button>}
-                            <button className="btn-link" onClick={() => void assignToSomeone(d)}>{d.workflow_owner ? "Reassign" : "Someone else"}</button>
+                            <button className="btn-link" onClick={() => void assignToSomeone(d)}>{d.workflow_owner ? "Reassign" : "Assign to…"}</button>
                           </div>
                         ) : null}
                         {readinessFlags(d).map((flag) => (
@@ -680,10 +697,10 @@ export function Detours() {
                           <button className="btn-sm" onClick={() => openEditForm(d)}>Edit</button>
                           <button
                             className="btn-sm"
-                            title="Start a new detour pre-filled from this one, with blank dates"
+                            title="Detour re-establishment: start a new detour pre-filled from this one, with blank dates"
                             onClick={() => openCloneForm(d)}
                           >
-                            Clone
+                            Re-establish
                           </button>
                           {canDelete ? (
                             <button className="btn-sm danger" onClick={() => remove(d)}>Delete</button>
@@ -699,16 +716,16 @@ export function Detours() {
                               <p><b>Internal ref:</b> {d.internal_number}</p>
                             ) : null}
                             {d.lifecycle_state ? (
-                              <p><b>Workflow:</b> {DETOUR_LIFECYCLE_LABELS[d.lifecycle_state]}</p>
+                              <p><b>Workflow:</b> {detourLifecycleLabel(d.lifecycle_state, d.fulfillment_mode)}</p>
                             ) : null}
                             {d.readiness ? (
                               <p><b>Next step:</b> {nextStepLabel(d.readiness)}</p>
                             ) : null}
-                            {d.communication_status ? <p><b>Communications:</b> {d.communication_status.replace("_", " ")}</p> : null}
+                            {d.communication_status ? <p><b>Communications:</b> {communicationStatusLabel(d)}</p> : null}
                             {d.conflicts?.length ? (
                               <p className={d.conflict_status === "overridden" ? "td-dim" : "warn-note"}>
-                                <b>{d.conflict_status === "overridden" ? "Conflict overridden:" : "Conflicts with another open Detour:"}</b>{" "}
-                                {d.conflicts.map((c) => `${c.label} · ${c.status.replace(/_/g, " ")} · ${c.start_date || "open"} → ${c.end_date || "open"} · shares ${c.shared.join(", ")}`).join("; ")}
+                                <b>{d.conflict_status === "overridden" ? "Overlap overridden:" : "Overlaps another open detour:"}</b>{" "}
+                                {d.conflicts.map((c) => `${c.label} · ${otherRecordStatusLabel(c)} · ${c.start_date || "open"} → ${c.end_date || "open"} · shares ${c.shared.join(", ")}`).join("; ")}
                                 {d.conflict_status === "overridden"
                                   ? ` — ${d.conflict_override_reason} (${d.conflict_override_by}${d.conflict_override_at ? `, ${dateTimeLabel(d.conflict_override_at)}` : ""})`
                                   : canWrite && actOffer(d, "override_conflict").enabled ? <> <button className="btn-sm" onClick={() => overrideConflict(d)}>Override with reason</button></> : null}
@@ -723,20 +740,20 @@ export function Detours() {
                             {canWrite && actOffer(d, "close").enabled ? <p><button className="btn-sm" onClick={() => closeDetour(d)}>Close detour</button></p> : null}
                             <DetourOperationalRecord detour={d} />
                             {d.fulfillment_mode === "avail" && d.avail_entry_result ? (
-                              <p><b>Avail entry:</b> {d.avail_entry_result.replace("_", " ")}
+                              <p><b>Avail result:</b> {DETOUR_AVAIL_RESULT_LABELS[d.avail_entry_result]}
                                 {d.external_detour_id ? ` · ID ${d.external_detour_id}` : ""}
                                 {d.avail_entry_confirmed_by ? ` · ${d.avail_entry_confirmed_by}` : ""}
                               </p>
                             ) : null}
                             {canWrite && availEntryOffer(d).show ? (
                               <p>
-                                <button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record human Avail entry</button>
+                                <button className="btn-sm" onClick={() => recordAvailEntry(d)}>Record Avail result</button>
                                 {availEntryOffer(d).entered.reason ? <span className="td-dim"> Confirming it as entered: {availEntryOffer(d).entered.reason}</span> : null}
                               </p>
                             ) : null}
                             {canWrite && actOffer(d, "manual_fallback").show ? (
                               <p>
-                                <button className="btn-sm" disabled={!actOffer(d, "manual_fallback").enabled} onClick={() => useManualFallback(d)}>Use fixed-route manual exception</button>
+                                <button className="btn-sm" disabled={!actOffer(d, "manual_fallback").enabled} onClick={() => useManualFallback(d)}>Run it manually instead</button>
                                 {actOffer(d, "manual_fallback").reason ? <span className="td-dim"> {actOffer(d, "manual_fallback").reason}</span> : null}
                               </p>
                             ) : null}
@@ -784,7 +801,7 @@ export function Detours() {
                                 ) : null}
                                 {d.approved_by || d.approved_at ? (
                                   <p className="td-dim">
-                                    Approved by {d.approved_by || "—"}
+                                    External sign-off: {d.approved_by || "—"}
                                     {d.approved_at ? ` · ${dateTimeLabel(d.approved_at)}` : ""}
                                   </p>
                                 ) : null}
@@ -903,6 +920,8 @@ function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourCha
   // failing at the server. Undefined on an older server, where Send behaves
   // as it used to.
   const sendBlock = detourSendBlock(plan);
+  // The server's name for a channel, or the shared mirror before its list loads.
+  const channelName = (value: string) => channelOptions.find((o) => o.channel === value)?.label ?? detourChannelLabel(value);
   const emailable = channel.toLowerCase() === "email" && recipients.trim() !== "" && content.trim() !== "";
 
   function startDraft(forAudience: string, forChannel?: string) {
@@ -940,7 +959,7 @@ function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourCha
       setNewAudience("");
       onDetourChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the audience");
+      setError(apiErrorText(err, "Could not add the audience"));
     } finally { setSaving(false); }
   }
 
@@ -954,17 +973,17 @@ function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourCha
         content,
       });
       setContent(""); setRecipients(""); await load();
-    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save communication"); }
+    } catch (err) { setError(apiErrorText(err, "Could not save communication")); }
     finally { setSaving(false); }
   }
   async function sendByServer(communication: import("@mvta/shared").DetourCommunication) {
     setError(null);
     try { await api.publishDetourCommunication(detour.id, communication.id, undefined, true); await load(); }
-    catch (err) { setError(err instanceof ApiError ? err.message : "Could not send communication"); await load(); }
+    catch (err) { setError(apiErrorText(err, "Could not send communication")); await load(); }
   }
   async function publish(communication: import("@mvta/shared").DetourCommunication) {
     const option = channelOptions.find((o) => o.channel === communication.channel);
-    const label = option?.label ?? communication.channel;
+    const label = option?.label ?? detourChannelLabel(communication.channel);
     const outcome = communication.channel === "email" && communication.recipients
       ? `Sent by email to ${communication.recipients}`
       : `Sent via ${label}`;
@@ -972,7 +991,7 @@ function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourCha
     // now, which is right for something being marked as it happens.
     const occurred = occurredOn ? new Date(`${occurredOn}T12:00:00`).toISOString() : undefined;
     try { await api.publishDetourCommunication(detour.id, communication.id, outcome, false, occurred); setOccurredOn(""); await load(); }
-    catch (err) { setError(err instanceof ApiError ? err.message : "Could not record communication"); }
+    catch (err) { setError(apiErrorText(err, "Could not record communication")); }
   }
 
   return <div className="subcard" style={{ marginTop: "8px" }}>
@@ -997,9 +1016,9 @@ function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourCha
               type="button"
               className={`comm-channel-mark is-${state.progress}`}
               disabled={!canWrite || Boolean(item.eligibility && !item.eligibility.may_draft)}
-              title={item.eligibility && !item.eligibility.may_draft ? sendBlock?.sentence : `${state.progress === "published" ? "Published" : state.progress === "draft" ? "Drafted" : "Nothing yet"} · ${state.channel}`}
+              title={item.eligibility && !item.eligibility.may_draft ? sendBlock?.sentence : `${state.progress === "published" ? "Published" : state.progress === "draft" ? "Drafted" : "Nothing yet"} · ${channelName(state.channel)}`}
               onClick={() => startDraft(item.audience, state.channel)}
-            >{state.progress === "published" ? "✓" : state.progress === "draft" ? "◐" : "○"} {state.channel}</button>)}
+            >{state.progress === "published" ? "✓" : state.progress === "draft" ? "◐" : "○"} {channelName(state.channel)}</button>)}
           </span>}
         </li>)}</ul>
         {canWrite && <div className="comm-add-audience">
@@ -1018,7 +1037,7 @@ function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourCha
       </div>
     ) : <p className="td-dim">The record names no required audiences; communications here are recorded but do not change its communication status.</p>}
     {communications.map((communication) => <p key={communication.id}>
-      <b>{communication.audience} · {communication.channel}:</b> {communication.status}
+      <b>{communication.audience} · {channelName(communication.channel)}:</b> {DETOUR_COMMUNICATION_STATUS_LABELS[communication.status] ?? communication.status}
       {communication.recipients ? ` · ${communication.recipients}` : ""}
       {communication.published_by ? <span className="td-dim"> · {communication.published_by}{communication.published_at ? ` ${dateTimeLabel(communication.published_at)}` : ""}</span> : null}
       {communication.occurred_at && communication.published_at && communication.occurred_at.slice(0, 10) !== communication.published_at.slice(0, 10)
@@ -1033,11 +1052,11 @@ function DetourCommunicationsSection({ detour, contractor, canWrite, onDetourCha
       <SentCopy communication={communication} />
       {canWrite && (communication.status === "draft" || communication.status === "failed") ? (() => {
         const option = channelOptions.find((o) => o.channel === communication.channel);
-        const { canSend: serverSend, isRecorded: recorded, recordLabel, blocked } =
-          communicationAction(communication, option, sendBlock?.sentence);
+        const { canSend: serverSend, sendLabel, isRecorded: recorded, recordLabel, blocked } =
+          communicationAction(communication, option, sendBlock, detour);
         const ch = communication.channel;
         return <>
-          {serverSend ? <> {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked) || communication.delivery_status === "queued"} onClick={() => void sendByServer(communication)}>{communication.status === "failed" ? "Retry send" : ch === "teams" ? "Post to Teams" : "Send email"}</button></> : null}
+          {serverSend ? <> {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked) || communication.delivery_status === "queued"} onClick={() => void sendByServer(communication)}>{sendLabel}</button></> : null}
           {ch === "email" && communication.recipients && !blocked ? <> {" "}<a className="btn-sm" href={mailtoLink(communication.recipients.split(/[,;\s]+/).filter(Boolean), communicationSubject(detour), communication.content)}>Open in email</a></> : null}
           {recorded ? <> {" "}<label className="td-dim">Went out<input type="date" value={occurredOn} max={todayInputValue()} onChange={(e) => setOccurredOn(e.target.value)} style={{ marginLeft: 4 }} /></label></> : null}
           {" "}<button className="btn-sm" title={blocked} disabled={Boolean(blocked)} onClick={() => publish(communication)}>

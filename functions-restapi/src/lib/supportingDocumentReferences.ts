@@ -29,6 +29,18 @@ export function isInlineImageMime(mime: string): boolean {
   return lower === "image/png" || lower === "image/jpeg";
 }
 
+/**
+ * What the console can show in place rather than send someone to SharePoint
+ * for. Wider than isInlineImageMime on purpose: a QRG is commonly a one-page
+ * PDF, and an author reviewing guidance seeded from one has to be able to read
+ * it beside the Draft. This governs DISPLAY only - what a Visual rendition may
+ * be is still PNG or JPEG, decided by isInlineImageMime above, and widening
+ * display must not widen that.
+ */
+export function isInlinePreviewMime(mime: string): boolean {
+  return isInlineImageMime(mime) || mime.toLowerCase() === "application/pdf";
+}
+
 /** Why a set of references cannot be saved, with the status the handler answers. */
 export class ReferenceRefusal extends Error {
   constructor(readonly status: 400 | 409 | 503, message: string) {

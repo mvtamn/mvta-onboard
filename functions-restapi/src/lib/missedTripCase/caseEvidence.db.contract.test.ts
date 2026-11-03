@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import { parseConnectionString, sql } from "../db";
 import { operatedSql, operatedStartAt } from "./adapters/gtfs";
 import { readCaseEvidence } from "./caseEvidence";
+import { readDeadZoneBar, readFirstStopRecords } from "./deadZone";
 
 // The case evidence read against a real SQL Server. caseEvidence.test.ts covers
 // what the readings mean; this covers what only the database can show:
@@ -22,13 +23,14 @@ const DROP = `
 IF OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL DROP TABLE dbo.MonitoredMissedTrips;
 IF OBJECT_ID('dbo.TripStartLog','U') IS NOT NULL DROP TABLE dbo.TripStartLog;
 IF OBJECT_ID('dbo.GtfsTripOperationalEvidence','U') IS NOT NULL DROP TABLE dbo.GtfsTripOperationalEvidence;
+IF OBJECT_ID('dbo.AppSettings','U') IS NOT NULL DROP TABLE dbo.AppSettings;
 `;
 
 const CREATE = `
 CREATE TABLE dbo.MonitoredMissedTrips (
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL,
   scheduled_departure_at DATETIME2 NOT NULL, grace_deadline_at DATETIME2 NOT NULL,
-  detection_type NVARCHAR(30) NULL,
+  detection_type NVARCHAR(30) NULL, data_quality_status NVARCHAR(30) NOT NULL DEFAULT 'experimental',
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date)
 );
 CREATE TABLE dbo.TripStartLog (
@@ -60,6 +62,7 @@ interface Seed {
   reported?: Date | null;
   underway?: Date | null;
   isCase?: boolean;
+  quality?: string;
 }
 
 async function seed(pool: sql.ConnectionPool, s: Seed): Promise<void> {
@@ -69,15 +72,16 @@ async function seed(pool: sql.ConnectionPool, s: Seed): Promise<void> {
     .input("block", sql.NVarChar(100), s.block ?? null).input("stop", sql.NVarChar(100), s.stop ?? null)
     .input("scheduled", sql.DateTime2, s.scheduled).input("actual", sql.DateTime2, s.actual ?? null)
     .input("source", sql.NVarChar(20), s.source ?? null).input("predicted", sql.DateTime2, s.predicted ?? null)
-    .input("reported", sql.DateTime2, s.reported ?? null).input("underway", sql.DateTime2, s.underway ?? null);
+    .input("reported", sql.DateTime2, s.reported ?? null).input("underway", sql.DateTime2, s.underway ?? null)
+    .input("quality", sql.NVarChar(30), s.quality ?? "experimental");
   await req.query(`
     INSERT dbo.TripStartLog (service_date, trip_id, block_id, origin_stop_id, origin_stop_name, scheduled_start_at, actual_start_at, actual_start_source, predicted_start_at)
     VALUES (@day, @trip, @block, @stop, CASE WHEN @stop IS NULL THEN NULL ELSE N'Savage Park & Ride' END, @scheduled, @actual, @source, @predicted);
     IF @reported IS NOT NULL OR @underway IS NOT NULL
       INSERT dbo.GtfsTripOperationalEvidence (trip_id, service_date, vehicle_id, first_vehicle_position_at, first_underway_at)
       VALUES (@trip, @day, N'4265', @reported, @underway);
-    ${s.isCase === false ? "" : `INSERT dbo.MonitoredMissedTrips (trip_id, service_date, scheduled_departure_at, grace_deadline_at, detection_type)
-      VALUES (@trip, @day, @scheduled, DATEADD(MINUTE, 30, @scheduled), N'silent_no_show');`}
+    ${s.isCase === false ? "" : `INSERT dbo.MonitoredMissedTrips (trip_id, service_date, scheduled_departure_at, grace_deadline_at, detection_type, data_quality_status)
+      VALUES (@trip, @day, @scheduled, DATEADD(MINUTE, 30, @scheduled), N'silent_no_show', @quality);`}
   `);
 }
 
@@ -108,6 +112,10 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       // Other days at the same stop count toward its record.
       { trip: "EARLIER1", day: "20261009", stop: "S1", scheduled: at("22:30:00", "2026-10-09"), underway: at("23:05:00", "2026-10-09"), reported: at("22:00:00", "2026-10-09") },
       { trip: "EARLIER2", day: "20261002", stop: "S1", scheduled: at("22:30:00", "2026-10-02"), actual: at("22:52:00", "2026-10-02"), source: "trip_update", predicted: at("22:50:00", "2026-10-02"), reported: at("22:40:00", "2026-10-02") },
+      // Cases the evidence could not judge: retired, and raised while the feed
+      // was down. Neither ran, and neither may count against the stop.
+      { trip: "RETIRED", day: "20260909", stop: "S1", scheduled: at("22:30:00", "2026-09-09"), quality: "legacy_unverified" },
+      { trip: "FEEDGAP", day: "20260910", stop: "S1", scheduled: at("22:30:00", "2026-09-10"), quality: "unknown_data_gap" },
       // A block-mate that is not a case, with a bus; another stop's case.
       { trip: "BLOCKMATE", block: "B14C", stop: "S2", scheduled: at("20:00:00"), reported: at("19:50:00"), isCase: false },
       { trip: "ELSEWHERE", stop: "S2", scheduled: at("15:00:00") },
@@ -148,9 +156,39 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       assert.deepEqual(e.vehicle, { reported_at: "2026-10-16T22:20:00.000Z", underway_at: "2026-10-16T23:09:30.000Z", vehicle_id: "4265" });
       // DEPARTED, ECHO and BLOCKMATE run block B14C that day; ECHO had no bus.
       assert.deepEqual(e.block, { block_id: "B14C", trips: 3, trips_reported: 2 });
-      // Nine cases at S1 across three days; DEPARTED, UNDERWAY, EARLIER1 and
-      // EARLIER2 ran. Leaving DEPARTED out: 8 others, 3 of them ran.
+      // Nine judgeable cases at S1 across three days (RETIRED and FEEDGAP are
+      // left out); DEPARTED, UNDERWAY, EARLIER1 and EARLIER2 ran. Leaving
+      // DEPARTED out: 8 others, 3 of them ran.
       assert.deepEqual(e.origin_stop, { stop_id: "S1", name: "Savage Park & Ride", other_cases: 8, other_cases_ran: 3, likely_dead_zone: false });
+    });
+
+    await t.test("a retired case is judged against the stop's whole record, not one short of it", async () => {
+      const evidence = await readCaseEvidence(pool, [{ trip_id: "RETIRED", service_date: "20260909", scheduled_departure_at: at("22:30:00", "2026-09-09"), grace_deadline_at: at("23:00:00", "2026-09-09") }]);
+      assert.deepEqual(evidence.get("RETIRED|20260909")?.origin_stop, { stop_id: "S1", name: "Savage Park & Ride", other_cases: 9, other_cases_ran: 4, likely_dead_zone: false });
+    });
+
+    await t.test("every first stop's record counts its judged cases, most first", async () => {
+      const stops = await readFirstStopRecords(pool);
+      // S1: nine judged cases, four ran (RETIRED and FEEDGAP left out).
+      // S2: ELSEWHERE, which never started; BLOCKMATE is not a case.
+      assert.deepEqual(stops, [
+        { stop_id: "S1", name: "Savage Park & Ride", cases: 9, ran: 4 },
+        { stop_id: "S2", name: "Savage Park & Ride", cases: 1, ran: 0 },
+      ]);
+    });
+
+    await t.test("the bar is the default until migration 155's settings exist, then theirs", async () => {
+      assert.deepEqual(await readDeadZoneBar(pool), { ran_percent: 80, min_cases: 5, configured: false });
+      await pool.request().batch(`
+        CREATE TABLE dbo.AppSettings (module NVARCHAR(50) NOT NULL, setting_key NVARCHAR(100) NOT NULL, setting_value NVARCHAR(500) NOT NULL);
+        INSERT dbo.AppSettings VALUES (N'missed_trip', N'dead_zone_ran_percent', N'50'), (N'missed_trip', N'dead_zone_min_cases', N'3'),
+                                      (N'detour', N'dead_zone_ran_percent', N'99');`);
+      assert.deepEqual(await readDeadZoneBar(pool), { ran_percent: 50, min_cases: 3, configured: true });
+      // And the case read uses it: a retired case at S1 sees 4 of 9 ran, under 50%.
+      const evidence = await readCaseEvidence(pool, [{ trip_id: "RETIRED", service_date: "20260909", scheduled_departure_at: at("22:30:00", "2026-09-09"), grace_deadline_at: at("23:00:00", "2026-09-09") }]);
+      assert.equal(evidence.get("RETIRED|20260909")?.origin_stop?.likely_dead_zone, false);
+      await pool.request().query("UPDATE dbo.AppSettings SET setting_value = N'40' WHERE module = N'missed_trip' AND setting_key = N'dead_zone_ran_percent'");
+      assert.equal((await readDeadZoneBar(pool)).ran_percent, 80, "a value outside the declared range is not trusted");
     });
 
     await t.test("a case the Dispatch Log never logged comes back with nothing to say", async () => {

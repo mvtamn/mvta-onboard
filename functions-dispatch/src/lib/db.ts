@@ -6,7 +6,7 @@ import sql from "mssql";
 
 let poolPromise: Promise<sql.ConnectionPool> | null = null;
 
-function parseConnectionString(connectionString: string): sql.config {
+export function parseConnectionString(connectionString: string): sql.config {
   const parts: Record<string, string> = {};
   connectionString.split(";").forEach((segment) => {
     const idx = segment.indexOf("=");
@@ -18,18 +18,30 @@ function parseConnectionString(connectionString: string): sql.config {
 
   const serverRaw = (parts["server"] || "").replace(/^tcp:/i, "");
   const [server, portStr] = serverRaw.split(",");
-
-  return {
+  const base = {
     server,
     port: portStr ? parseInt(portStr, 10) : 1433,
     database: parts["database"],
-    user: parts["user id"] || parts["uid"],
-    password: parts["password"] || parts["pwd"],
     options: {
       encrypt: (parts["encrypt"] || "true").toLowerCase() === "true",
       trustServerCertificate: (parts["trustservercertificate"] || "false").toLowerCase() === "true",
     },
   };
+
+  // "Authentication=Active Directory Default" signs in as the app's managed
+  // identity, with no password - see functions-restapi/src/lib/db.ts.
+  const authentication = (parts["authentication"] || "").toLowerCase();
+  if (authentication === "active directory default") {
+    return { ...base, authentication: { type: "azure-active-directory-default", options: {} } };
+  }
+  if (authentication && authentication !== "sql password") {
+    throw new Error(
+      `SQL_CONNECTION_STRING has Authentication=${parts["authentication"]}; ` +
+        'only "Active Directory Default" and "Sql Password" are supported.',
+    );
+  }
+
+  return { ...base, user: parts["user id"] || parts["uid"], password: parts["password"] || parts["pwd"] };
 }
 
 export function getPool(): Promise<sql.ConnectionPool> {

@@ -1,0 +1,118 @@
+/* Ridership: the Enter sheets worklist and Count Sheet form, Print sheets, and Ridership setup. */
+.ridership-entry, .ridership-print { display: flex; flex-direction: column; gap: 12px; color: var(--text); }
+.ridership-entry .mono, .ridership-setup .mono, .ridership-print .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+.ridership-entry .num { text-align: right; }
+.ridership-dim { color: var(--text-muted); font-size: 0.88em; }
+.ridership-eyebrow { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.ridership-big { font-size: 1.9rem; font-weight: 700; line-height: 1.2; }
+.ridership-entry input, .ridership-entry select, .ridership-setup input, .ridership-setup select, .ridership-print input, .ridership-print select {
+  font: inherit; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-bg); color: var(--text);
+}
+.ridership-entry input:disabled { background: var(--surface-alt-bg); }
+.ridership-entry label, .ridership-setup label, .ridership-print label { display: flex; flex-direction: column; gap: 3px; font-size: 0.8rem; color: var(--text-dim); }
+.ridership-entry label.ridership-check, .ridership-print label.ridership-check { flex-direction: row; align-items: center; gap: 6px; font-size: 0.88rem; color: var(--text); }
+.ridership-inline { display: inline-flex; gap: 6px; align-items: center; }
+.ridership-short { width: 80px; }
+.ridership-link { background: none; border: none; color: var(--brand-green-text); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+.ridership-link:disabled { color: var(--text-muted); cursor: default; text-decoration: none; }
+.ridership-primary { background: var(--brand-green); color: #fff; border: none; border-radius: 4px; padding: 7px 14px; cursor: pointer; font: inherit; font-weight: 600; }
+.ridership-primary:hover:not(:disabled) { background: var(--brand-green-hover); }
+.ridership-primary:disabled { opacity: 0.6; cursor: default; }
+.ridership-primary:focus-visible, .ridership-secondary:focus-visible, .ridership-garage:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ridership-secondary { background: var(--surface-bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 4px; padding: 5px 12px; cursor: pointer; font: inherit; }
+kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8em; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--surface-alt-bg); }
+
+.ridership-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600; white-space: nowrap; margin-right: 4px; }
+.ridership-pill.is-ok { background: var(--pill-success-bg); color: var(--pill-success-fg); }
+.ridership-pill.is-warn { background: var(--pill-warning-bg); color: var(--pill-warning-fg); }
+.ridership-pill.is-bad { background: var(--pill-danger-bg); color: var(--pill-danger-fg); }
+.ridership-pill.is-accent { background: var(--pill-accent-bg); color: var(--pill-accent-fg); }
+.ridership-pill.is-muted { background: var(--pill-muted-bg); color: var(--pill-muted-fg); }
+
+.ridership-toast { background: var(--success-bg); color: var(--success-text); border-radius: 6px; padding: 8px 12px; margin: 0; }
+.ridership-problems { background: var(--pill-danger-bg); color: var(--pill-danger-fg); border-radius: 6px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ridership-problems p { margin: 0; }
+
+/* worklist */
+.ridership-garages { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.ridership-garage { display: flex; flex-direction: column; gap: 2px; text-align: left; background: var(--surface-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; cursor: pointer; font: inherit; color: var(--text); }
+.ridership-garage.is-bad { border-color: var(--pill-danger-fg); }
+.ridership-garage.is-active { box-shadow: inset 0 0 0 2px var(--brand-green); }
+.ridership-toolbar { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+.ridership-scan input { width: 280px; max-width: 100%; }
+.ridership-list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ridership-list-head h3 { margin: 0; font-size: 1rem; }
+.ridership-scroll { overflow-x: auto; max-width: 100%; }
+.ridership-list, .ridership-trips { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.ridership-list th, .ridership-trips th { text-align: left; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); border-bottom: 1px solid var(--border); padding: 6px; }
+.ridership-list td, .ridership-trips td { padding: 5px 6px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+.ridership-entry .ridership-list tbody tr { cursor: pointer; }
+.ridership-list tbody tr.is-cursor { background: var(--highlight-bg); box-shadow: inset 3px 0 0 var(--brand-green); }
+.ridership-list tbody tr.is-changed { background: var(--highlight-bg); }
+.ridership-keys { margin: 0; }
+.ridership-done ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; }
+
+/* sheet form */
+.ridership-paper { max-width: 820px; }
+.ridership-form { background: var(--surface-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.ridership-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ridership-step { display: inline-flex; gap: 14px; }
+.ridership-form-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.ridership-form-head h3 { margin: 2px 0 0; font-size: 1.3rem; }
+.ridership-who { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; align-items: end; border: none; padding: 0; margin: 0; }
+.ridership-source { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.ridership-runs { display: inline-flex; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-dim); }
+.ridership-change { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.ridership-change label > input, .ridership-change label > select { width: 100%; min-width: 0; box-sizing: border-box; }
+.ridership-change legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+.ridership-change-add { margin: 10px 0 0; }
+.ridership-trips td.num input { width: 72px; text-align: right; font-size: 1rem; }
+.ridership-trips td.num input.is-letter { font-weight: 700; color: var(--pill-warning-fg); }
+.ridership-trips tr.is-excused td { color: var(--text-muted); }
+.ridership-trips tr.is-added td { background: var(--surface-alt-bg); }
+.ridership-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.ridership-add-open { align-self: flex-start; }
+.ridership-form-foot { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+
+/* setup */
+.ridership-setup { display: flex; flex-direction: column; gap: 12px; }
+.ridership-garage-table { max-width: 640px; }
+.ridership-garage-table select { width: 180px; }
+.ridership-garage-table .ridership-pick { width: 32px; }
+.ridership-garage-table .ridership-pick input { width: auto; }
+.ridership-garage-table tr.is-selected td { background: var(--pill-accent-bg); }
+.ridership-garage-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.ridership-garage-counts button { font: inherit; font-size: 0.88rem; padding: 4px 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-bg); color: var(--text); cursor: pointer; }
+.ridership-garage-counts button.is-warn { background: var(--pill-warning-bg); color: var(--pill-warning-fg); border-color: transparent; }
+.ridership-garage-counts button[aria-pressed="true"] { outline: 2px solid var(--brand-green); outline-offset: 1px; }
+.ridership-bulk { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; max-width: 640px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-alt-bg); }
+.ridership-bulk input { width: 160px; }
+.ridership-setup .ridership-form-foot, .ridership-setup .ridership-toast, .ridership-setup .ridership-problems { max-width: 640px; box-sizing: border-box; }
+.ridership-bulk-assign { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
+.ridership-secondary:disabled { color: var(--text-muted); cursor: default; }
+
+/* Tabs: Enter sheets / Print sheets. */
+.ridership-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.ridership-tabs button { background: none; border: none; border-bottom: 2px solid transparent; padding: 6px 12px; font: inherit; color: var(--text-muted); cursor: pointer; }
+.ridership-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--brand-green); font-weight: 600; }
+.ridership-tabs button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ridership-tabs .ridership-pill { margin-left: 6px; font-weight: 600; }
+
+/* Print sheets: the print log's word on the chosen garage. */
+.ridership-print-status { border: 1px solid var(--border); border-left-width: 4px; border-radius: 4px; padding: 8px 12px; }
+.ridership-print-status.is-ok { border-left-color: var(--pill-success-fg); }
+.ridership-print-status.is-warn { border-left-color: var(--pill-warning-fg); }
+.ridership-print-status.is-todo { border-left-color: var(--border-strong); }
+/* Today's changed sheets, above the toolbar while the desk looks at tomorrow. */
+.ridership-print > .ridership-print-status[role="note"] { margin-bottom: 12px; }
+
+@media (max-width: 640px) {
+  .ridership-who { grid-template-columns: 1fr; }
+  .ridership-trips th:nth-child(1), .ridership-trips td:nth-child(1) { display: none; }
+}
+
+/* A trip named as the paper sheet names it, with the GTFS id it is keyed by beneath. */
+.ridership-trip { display: flex; flex-direction: column; gap: 1px; white-space: nowrap; }
+.ridership-trip-time { font-weight: 600; }
+.ridership-entry .ridership-trip-id { font-size: 0.72rem; color: var(--text-muted); }
+.ridership-trip .ridership-short { margin-top: 3px; }

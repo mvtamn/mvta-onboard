@@ -110,6 +110,7 @@
 .readiness-verdict small { color: var(--muted, #6b6b66); }
 .readiness-verdict p { margin: 4px 0; font-size: 0.85rem; }
 .readiness-verdict button { justify-self: start; }
+.readiness-verdict p.readiness-backlog { color: var(--pill-warning-fg); font-weight: 600; }
 .readiness-figure { font-size: 2.2rem; font-weight: 700; line-height: 1.1; margin-top: 6px; color: var(--text, #222); }
 .readiness-row.is-met .readiness-figure { color: #205640; }
 .readiness-row.is-short .readiness-figure { color: #9a2a2a; }
@@ -168,3 +169,18 @@
 @media (max-width: 960px) {
   .readiness-row { grid-template-columns: 1fr; gap: 14px; }
 }
+
+/* GPS dead zones: the bar, and every first stop's record against it. The
+   table gets its own scroll box - the console scrolls as one document, so a
+   sticky header would never pin. A row the draft would change is tinted. */
+.dead-zone-summary { font-weight: 600; margin: 0 0 10px; }
+.dead-zone-scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--border, #d8d8d2); border-radius: 6px; margin-bottom: 8px; }
+.dead-zone-table { width: 100%; }
+.dead-zone-table thead th { position: sticky; top: 0; z-index: 1; }
+.dead-zone-table td.dead-zone-stop { text-align: left; font-weight: 600; }
+.dead-zone-table td:nth-child(2), .dead-zone-table td:nth-child(3), .dead-zone-table td:nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
+.dead-zone-table tr.is-flagged td:last-child { color: #205640; font-weight: 600; }
+table.data.dead-zone-table tr.is-added td { background: #dff0e5; }
+.dead-zone-table tr.is-added td:last-child { color: #205640; font-weight: 600; }
+table.data.dead-zone-table tr.is-removed td { background: #f6e3e3; }
+.dead-zone-table tr.is-removed td:last-child { color: #9a2a2a; font-weight: 600; }

@@ -21,6 +21,7 @@ export const DECISION_MATRIX_SURFACES = {
   legacyCandidates: { tables: ["DecisionMatrixProcedures", "DecisionMatrixLegacyMigrations"], migration: "079" },
   matchRules: { tables: ["ProcedureMatchRules"], migration: "080" },
   sopFolder: { tables: ["DecisionMatrixDocumentLocations", "DecisionMatrixLocationDocuments"], migration: "116" },
+  qrgSeeding: { tables: ["DecisionMatrixQrgSeedings"], migration: "158" },
 } as const satisfies Record<string, DecisionMatrixSurface>;
 
 // Parameterised rather than interpolated: these names are module constants

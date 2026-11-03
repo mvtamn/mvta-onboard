@@ -17,7 +17,7 @@ export const PRECISION_BAR = 0.95;
 
 const LABELS: Record<MissedTripDetectorName, string> = {
   gtfs_cancellation: "Advance cancellations",
-  gtfs_silent_no_show: "Silent no-shows",
+  gtfs_silent_no_show: "Suspected no-shows",
   spare: "On-demand service failures",
 };
 

@@ -4,7 +4,10 @@
 // drove, and a stop where nearly every earlier no-show turned out to have run.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { caseEvidence, DEAD_ZONE_MIN_CASES, type CaseEvidenceRow } from "./caseEvidence";
+import { caseEvidence, type CaseEvidenceRow } from "./caseEvidence";
+import { DEFAULT_DEAD_ZONE_BAR } from "./deadZone";
+
+const DEAD_ZONE_MIN_CASES = DEFAULT_DEAD_ZONE_BAR.min_cases;
 
 const SCHEDULED = new Date("2026-10-16T22:30:00.000Z");
 const DEADLINE = new Date("2026-10-16T23:00:00.000Z");
@@ -29,6 +32,7 @@ function row(overrides: Partial<CaseEvidenceRow> = {}): CaseEvidenceRow {
     origin_stop_name: "Savage Park & Ride",
     origin_cases: 27,
     origin_cases_ran: 27,
+    counted_in_origin: true,
     ...overrides,
   };
 }
@@ -79,6 +83,9 @@ test("the block counts its trips and the ones a bus reported on", () => {
 
 test("a trip with no block in the Dispatch Log carries no block", () => {
   assert.equal(caseEvidence(row({ block_id: null, block_trips: null, block_trips_reported: null })).block, null);
+  // The workbook's Block, not the feed's versioned id (CONTEXT.md "Block").
+  assert.equal(caseEvidence(row({ block_id: "515-v64" })).block?.block_id, "515");
+  assert.equal(caseEvidence(row({ block_id: "1-v64" })).block?.block_id, "001");
 });
 
 test("a stop where most earlier no-shows ran is a likely dead zone", () => {
@@ -111,4 +118,19 @@ test("the stop's history leaves this case out, so a stop's first case has none",
 
 test("a trip with no origin stop in the Dispatch Log carries none", () => {
   assert.equal(caseEvidence(row({ origin_stop_id: null, origin_stop_name: null, origin_cases: null, origin_cases_ran: null })).origin_stop, null);
+});
+
+test("a case the stop's record leaves out is not taken off it", () => {
+  // A retired or data-gap case is not in origin_cases, so subtracting it
+  // would undercount the stop by one.
+  const evidence = caseEvidence(row({ counted_in_origin: false, origin_cases: 26, origin_cases_ran: 26 }));
+  assert.equal(evidence.origin_stop?.other_cases, 26);
+  assert.equal(evidence.origin_stop?.other_cases_ran, 26);
+  assert.equal(evidence.origin_stop?.likely_dead_zone, true);
+});
+
+test("the stop is judged against the bar it is given", () => {
+  const evidence = caseEvidence(row({ origin_cases: 25, origin_cases_ran: 18 }), { ran_percent: 70, min_cases: 5 });
+  assert.equal(evidence.origin_stop?.likely_dead_zone, true, "17 of 24 others is 71%, over a 70% bar");
+  assert.equal(caseEvidence(row({ origin_cases: 25, origin_cases_ran: 18 })).origin_stop?.likely_dead_zone, false, "and under the default 80%");
 });

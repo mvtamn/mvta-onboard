@@ -165,6 +165,16 @@ export interface LibraryItemReader {
   readItem(itemId: string): Promise<LibraryItemRead>;
 }
 
+/** The document's own bytes. Same outcomes as reading its facts, so a caller
+ *  that can report one can report the other. */
+export type LibraryContentRead =
+  | { outcome: "ok"; bytes: Uint8Array }
+  | { outcome: "not_configured" | "forbidden" | "not_found" | "failed"; reason: string };
+
+export interface LibraryContentReader {
+  readContent(itemId: string): Promise<LibraryContentRead>;
+}
+
 function itemUrl(config: LibraryConfig, itemId: string): string {
   return `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(config.site_id)}/drives/${encodeURIComponent(config.drive_id)}/items/${encodeURIComponent(itemId)}?$select=id,name,folder,file,eTag,webUrl`;
 }
@@ -229,7 +239,30 @@ export function createSharePointLibrary(config: LibraryConfig, getToken: TokenPr
     }
   }
 
-  return { listFolder, readItem };
+  // The item's bytes, for the one case that needs the document itself rather
+  // than facts about it: seeding a Draft from a QRG. Graph answers /content
+  // with a redirect to a pre-authenticated download URL, which is why this
+  // follows redirects where nothing else here does.
+  async function readContent(itemId: string): Promise<LibraryContentRead> {
+    try {
+      const token = await getToken();
+      const response = await fetchGraph(
+        `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(config.site_id)}/drives/${encodeURIComponent(config.drive_id)}/items/${encodeURIComponent(itemId)}/content`,
+        { headers: { Authorization: `Bearer ${token}` }, redirect: "follow" },
+      );
+      const refused = refusal(response.status);
+      if (refused) return { outcome: "forbidden", reason: refused };
+      if (response.status === 404 || response.status === 400) {
+        return { outcome: "not_found", reason: "SharePoint has no document with that id in the approved library. Choose the document again." };
+      }
+      if (!response.ok) throw new Error(`Microsoft Graph returned ${response.status}.`);
+      return { outcome: "ok", bytes: new Uint8Array(await response.arrayBuffer()) };
+    } catch (error) {
+      return { outcome: "failed", reason: error instanceof Error ? `SharePoint could not be read: ${error.message}` : "SharePoint could not be read." };
+    }
+  }
+
+  return { listFolder, readItem, readContent };
 }
 
 /**

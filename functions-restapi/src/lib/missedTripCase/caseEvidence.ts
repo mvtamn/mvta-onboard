@@ -22,12 +22,9 @@
 // do not match GTFS's ("Burnsville Center"), so its missed-stop records cannot
 // be joined to a trip's stop by name.
 import { sql } from "../db";
-import { dispatchReading, operatedSql, operatedStartAt, type DispatchReadingKind } from "./adapters/gtfs";
-
-/** Fewest other silent no-shows at a stop before its record says anything. */
-export const DEAD_ZONE_MIN_CASES = 5;
-/** Share of them that ran for the stop to read as a likely dead zone. */
-export const DEAD_ZONE_RAN_SHARE = 0.8;
+import { workbookBlock } from "../tripStartLogRead";
+import { dispatchReading, operatedStartAt, type DispatchReadingKind } from "./adapters/gtfs";
+import { DEFAULT_DEAD_ZONE_BAR, isLikelyDeadZone, readDeadZoneBar, stopRecordsSql, UNJUDGEABLE_QUALITY, type DeadZoneBar } from "./deadZone";
 
 /** One case's raw readings, as readCaseEvidence's query returns them. */
 export interface CaseEvidenceRow {
@@ -47,9 +44,11 @@ export interface CaseEvidenceRow {
   block_trips_reported: number | null;
   origin_stop_id: string | null;
   origin_stop_name: string | null;
-  /** Every silent no-show at the stop, this one included. */
+  /** The judgeable silent no-shows at the stop - this case among them when counted_in_origin. */
   origin_cases: number | null;
   origin_cases_ran: number | null;
+  /** Whether this case is itself one of origin_cases. */
+  counted_in_origin: boolean;
 }
 
 /** What the console shows. Times are ISO strings. */
@@ -74,7 +73,7 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
-export function caseEvidence(r: CaseEvidenceRow): GtfsCaseEvidence {
+export function caseEvidence(r: CaseEvidenceRow, bar: DeadZoneBar = DEFAULT_DEAD_ZONE_BAR): GtfsCaseEvidence {
   const reading = dispatchReading(r);
   const started = operatedStartAt(r);
   // Whole minutes, toward zero: 19 min 42 s late reads as 19, as a dispatcher
@@ -83,15 +82,17 @@ export function caseEvidence(r: CaseEvidenceRow): GtfsCaseEvidence {
 
   let originStop: GtfsCaseEvidence["origin_stop"] = null;
   if (r.origin_stop_id) {
-    // A case is not evidence about itself: take it off the stop's record.
-    const otherCases = Math.max(0, (r.origin_cases ?? 0) - 1);
-    const otherRan = Math.max(0, (r.origin_cases_ran ?? 0) - (started ? 1 : 0));
+    // A case is not evidence about itself: take it off the stop's record, when
+    // the record counted it.
+    const self = r.counted_in_origin ? 1 : 0;
+    const otherCases = Math.max(0, (r.origin_cases ?? 0) - self);
+    const otherRan = Math.max(0, (r.origin_cases_ran ?? 0) - (self && started ? 1 : 0));
     originStop = {
       stop_id: r.origin_stop_id,
       name: r.origin_stop_name,
       other_cases: otherCases,
       other_cases_ran: otherRan,
-      likely_dead_zone: otherCases >= DEAD_ZONE_MIN_CASES && otherRan / otherCases >= DEAD_ZONE_RAN_SHARE,
+      likely_dead_zone: isLikelyDeadZone(otherCases, otherRan, bar),
     };
   }
 
@@ -101,7 +102,9 @@ export function caseEvidence(r: CaseEvidenceRow): GtfsCaseEvidence {
     started_late_minutes: lateMinutes,
     started_inside_grace: started ? started.getTime() <= r.grace_deadline_at.getTime() : null,
     vehicle: { reported_at: iso(r.first_vehicle_position_at), underway_at: iso(r.first_underway_at), vehicle_id: r.vehicle_id },
-    block: r.block_id ? { block_id: r.block_id, trips: r.block_trips ?? 0, trips_reported: r.block_trips_reported ?? 0 } : null,
+    // The workbook's Block ("515"), not the feed's versioned id ("515-v64"):
+    // CONTEXT.md's Block, the number a dispatcher knows.
+    block: r.block_id ? { block_id: workbookBlock(r.block_id) ?? r.block_id, trips: r.block_trips ?? 0, trips_reported: r.block_trips_reported ?? 0 } : null,
     origin_stop: originStop,
   };
 }
@@ -135,21 +138,15 @@ export async function readCaseEvidence(
                dl.actual_start_at AS dispatch_start_at, dl.actual_start_source AS dispatch_start_source,
                dl.predicted_start_at AS dispatch_predicted_at, dl.scheduled_start_at AS dispatch_scheduled_at,
                dl.block_id, dl.origin_stop_id, dl.origin_stop_name,
-               e.first_vehicle_position_at, e.first_underway_at, e.vehicle_id
+               e.first_vehicle_position_at, e.first_underway_at, e.vehicle_id,
+               CAST(CASE WHEN self.detection_type = N'silent_no_show'
+                          AND self.data_quality_status NOT IN (${UNJUDGEABLE_QUALITY}) THEN 1 ELSE 0 END AS BIT) AS counted_in_origin
         FROM page p
+        LEFT JOIN MonitoredMissedTrips self ON self.trip_id = p.trip_id AND self.service_date = p.service_date
         LEFT JOIN TripStartLog dl ON dl.trip_id = p.trip_id AND CAST(dl.service_date AS NVARCHAR(20)) = p.service_date
         LEFT JOIN GtfsTripOperationalEvidence e ON e.trip_id = p.trip_id AND e.service_date = p.service_date
       ),
-      stops AS (
-        SELECT hl.origin_stop_id,
-               COUNT(*) AS origin_cases,
-               SUM(CASE WHEN ${operatedSql("he", "hl")} THEN 1 ELSE 0 END) AS origin_cases_ran
-        FROM MonitoredMissedTrips hm
-        JOIN TripStartLog hl ON hl.trip_id = hm.trip_id AND CAST(hl.service_date AS NVARCHAR(20)) = hm.service_date
-        LEFT JOIN GtfsTripOperationalEvidence he ON he.trip_id = hm.trip_id AND he.service_date = hm.service_date
-        WHERE hm.detection_type = N'silent_no_show'
-          AND hl.origin_stop_id IN (SELECT origin_stop_id FROM info WHERE origin_stop_id IS NOT NULL)
-        GROUP BY hl.origin_stop_id
+      stops AS (${stopRecordsSql("hl.origin_stop_id IN (SELECT origin_stop_id FROM info WHERE origin_stop_id IS NOT NULL)")}
       )
       SELECT i.*, blk.block_trips, blk.block_trips_reported, s.origin_cases, s.origin_cases_ran
       FROM info i
@@ -163,6 +160,7 @@ export async function readCaseEvidence(
         WHERE i.block_id IS NOT NULL AND b.block_id = i.block_id
           AND CAST(b.service_date AS NVARCHAR(20)) = i.service_date
       ) blk`);
-  for (const row of result.recordset) byKey.set(`${row.trip_id}|${row.service_date}`, caseEvidence(row));
+  const bar = await readDeadZoneBar(pool);
+  for (const row of result.recordset) byKey.set(`${row.trip_id}|${row.service_date}`, caseEvidence(row, bar));
   return byKey;
 }
