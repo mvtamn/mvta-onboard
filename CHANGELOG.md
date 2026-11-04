@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.25] - 2026-11-03
+
+- **Dev's Function Apps sign in to SQL as themselves.** `main-phase1.bicep` gains `sqlAuthentication` (`password` | `managedIdentity`, default `password`) and builds one `SQL_CONNECTION_STRING` for the REST, dispatch and Spare webhook apps: the Key Vault reference to `sql-connection-string` as before, or `Server=tcp:<server>,1433;Database=sqldb-mvta-onboard-<env>;Authentication=Active Directory Default;...`, which holds no secret. `functionapp.bicep` takes it as `sqlConnectionString` instead of hardcoding the Key Vault reference. `phase1-dev.parameters.json` sets `managedIdentity`; prod keeps the password.
+- **Rollback** is setting dev back to `password` and re-running the infra workflow; the Key Vault secret stays until Entra-only auth is on.
+- **Needs, before it deploys:** 1.7.18's `db.ts` (which understands `Authentication=Active Directory Default`) on dev, and `infra-stage0/scripts/grant-function-app-sql-users.sql` run against dev's database. Without the database users, every SQL call on dev fails at login.
+
 ## [1.7.22] - 2026-11-03
 
 A relief operator or bus change on a Count Sheet (migration 162). Check-in staff assign operators in Avail on the day and the bus joins at MDT login, after the desk prints the sheet the evening before, so operator and bus stay handwritten and entry pre-fills them from Avail's pull-out. A block that changed hands or buses part way had nowhere to say so, and the bus matters for comparing counts with the bus's passenger counter.
