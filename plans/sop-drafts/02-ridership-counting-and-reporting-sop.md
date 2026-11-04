@@ -1,10 +1,10 @@
 # Ridership Counting and Reporting (DRAFT)
 
-**Status:** draft for MVTA Planning and Operations, 2026-10-30. Written in the
+**Status:** draft for MVTA Planning and Operations, 2026-11-04. Written in the
 layout of the MVTA SOP source template (v1.1.2) used by OPR-038-00, from the
-decisions in `plans/ridership-counting-spec.md`. Items marked **[Decide]** are
-listed in `03-decisions-before-issue.md`. The document code is a placeholder
-until MVTA registers it.
+decisions in `plans/ridership-counting-spec.md` and
+`03-decisions-before-issue.md`. The document code is a placeholder until MVTA
+registers it.
 
 | Field | Value |
 |---|---|
@@ -39,13 +39,13 @@ document, OPR-RID-00, rather than restate it.
 This SOP does not govern deadhead movements, which carry no passengers;
 MVTA Connect ridership, which is taken from the on-demand scheduling system and
 is not counted by Operators; or special-event counts, which are covered
-separately. **[Decide]**
+separately.
 
 ## Purpose
 
 MVTA uses ridership counts to plan service, to report performance and to
 apply for funding, including its reporting to the National Transit Database.
-**[Decide]** A count that is missing, late or wrong carries into each of
+A count that is missing, late or wrong carries into each of
 those.
 
 The operations contract requires Operators to conduct passenger counts on all
@@ -61,8 +61,7 @@ MVTA raises about a count is answered from the sheet before the month closes.
 
 ## Definitions
 
-The following terms are used throughout this document. Each aligns with the
-MVTA Master Transit Glossary. **[Decide]**
+The following terms are used throughout this document.
 
 | Term | Definition |
 |---|---|
@@ -99,7 +98,7 @@ table sets out each role's link in that chain.
 | Contractor Operations Management | Supervise and monitor compliance with this SOP: review completeness and timeliness in OnBoard, correct repeated Operator or staff failures, request and remove OnBoard access for Contractor staff, scan each day's Count Sheets during the Parallel Run and whenever MVTA enables scan and upload, and keep the paper Count Sheets for the required period. |
 | Contractor Training and Safety Staff | Train every Operator, check-in desk staff member and OCC staff member on this SOP before they perform it, and keep the training records. |
 | MVTA Planning (OnBoard role: Ridership manager) | Maintain the Block-to-Garage List and the Flag settings, review Counts, raise Flags, close each month and reopen a closed month when a correction is needed. During the Parallel Run, compare the OnBoard entries made from scans with the Access Database and recommend whether OnBoard is ready. |
-| MVTA Operations | Give the Contractor written notice of each transition stage and the Cutover Date, and issue any written authorization that lets APC replace the Count Sheet. **[Decide]** |
+| MVTA Operations | Give the Contractor written notice of each transition stage and the Cutover Date, and issue any written authorization that lets APC replace the Count Sheet. |
 | MVTA Compliance | Review each Reporting Failure OnBoard proposes at Month Close and confirm or dismiss it before it is assessed. |
 
 ## Procedures
@@ -149,7 +148,6 @@ morning and marks any sheet whose trips changed after it was printed.
 5. If OnBoard is unavailable and sheets cannot be printed, notify Contractor
    Operations Management and the IT Service Desk, and issue blank Count
    Sheets on which the Operator writes the block, service date and each trip.
-   **[Decide]**
 
 REQUIREMENT: Do not photocopy a Count Sheet or reuse one from another day.
 Each sheet is printed for one block on one service date, and its code files
@@ -329,7 +327,7 @@ Contractor to check the sheet; a confirmed Count stands.
 2. MVTA Compliance reviews each proposed Reporting Failure with its evidence
    and confirms or dismisses it.
 3. Each confirmed Reporting Failure is assessed under the Incident and Data
-   Reporting standard of Attachment G. **[Decide]**
+   Reporting standard of Attachment G.
 
 REQUIREMENT: Missing, late and unanswered Count Sheets may result in penalties
 and corrective action under Attachment G. A Reconstructed Count Sheet entered
@@ -366,7 +364,7 @@ with manual Counts, the Count Sheet remains the record on every trip.
    pre-trip inspection (OPR-038-00, Pre-Trip Inspection Requirement). Report a
    faulty counter as an in-vehicle technology issue.
 3. MVTA may authorize in writing that a bus or route no longer needs a Count
-   Sheet, once its APC Counts meet criteria MVTA sets. **[Decide]** Until MVTA
+   Sheet, once its APC Counts meet criteria MVTA sets. Until MVTA
    does so, no one else may excuse a Count Sheet because APC is installed.
 
 ### Transition from the Access Database
@@ -402,8 +400,8 @@ notice at least 14 calendar days in advance.
 4. Staff MVTA designates, such as the incoming Contractor's OCC staff in
    training, enter scanned sheets in OnBoard. MVTA Planning compares those
    entries with the Access database, trip by trip, and resolves any
-   difference. Entering every sheet is not required; MVTA decides how many
-   service dates are enough to compare.
+   difference. Entering every sheet is not required; MVTA Planning sets how many
+   service dates to compare.
 5. If MVTA accepts the comparison, it sets the Cutover Date, normally the
    first day of a following month, and may set it before the Parallel Run
    has ended, on a comparison of part of it. The Access Database then remains
