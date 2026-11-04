@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.23] - 2026-11-03
+## [1.7.26] - 2026-11-04
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,12 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.7.25] - 2026-11-03
+
+- **Dev's Function Apps sign in to SQL as themselves.** `main-phase1.bicep` gains `sqlAuthentication` (`password` | `managedIdentity`, default `password`) and builds one `SQL_CONNECTION_STRING` for the REST, dispatch and Spare webhook apps: the Key Vault reference to `sql-connection-string` as before, or `Server=tcp:<server>,1433;Database=sqldb-mvta-onboard-<env>;Authentication=Active Directory Default;...`, which holds no secret. `functionapp.bicep` takes it as `sqlConnectionString` instead of hardcoding the Key Vault reference. `phase1-dev.parameters.json` sets `managedIdentity`; prod keeps the password.
+- **Rollback** is setting dev back to `password` and re-running the infra workflow; the Key Vault secret stays until Entra-only auth is on.
+- **Needs, before it deploys:** 1.7.18's `db.ts` (which understands `Authentication=Active Directory Default`) on dev, and `infra-stage0/scripts/grant-function-app-sql-users.sql` run against dev's database. Without the database users, every SQL call on dev fails at login.
 
 ## [1.7.22] - 2026-11-03
 
