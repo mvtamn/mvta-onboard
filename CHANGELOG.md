@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.39] - 2026-11-04
+## [1.7.42] - 2026-11-04
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.41] - 2026-11-04
+
+- **A Dispatch Log departure the producer predicted exactly now counts as a start.** `dispatchReading` (`lib/missedTripCase/adapters/gtfs.ts`) rejected any `trip_update` reading equal to `predicted_start_at` as "the last prediction standing in for a reading the poller missed" (#440). But MVTA's producer usually predicts the origin departure exactly, and `planCapture` copies that prediction alongside the realised reading. On dev, 144 of 155 such readings since 2026-10-01 were written within three minutes of the departure: the poller saw them realised, live. Of the 19 escalated `gtfs-silent-v4` cases with a realised departure inside the grace, 11 were this shape (e.g. `t483-b4-sl1C-v65`, 2026-11-03: left 17:55:21, predicted 17:55:21, recorded 99 s later).
+- **Why the jump in November.** With the departure discarded, the start fell back to `first_underway_at`. On 2026-11-01 and 11-02 vehicle-position evidence landed 10-45 minutes after the departure (normally about 6), so trips that left on time were proven only after their deadline. Weekly escalations went from 1-7 to 30. The v64→v65 trip ids and the dead-zone bar (#470) play no part.
+- **The rule now.** `predictionStoodIn` treats a reading equal to its prediction as stood in only when `TripStartLog.actuals_updated_at` is at least `LINGER_WINDOW_SECONDS` (15 min) after it, or unknown. `planCapture` writes a stood-in prediction only after the first stop has dropped out of the feed, which takes about that long. `operatedSql` applies the same test; the contract test seeds both shapes. On dev, 2 readings since 2026-10-01 still count as stood in.
+- **Effect on deploy.** The 11 open, unreviewed cases receive a `trip_start` inside the grace from `openCaseStarts` and resolve as Timely service on the next pass. The other 8 had no vehicle report against the trip at all and stay escalated: that is the vehicle rule working as designed. The detector version stays `gtfs-silent-v4`, as in #440.
 
 ## [1.7.37] - 2026-11-04
 

@@ -37,7 +37,7 @@ CREATE TABLE dbo.TripStartLog (
   service_date CHAR(8) NOT NULL, trip_id NVARCHAR(100) NOT NULL, block_id NVARCHAR(100) NULL,
   origin_stop_id NVARCHAR(100) NULL, origin_stop_name NVARCHAR(200) NULL,
   scheduled_start_at DATETIME2 NOT NULL, actual_start_at DATETIME2 NULL, actual_start_source NVARCHAR(20) NULL,
-  predicted_start_at DATETIME2 NULL,
+  predicted_start_at DATETIME2 NULL, actuals_updated_at DATETIME2 NULL,
   CONSTRAINT PK_TripStartLog PRIMARY KEY (service_date, trip_id)
 );
 CREATE TABLE dbo.GtfsTripOperationalEvidence (
@@ -59,6 +59,7 @@ interface Seed {
   actual?: Date | null;
   source?: string | null;
   predicted?: Date | null;
+  recorded?: Date | null;
   reported?: Date | null;
   underway?: Date | null;
   isCase?: boolean;
@@ -72,11 +73,12 @@ async function seed(pool: sql.ConnectionPool, s: Seed): Promise<void> {
     .input("block", sql.NVarChar(100), s.block ?? null).input("stop", sql.NVarChar(100), s.stop ?? null)
     .input("scheduled", sql.DateTime2, s.scheduled).input("actual", sql.DateTime2, s.actual ?? null)
     .input("source", sql.NVarChar(20), s.source ?? null).input("predicted", sql.DateTime2, s.predicted ?? null)
+    .input("recorded", sql.DateTime2, s.recorded ?? null)
     .input("reported", sql.DateTime2, s.reported ?? null).input("underway", sql.DateTime2, s.underway ?? null)
     .input("quality", sql.NVarChar(30), s.quality ?? "experimental");
   await req.query(`
-    INSERT dbo.TripStartLog (service_date, trip_id, block_id, origin_stop_id, origin_stop_name, scheduled_start_at, actual_start_at, actual_start_source, predicted_start_at)
-    VALUES (@day, @trip, @block, @stop, CASE WHEN @stop IS NULL THEN NULL ELSE N'Savage Park & Ride' END, @scheduled, @actual, @source, @predicted);
+    INSERT dbo.TripStartLog (service_date, trip_id, block_id, origin_stop_id, origin_stop_name, scheduled_start_at, actual_start_at, actual_start_source, predicted_start_at, actuals_updated_at)
+    VALUES (@day, @trip, @block, @stop, CASE WHEN @stop IS NULL THEN NULL ELSE N'Savage Park & Ride' END, @scheduled, @actual, @source, @predicted, @recorded);
     IF @reported IS NOT NULL OR @underway IS NOT NULL
       INSERT dbo.GtfsTripOperationalEvidence (trip_id, service_date, vehicle_id, first_vehicle_position_at, first_underway_at)
       VALUES (@trip, @day, N'4265', @reported, @underway);
@@ -105,6 +107,11 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       { trip: "DEPARTED", block: "B14C", stop: "S1", scheduled, actual: at("22:49:42"), source: "trip_update", predicted: at("22:43:00"), reported: at("22:20:00"), underway: at("23:09:30") },
       { trip: "ECHO", block: "B14C", stop: "S1", scheduled: at("21:30:00"), actual: at("21:30:00"), source: "trip_update", predicted: at("21:30:00") },
       { trip: "PREDICTION", stop: "S1", scheduled: at("20:30:00"), actual: at("20:41:00"), source: "trip_update", predicted: at("20:41:00"), reported: at("20:00:00") },
+      // The prediction was exactly right and the poll saw it realised 99 s later
+      // (t483-b4-sl1C-v65, 2026-11-03): a departure. No stop, so no stop record.
+      { trip: "SEENLIVE", scheduled: at("18:00:00"), actual: at("18:00:21"), source: "trip_update", predicted: at("18:00:21"), recorded: at("18:02:00"), reported: at("17:50:00"), isCase: false },
+      // The same equality written after the stop dropped: a stood-in prediction.
+      { trip: "STOODIN", scheduled: at("17:00:00"), actual: at("17:00:21"), source: "trip_update", predicted: at("17:00:21"), recorded: at("17:20:00"), reported: at("16:50:00"), isCase: false },
       { trip: "NOBUS", stop: "S1", scheduled: at("19:30:00"), actual: at("19:40:00"), source: "trip_update", predicted: at("19:35:00") },
       { trip: "FALLBACK", stop: "S1", scheduled: at("18:30:00"), actual: at("18:50:00"), source: "vehicle_position", reported: at("18:10:00") },
       { trip: "UNDERWAY", stop: "S1", scheduled: at("17:30:00"), underway: at("17:40:00"), reported: at("17:20:00") },
@@ -126,11 +133,12 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       const rows = (await pool.request().query<{
         trip_id: string; service_date: string; sql_operated: number;
         actual_start_at: Date | null; actual_start_source: string | null; predicted_start_at: Date | null; scheduled_start_at: Date;
+        actuals_updated_at: Date | null;
         first_vehicle_position_at: Date | null; first_underway_at: Date | null;
       }>(`
         SELECT dl.trip_id, CAST(dl.service_date AS NVARCHAR(20)) AS service_date,
                CASE WHEN ${operatedSql("e", "dl")} THEN 1 ELSE 0 END AS sql_operated,
-               dl.actual_start_at, dl.actual_start_source, dl.predicted_start_at, dl.scheduled_start_at,
+               dl.actual_start_at, dl.actual_start_source, dl.predicted_start_at, dl.scheduled_start_at, dl.actuals_updated_at,
                e.first_vehicle_position_at, e.first_underway_at
         FROM dbo.TripStartLog dl
         LEFT JOIN dbo.GtfsTripOperationalEvidence e ON e.trip_id = dl.trip_id AND e.service_date = CAST(dl.service_date AS NVARCHAR(20))
@@ -141,8 +149,11 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
           first_underway_at: row.first_underway_at, first_vehicle_position_at: row.first_vehicle_position_at,
           dispatch_start_at: row.actual_start_at, dispatch_start_source: row.actual_start_source,
           dispatch_predicted_at: row.predicted_start_at, dispatch_scheduled_at: row.scheduled_start_at,
+          dispatch_recorded_at: row.actuals_updated_at,
         });
         assert.equal(row.sql_operated === 1, ts !== null, `${row.trip_id} on ${row.service_date}`);
+        if (row.trip_id === "SEENLIVE") assert.equal(row.sql_operated, 1, "a prediction seen realised is a start");
+        if (row.trip_id === "STOODIN") assert.equal(row.sql_operated, 0, "a prediction written after the stop dropped is not");
       }
     });
 
