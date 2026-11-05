@@ -22,6 +22,7 @@ function row(overrides: Partial<CaseEvidenceRow> = {}): CaseEvidenceRow {
     dispatch_start_source: "trip_update",
     dispatch_predicted_at: new Date("2026-10-16T22:43:00.000Z"),
     dispatch_scheduled_at: SCHEDULED,
+    dispatch_recorded_at: new Date("2026-10-16T22:51:12.000Z"),
     first_vehicle_position_at: new Date("2026-10-16T22:59:45.000Z"),
     first_underway_at: new Date("2026-10-16T22:59:45.000Z"),
     vehicle_id: "4265",
