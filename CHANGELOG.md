@@ -20,6 +20,12 @@ Count Sheet scan capture, increment S1 of `plans/count-sheet-scan-upload.md` (PR
 - Tests: `scan/pipeline.test.ts` on synthetic sheets from `countSheetPdf.ts` turned into image-only MFP-style PDFs (tilted 2.3° and −1.5°, noisy, 150 dpi), a defaced QR code, a cut-off corner; `scan/identify.test.ts`; `scan/scan.db.contract.test.ts` runs the worker against real SQL with printed runs from `printCountSheets`.
 
 **Restarts the REST app on merge**, and the infra workflow creates a new storage account and queue.
+## [1.7.28] - 2026-11-04
+
+- **The console could never renew an access token, so it hung on "Checking your access…".** MSAL renews silently in a hidden iframe: the iframe goes to `login.microsoftonline.com`, and Entra redirects it **back to the console's own origin** carrying the code. `staticwebapp.config.json` forbade that last hop three times over - `frame-src` listed only `login.microsoftonline.com`, `frame-ancestors` was `'none'`, and `X-Frame-Options` was `DENY`. `acquireTokenSilent` therefore could not complete for any reason other than a thrown error, and the console sat on its loading state. Reproduced on deployed dev 2026-11-01: the browser reported `Framing '.../console/#code=...' violates ... frame-src https://login.microsoftonline.com`.
+- **The fix** is the smallest set of changes that lets the console frame itself and nobody else: `frame-src 'self' https://login.microsoftonline.com`, `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`. Cross-origin framing is still refused, which is the clickjacking threat; an attacker who can serve a page from the console's own origin already has script execution there, so `'self'` gives up nothing real. No application code changes.
+- **Not done here, and it needs an Entra step.** MSAL's redirect URI is `/console/`, so the renewal frame boots the whole console inside itself. A dedicated blank redirect page would be lighter and would let `frame-ancestors` stay `'none'` for the app itself (SWA allows per-route headers), but the new URI has to be registered on the `MVTA OnBoard` app registration's SPA platform first, which is not a code change.
+- **Affects the console only.** The rider app has no MSAL and its config is untouched.
 
 ## [1.7.25] - 2026-11-03
 
