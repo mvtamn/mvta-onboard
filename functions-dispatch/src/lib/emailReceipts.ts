@@ -72,3 +72,26 @@ export function aggregateDelivery(statuses: ReceiptStatus[]): { status: Aggregat
   if (pending > 0) return { status: "sent", failed: 0 };
   return { status: "delivered", failed: 0 };
 }
+
+export type RiderLogStatus = "delivered" | "bounced" | "suppressed" | "quarantined" | "filtered_spam" | "failed";
+
+/**
+ * A receipt as EmailDeliveryLog records it (migration 160 widens its CHECK).
+ * Expanded is a distribution list accepting the mail, which for a rider's
+ * own address means delivered.
+ */
+export function riderLogStatus(status: ReceiptStatus): RiderLogStatus | null {
+  switch (status) {
+    case "delivered":
+    case "expanded":
+      return "delivered";
+    case "bounced":
+    case "suppressed":
+    case "quarantined":
+    case "filtered_spam":
+    case "failed":
+      return status;
+    default:
+      return null;
+  }
+}
