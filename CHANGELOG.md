@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.33] - 2026-11-04
+
+- **Two tables the health page could not see.** The schema drift check (1.5.296) reports a database that is behind the deployed code, but only for what `SCHEMA_REQUIREMENTS` declares. `OtpMonthlyRetiredKeys` (migration 152) and `DecisionMatrixQrgSeedings` (migration 158) were never declared, and on 2026-11-04 both were found absent from dev *and* prod while a note recorded 158 as applied to both. Nothing contradicted the note: retiring an OTP key is written to do nothing without its archive, and seeding a Draft from a QRG answers 503 only to whoever presses the button. Both are now declared, so Integrations & Data Health names them and the migration to run.
+- Only the declaration changed. No migration, no behaviour: the two features already degrade safely, and this is about saying so where somebody is looking.
+- A test keeps both declared, with the reason they earned a place - a feature that stays quiet when its table is absent is the case this page exists for.
+
 ## [1.7.28] - 2026-11-04
 
 - **The console could never renew an access token, so it hung on "Checking your access…".** MSAL renews silently in a hidden iframe: the iframe goes to `login.microsoftonline.com`, and Entra redirects it **back to the console's own origin** carrying the code. `staticwebapp.config.json` forbade that last hop three times over - `frame-src` listed only `login.microsoftonline.com`, `frame-ancestors` was `'none'`, and `X-Frame-Options` was `DENY`. `acquireTokenSilent` therefore could not complete for any reason other than a thrown error, and the console sat on its loading state. Reproduced on deployed dev 2026-11-01: the browser reported `Framing '.../console/#code=...' violates ... frame-src https://login.microsoftonline.com`.
