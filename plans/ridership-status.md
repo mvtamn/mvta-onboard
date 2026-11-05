@@ -151,10 +151,19 @@ Gate dates are from the completion plan (#492, draft).
   - WORM storage, with views logged;
   - the scan proposed as the record copy.
 - **Already done from it:** decision 8, the printed trip list per sheet (#489, migration 161), applied on dev and prod (11-04 20:00).
-- **Timing conflict:**
-  - #488 planned a capture-only pilot at Burnsville from **mid-December** (S1).
-  - Plan A (11-03) and the completion plan (#492, W5-1) instead put December's scans in a shared folder, with the upload page in **late January**.
-  - Plan A is the later decision. #488's decision 1 still says mid-December, and nobody has updated it.
+- **Timing decided by the user, 2026-11-04 20:15 CT: keep the December pilot.**
+  - #488's decision 1 stands: a capture-only pilot at Burnsville (S1) from mid-December, with no reading.
+  - It covers about 20 sheets a weekday.
+  - Eagan stays on the shared scan folder for December.
+- **Not yet in line with that decision:**
+  - The completion plan (#492, W5-1) still puts the upload page in late January.
+  - The contractor briefing (#463) puts December's scans in the shared folder.
+  - Both documents need a line saying Burnsville uploads from mid-December.
+- **S1 build:**
+  - **Scope:** storage, the upload page, the queue worker (split, straighten, identify), Scanned / Not scanned on the worklist, and the scan beside OCC's form.
+  - **Status:** 🟡 not started, and no session is building it.
+  - **Timing:** it lands in the same weeks as G2–G6.
+  - **Merging:** it must not touch the print path during the 12-02 to 12-08 freeze. Backend merges go outside 4am to midnight CT.
 - **Steps outside the code before any build** (from #488):
   - MFP capabilities and who owns them (IT and Ops)
   - approve the new storage and Document Intelligence resources and their cost (user)
@@ -164,10 +173,18 @@ Gate dates are from the completion plan (#492, draft).
   - data-protection sign-off (IT/security)
   - the SOP/OPR-038 wording (Planning and Ops)
   - training
+- **Before mid-December:**
+  - The Burnsville MFP survey (IT and Ops).
+  - Your approval of the Azure resources and their cost.
+  - The storage account and the managed-identity grants (you run the grants).
+  - Seeding `ridership.scan` into the ridership roles.
+  - Ridership Printer for the Burnsville desk.
+  - A short SOP note for the Burnsville desk, plus about 30 minutes of desk training.
+  - The retention period can follow: the container stays unlocked until it is set.
+  - Data-protection sign-off is needed only before the reading trial (S2), not for capture.
 - **Next:**
-  - The user confirms the late-January timing.
-  - #488's decision 1 is then updated.
-  - Start the outside-the-code steps (MFP survey, cost approval, retention) in December, so the late-January build isn't waiting on them.
+  - Start the S1 build.
+  - Update #492 W5-1 and the #463 briefing.
 
 ### 2.10 Reconciliation review: 🟢 docs
 - **#459:** OPEN, draft (11-04 19:15). Its findings feed Q4 (month complete) and Q15 (acceptance test).
@@ -210,7 +227,7 @@ Gate dates are from the completion plan (#492, draft).
 | SOP 1 | SOP code | Document registry | OPR-RID-00 placeholder | 11-04 19:15 |
 | — | ServiceType source (L/MX/RC/SX/DX) for the totals export | Planning, then the user | Unsettled; the export leaves it blank | 11-04 19:15 |
 | — | Whether to merge spec PR #455 and completion plan #492 | User | — | 11-04 19:15 |
-| — | Scan upload timing: #488's mid-December Burnsville pilot, or plan A's shared folder with the upload page in late January | User | Late January (plan A / #492); then update #488's decision 1 | 11-04 20:00 |
+| ✅ | Scan upload timing. **Decided 11-04 by the user:** keep #488's mid-December Burnsville capture pilot | User | — | 11-04 20:15 |
 
 SOP decisions 5, 7, 11, 12 and 16 were moved to Decided on #463's branch on 11-04. The SOP agent asked the user to confirm them.
 
@@ -227,6 +244,7 @@ SOP decisions 5, 7, 11, 12 and 16 were moved to Decided on #463's branch on 11-0
 | W2-3 is not built before Keolis's first save on 12-09 | Training entries become a second set of December figures | Small item; build in the week of 11-09 | 11-04 19:15 |
 | W2-2 comparison is late (needed 12-14) | No trip-by-trip basis for the 12-18 notice | On the critical chain; start the week of 11-16 | 11-04 19:15 |
 | ServiceType source stays unsettled | The FixedTotals export ships with ServiceType blank on 01-01 | Planning answers Q15 | 11-04 19:15 |
+| The Burnsville scan pilot (S1) competes for build time with W2-3 and W2-2 in December | The critical chain to the 12-18 notice slips, or the pilot starts late | The pilot is optional for the gates: if it squeezes W2-2, start it on 01-02, as #488 allows | 11-04 20:15 |
 | Prod is not reachable from the status session | Prod lines rely on the last known state | The user confirms prod facts, or runs the read queries | 11-04 19:15 |
 | Parallel sessions merge into main often | Version numbers race; a merge in the print-path freeze could break printing | Freeze 12-02 to 12-08 (W1-4); check every open PR's version | 11-04 19:15 |
 | A REST deploy restarts the API during service hours | Brief outage on print nights | Merge backend changes outside 4am to midnight Central | 11-04 19:15 |
@@ -237,3 +255,4 @@ SOP decisions 5, 7, 11, 12 and 16 were moved to Decided on #463's branch on 11-0
 
 - **2026-11-04 19:15 CT:** first pass.
 - **2026-11-04 20:00 CT:** added scan upload detail (#488): the agreed design, what is already built, the timing conflict with plan A, and its steps outside the code.
+- **2026-11-04 20:15 CT:** the user decided to keep the mid-December Burnsville scan pilot. Recorded what it needs and the documents to bring into line.
