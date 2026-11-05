@@ -41,6 +41,9 @@
     "spareContractorFaultValues": {
       "value": ""
     },
+    "sqlAuthentication": {
+      "value": "managedIdentity"
+    },
     "aadClientId": {
       "value": "b9d88e43-3e8f-4e89-ad11-d894867e6e93"
     },

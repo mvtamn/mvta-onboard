@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.46] - 2026-11-04
+
+- **Production signs in to SQL as itself.** `phase1-prod.parameters.json` sets `sqlAuthentication` to `managedIdentity`, so prod's three Function Apps get `Authentication=Active Directory Default` in `SQL_CONNECTION_STRING` instead of the Key Vault reference holding the admin password. Dev has run this way since 1.7.25 (2026-11-04 00:27 CST): no SQL sign-in failures through a full service day.
+- **Before the prod deploy,** `infra-stage0/scripts/grant-function-app-sql-users.sql` must have run against `sqldb-mvta-onboard-prod`; without the users the apps cannot reach the database.
+- **At cutover, run the grant script again straight after the database re-copy.** A copy of dev's database carries dev's app users, not prod's; the script drops the former and creates the latter. Until it runs, prod's apps cannot sign in.
+- The password stays in Key Vault and the server still accepts SQL logins; Entra-only and retiring the password come next.
+
 ## [1.7.42] - 2026-11-04
 
 - **Missed Trips names the selected trip as Avail does.** The detail header read "Ref t3FB-b3E-sl1C-v65", the raw GTFS trip_id, which staff cannot look up in Avail. It now reads "Avail trip 1019-N": the trip number and the direction letter. MVTA's GTFS trip_id carries the trip number in hexadecimal as its first part (`t3FB` is 1019), the same rule the Count Sheets use (`availTripNumber`, 1.7.10, checked against 847 of 847 Dispatch Log trips). The console keeps its own copy as `availTripRef` in `missedTripReview.ts`, because it does not import backend code.
