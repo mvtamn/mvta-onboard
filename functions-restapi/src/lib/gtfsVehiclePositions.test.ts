@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mapVehiclePositionEntity, type GtfsRtVehiclePositionEntity } from "./gtfsVehiclePositions";
+import { mapVehiclePositionEntity, vehicleObservedAt, VEHICLE_CLOCK_TOLERANCE_SECONDS, type GtfsRtVehiclePositionEntity } from "./gtfsVehiclePositions";
 
 // Fixture shaped like MVTA's live feed (sampled 2026-07-24, mid-service).
 const IN_TRANSIT: GtfsRtVehiclePositionEntity = {
@@ -73,4 +73,32 @@ test("handles a stopped vehicle with zero speed", () => {
   const mapped = mapVehiclePositionEntity(entity);
   assert.strictEqual(mapped!.speed_mps, 0.0);
   assert.strictEqual(mapped!.current_status, 1);
+});
+
+// --- the vehicle's own clock ------------------------------------------------
+//
+// From the end of daylight saving on 2026-11-01, AVL units still on CDT stamped
+// their positions an hour ahead: 22 vehicles on 11-01, 54 on 11-02, 3 on 11-03.
+// Stored as the observation time, those stamps put first_underway_at an hour
+// late and escalated buses that left on time (t483-b4-sl1C-v65, 2026-11-03:
+// written 18:35:15, stamped 19:19:45).
+const FETCHED_AT = new Date("2026-11-03T18:35:15.000Z");
+
+test("a position stamped in the future is observed when it was fetched", () => {
+  const stamped = new Date("2026-11-03T19:19:45.000Z");
+  assert.deepStrictEqual(vehicleObservedAt(stamped, FETCHED_AT), { at: FETCHED_AT, futureStamped: true });
+});
+
+test("a position stamped at or before the fetch keeps its own time", () => {
+  const stamped = new Date("2026-11-03T18:34:58.000Z");
+  assert.deepStrictEqual(vehicleObservedAt(stamped, FETCHED_AT), { at: stamped, futureStamped: false });
+});
+
+test("a vehicle clock a little ahead of ours is clock drift, not a wrong clock", () => {
+  const stamped = new Date(FETCHED_AT.getTime() + VEHICLE_CLOCK_TOLERANCE_SECONDS * 1000);
+  assert.deepStrictEqual(vehicleObservedAt(stamped, FETCHED_AT), { at: stamped, futureStamped: false });
+});
+
+test("a position with no timestamp is observed when it was fetched", () => {
+  assert.deepStrictEqual(vehicleObservedAt(null, FETCHED_AT), { at: FETCHED_AT, futureStamped: false });
 });
