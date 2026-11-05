@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.34] - 2026-11-04
+## [1.7.35] - 2026-11-04
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,11 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.33] - 2026-11-04
+
+- **Avail's reason for refusing a request is readable again.** Since 17:00 UTC on 2026-11-04 the Pullout Reports API has answered `success=false` on every call, on dev and on prod, while AVL, detours and the other Avail feeds kept working. The log and the feed ledger said only `success=false: [object Object]`: `fetchAvail` joined Avail's `errors` as strings, and these errors are objects. `describeAvailErrors` now prints each object as JSON (strings as before), accepts a lone non-array value, and when Avail sends no detail at all quotes the start of the body instead.
+- **Nothing else changes.** The poll still fails the invocation and records the failure exactly as before; only the message carries more. Once deployed, the next failed Pullout run shows Avail's actual reason in App Insights and on Integrations & Data Health.
 
 ## [1.7.29] - 2026-11-04
 
