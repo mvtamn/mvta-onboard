@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.44] - 2026-11-04
+## [1.7.47] - 2026-11-05
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,15 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.45] - 2026-11-04
+
+Follows 1.7.41. **Migration 165** repairs the history; apply it after this deploys. Merging redeploys and restarts the REST Function App.
+
+- **AVL clocks still on CDT after daylight saving ended.** `gtfsVehiclePositionsPoll` stored each position's own `Timestamp` as `first_vehicle_position_at` / `first_underway_at`. From 2026-11-01 some units stamped positions an hour ahead: 22 vehicles on 11-01, 54 on 11-02, 3 on 11-03, none on 11-04. On dev that is 436 evidence rows whose position is stamped 40-60 min after the very write that stored it. It looked like vehicle evidence "lagging" 10-45 min. The poller never missed a run; the stamps were wrong.
+- **What it did.** First-underway times ran an hour late, and the silent no-show detector escalated buses that had left on time. It also fed 1.7.41's diagnosis: those buses' Dispatch Log departures had been rejected, and the late underway time was all that remained.
+- **The guard.** `vehicleObservedAt` (`lib/gtfsVehiclePositions.ts`) records a position at the fetch time when its stamp is more than `VEHICLE_CLOCK_TOLERANCE_SECONDS` (120 s) after the fetch. It leaves past stamps alone: a stale position is real, and an hour-behind clock (spring forward) cannot be told apart from one. The poll logs a warning naming the vehicles.
+- **Migration 165** moves back by exactly 3,600 s every evidence row whose `last_vehicle_position_at` is 30-60 min after its own `updated_at`, and each case arrival time taken from one. It copies each row to `GtfsTripOperationalEvidenceClockSkew` first, and it is re-runnable. On dev: 436 rows (2026-11-01..03 only), 18 case arrival times, no Dispatch Log rows. Repaired, the rows show the usual ~9 min from departure to underway, against 45-90 min before. 15 escalated, unreviewed cases then start inside their grace, and the detector's next pass closes them. A contract test covers it.
 
 ## [1.7.42] - 2026-11-04
 
