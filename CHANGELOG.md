@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.35] - 2026-11-04
+## [1.7.39] - 2026-11-04
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,12 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.7.37] - 2026-11-04
+
+- **Two tables the health page could not see.** The schema drift check (1.5.296) reports a database that is behind the deployed code, but only for what `SCHEMA_REQUIREMENTS` declares. `OtpMonthlyRetiredKeys` (migration 152) and `DecisionMatrixQrgSeedings` (migration 158) were never declared, and on 2026-11-04 both were found absent from dev *and* prod while a note recorded 158 as applied to both. Nothing contradicted the note: retiring an OTP key is written to do nothing without its archive, and seeding a Draft from a QRG answers 503 only to whoever presses the button. Both are now declared, so Integrations & Data Health names them and the migration to run.
+- Only the declaration changed. No migration, no behaviour: the two features already degrade safely, and this is about saying so where somebody is looking.
+- A test keeps both declared, with the reason they earned a place - a feature that stays quiet when its table is absent is the case this page exists for.
 
 ## [1.7.33] - 2026-11-04
 

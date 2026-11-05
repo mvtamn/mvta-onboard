@@ -114,3 +114,21 @@ test("the missed-trip columns that failed in production are declared", () => {
     );
   }
 });
+
+test("a feature that stays quiet when its table is absent is still declared", () => {
+  // The two that went missing without a word (2026-11-04): migration 152 was
+  // absent from dev AND prod, 158 from both, while a note recorded both as
+  // applied. Neither surfaces anywhere a reader looks - the retirement is
+  // designed to do nothing without its archive, and the QRG 503 reaches only
+  // whoever presses the button. A silent feature is exactly the case this page
+  // exists for, so these two have to stay declared.
+  for (const [migration, table] of [
+    ["152", "OtpMonthlyRetiredKeys"],
+    ["158", "DecisionMatrixQrgSeedings"],
+  ]) {
+    assert.ok(
+      SCHEMA_REQUIREMENTS.some((r) => r.migration === migration && r.table === table && !r.column),
+      `${table} (migration ${migration}) must stay declared`,
+    );
+  }
+});
