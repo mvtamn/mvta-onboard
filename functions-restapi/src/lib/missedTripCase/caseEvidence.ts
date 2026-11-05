@@ -36,6 +36,7 @@ export interface CaseEvidenceRow {
   dispatch_start_source: string | null;
   dispatch_predicted_at: Date | null;
   dispatch_scheduled_at: Date | null;
+  dispatch_recorded_at: Date | null;
   first_vehicle_position_at: Date | null;
   first_underway_at: Date | null;
   vehicle_id: string | null;
@@ -137,6 +138,7 @@ export async function readCaseEvidence(
         SELECT p.trip_id, p.service_date, p.scheduled_departure_at, p.grace_deadline_at,
                dl.actual_start_at AS dispatch_start_at, dl.actual_start_source AS dispatch_start_source,
                dl.predicted_start_at AS dispatch_predicted_at, dl.scheduled_start_at AS dispatch_scheduled_at,
+               dl.actuals_updated_at AS dispatch_recorded_at,
                dl.block_id, dl.origin_stop_id, dl.origin_stop_name,
                e.first_vehicle_position_at, e.first_underway_at, e.vehicle_id,
                CAST(CASE WHEN self.detection_type = N'silent_no_show'
