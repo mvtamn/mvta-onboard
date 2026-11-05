@@ -30,16 +30,24 @@ Raw agency OTP, all on `2/5/10/60/0/1/1`, read from `dbo.vw_OtpMonthlyRouteStop`
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-01 | 90.63 | 61,203 | 90.63 | | 2026-06 | **85.92** | 65,284 | 85.92 |
 | 2026-02 | 90.96 | 58,328 | 90.96 | | 2026-07 | 84.86 | 64,411 | 84.91 |
-| 2026-03 | 90.50 | 67,330 | 90.50 | | 2026-08 | **85.30** | 62,748 | 85.30 |
-| 2026-04 | 89.13 | 68,582 | 89.13 | | 2026-09 | 81.20 | 62,538 | **81.20** |
-| 2026-05 | **87.56** | 67,532 | 87.56 | | 2026-10 | 83.93 | 65,956 | 83.93 |
+| 2026-03 | 90.50 | 67,330 | 90.50 | | 2026-08 | **85.30** | 62,746 | 85.30 |
+| 2026-04 | 89.13 | 68,582 | 89.13 | | 2026-09 | 81.20 | 62,521 | **81.20** |
+| 2026-05 | **87.57** | 67,465 | 87.57 | | 2026-10 | 84.05 | 67,023 | 84.05 |
 
 Bold months are the three decision months. **September's assessable figure now equals its
 raw figure** — it read 85.27% until 2026-11-01, on test decisions that have been cleared.
 Only 2026-07 carries genuine exclusions, worth 0.05 points.
 
-2026-10 is this list's first full read of October and supersedes the 63,443 / 83.78 in the
-closeout, which was taken mid-month.
+**Re-read 2026-11-04, and four months moved.** Migration 152 (PR #456, v1.6.73) landed on
+2026-11-02 and retired the eleven route/stop/day keys Avail had stopped reporting — Q12
+below, which this document first listed as undecided. That subtracted 67 departures from
+2026-05, 2 from 2026-08 and 17 from 2026-09. **2026-08's total is therefore 62,746, not the
+62,748 the validation plan names**, and anyone running T1.1 or comparing Rob's export
+against it should expect the smaller figure and know why. 2026-10 also kept accruing past
+1 November as its last service day arrived, 65,956 → 67,023. The three decision months'
+percentages are unchanged to two places except 2026-05, which moved 87.56 → 87.57.
+
+2026-11 is open and accruing; ignore it until December.
 
 ```sql
 -- The one query behind that table. Sum the assessable columns; do not filter
@@ -75,6 +83,9 @@ assessable by default.
 The subtraction is exactly route 490's own figures — 2,239 departures and 1,431 on time —
 and the official figure moved **+0.7916 points** while raw did not move at all, which is
 the documented behaviour: classification is a filter on the assessable figure only.
+
+Route 490's own 60 rows were untouched by migration 152, so re-running this case gives the
+same +0.79 move; only the agency baseline either side of it now reads 62,746 / 53,525.
 
 **Proof:** `GET /api/otp-monthly?month=202608`, `measurement.assessable`, with
 `measurement.routes[route_id=490].route_category` reading `SpecialEvent` then `FixedRoute`.
@@ -138,31 +149,40 @@ happened.** Take that to Tier 3 and Tier 4 as it stands.
 
 **Owner:** Ty (OnBoard side) / Rob (Avail export). **Run 2026-11-01.**
 
-**T1.1 — PASS, exactly.** `SELECT SUM(total), SUM(ontime) FROM dbo.OtpMonthlyRouteStopDay
-WHERE service_month='202608'` returns **62,748 departures, 53,527 on time, 85.30%** — the
-plan's expected figure to the digit, and no sign of the pre-restatement 65,278 / 83.62%.
+**T1.1 — PASS, exactly, as run on 2026-11-01.** `SELECT SUM(total), SUM(ontime) FROM
+dbo.OtpMonthlyRouteStopDay WHERE service_month='202608'` returned **62,748 departures,
+53,527 on time, 85.30%** — the plan's expected figure to the digit, and no sign of the
+pre-restatement 65,278 / 83.62%.
+
+> **The month reads 62,746 / 53,525 / 85.30% from 2026-11-02 onward**, because migration
+> 152 retired two keys Avail had stopped reporting (routes 477 and 480, one row each). The
+> pass stands — it was run against what was stored on the day, and the change is a recorded,
+> deliberate retirement rather than drift. But **quote 62,746 to Rob**, not the plan's
+> 62,748, or his export will appear to disagree by two departures for no reason.
 
 Supporting integrity checks on the same month, all clean:
 
 | Check | Result |
 | --- | --- |
-| Rows vs distinct route/stop/day keys | 912 / 912 — no key collision of the kind that cost March 855 departures |
+| Rows vs distinct route/stop/day keys | 912 / 912 as run; **910 / 910 after migration 152** — no key collision of the kind that cost March 855 departures |
 | Measurement parameter stamp | every row `2/5/10/60/0/1/1`, min = max |
 | `actual_departures + missed = total` | 912 of 912 rows |
+| Row count change since | routes 477 (51 → 50) and 480 (39 → 38); every other route untouched, route 490 included |
 | Routes | 20 |
 | Day-of-week spellings present | `Mon`, `Tues`, `Wed`, `Thur`, `Fri`, `Sat`, `Sun` — note `Tues` and `Thur`, which an exclusion must match exactly |
 | Restatement since month end | 538 rows, all from the 2026-10-28 corrective re-pull (58 days after month end), none since |
 
 **T1.2 — OnBoard's side recorded; it cannot pass until Avail's August export arrives.** The
-20 routes below are what OnBoard holds. Rob's export is still the other half: comparing
+20 routes below are what OnBoard held on 2026-11-01; the two arrows mark where migration 152
+has since retired a row, and are the figures to compare against. Rob's export is still the other half: comparing
 OnBoard to a figure derived from OnBoard proves nothing.
 
 | Route | Departures | On time | % | | Route | Departures | On time | % |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 420 | 1,880 | 1,661 | 88.35 | | 470 | 1,174 | 1,004 | 85.52 |
 | 425 | 3,645 | 3,117 | 85.51 | | 475 | 2,337 | 1,672 | 71.54 |
-| 436 | 4,256 | 3,933 | 92.41 | | 477 | 2,526 | 1,837 | 72.72 |
-| 440 | 2,865 | 2,274 | 79.37 | | 480 | 746 | 611 | 81.90 |
+| 436 | 4,256 | 3,933 | 92.41 | | 477 | 2,526 → **2,525** | 1,837 | 72.72 |
+| 440 | 2,865 | 2,274 | 79.37 | | 480 | 746 → **745** | 611 | 81.90 |
 | 442 | 2,228 | 2,082 | 93.45 | | 490 | 2,239 | 1,431 | 63.91 |
 | 444 | 8,584 | 6,779 | 78.97 | | 493 | 84 | 59 | 70.24 |
 | 445 | 4,292 | 4,082 | 95.11 | | 495 | 11,027 | 9,654 | 87.55 |
@@ -322,11 +342,10 @@ The note in migration 151's register can be closed on that basis.
 - **Q11 — did any pre-correction 2026 figure go out externally?** To the contractor, a board
   packet, a report. Every month now reads 1.6–2.4 points better. A communication, not a
   defect. *Ty.*
-- **Q12 — the eleven rows Avail no longer reports** (2026-05 holds 999 against a re-pull's
-  991, 2026-08 912 against 910, 2026-09 860 against 859). The MERGE never deletes, so a
-  route/stop/day Avail has dropped keeps its last figure forever, which inflates slightly.
-  Whether OnBoard may delete a figure because a feed stopped mentioning it is a decision.
-  *Ty.* PR #456 proposes a migration for this and is open, not merged.
+- ~~**Q12 — the eleven rows Avail no longer reports.**~~ **Decided and done 2026-11-02.**
+  PR #456 merged as v1.6.73 and migration 152 retired all eleven: they are archived, not
+  deleted, under ADR 0044. 2026-05 went 999 → 991 rows, 2026-08 912 → 910, 2026-09 860 →
+  859, which is where this document's figures table moved. Nothing is carried forward.
 - **Holiday / reduced-service skew**, built and passing on
   `claude/otp-reduced-service-declared`, and **PR #391**. Both deliberately held until Tier
   A returns — a second subtraction mid-validation would invalidate the comparison. **Do not
