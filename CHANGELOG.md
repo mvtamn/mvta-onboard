@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.38] - 2026-11-04
+## [1.7.39] - 2026-11-04
 
 - **The Detour Register's CSV could carry a live formula.** `lib/detourSearch.ts`'s `csvCell` quoted every field but did nothing about a leading `=`, `+`, `-` or `@`, so a closure, note or location typed as `=HYPERLINK(...)` ran as a formula in the Excel workbook the export is pasted into. The Access inventory export already guarded against this with `spreadsheetSafeText`; the detour export did not.
 - **One rule for both.** `spreadsheetSafeText` moves from `routes/access/accessData.tsx` to `lib/spreadsheetSafeText.ts` (accessData re-exports it, so its callers are unchanged), and the detour `csvCell` runs every cell through it. Only the file is guarded: the export preview table shows the text as typed.
