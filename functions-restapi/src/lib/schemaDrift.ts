@@ -151,6 +151,20 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     column: "trip_ids",
     breaks: "Ridership: printed Count Sheets do not record which trips were on each row, so a scanned sheet cannot be matched row by row",
   },
+  // Both of these were missing from an environment for days with nothing
+  // saying so, which is what earned them a place here (2026-11-04). The
+  // retirement degrades silently by design, and QRG seeding answers 503 only
+  // to whoever happens to press the button.
+  {
+    migration: "152",
+    table: "OtpMonthlyRetiredKeys",
+    breaks: "OTP: a route/stop/day Avail has stopped returning is never retired, so it keeps its last figure and holds its month on the re-pull list for good",
+  },
+  {
+    migration: "158",
+    table: "DecisionMatrixQrgSeedings",
+    breaks: "Decision Matrix: a Draft cannot be seeded from a QRG - the endpoint answers 503",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */
