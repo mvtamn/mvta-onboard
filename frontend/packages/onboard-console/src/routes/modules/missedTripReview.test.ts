@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GtfsCaseEvidence, MissedTripsMonthlySummaryRow } from "@mvta/shared";
 import {
-  AGING_HOURS, OVERDUE_HOURS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
+  AGING_HOURS, OVERDUE_HOURS, agingBadge, availTripRef, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
   dataQualityLabel, detectionTypeLabel, formatServiceMonth, inView, lifecycleLabel, outcomeLabel,
   conflictNotice, pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, startEvidenceFacts, tripCode,
 } from "./missedTripReview.js";
@@ -156,6 +156,24 @@ describe("trip codes", () => {
     expect(tripCode(null, "SB")).toBe("SB");
     expect(tripCode(null, null)).toBe("—");
     expect(tripCode("not a date", null)).toBe("—");
+  });
+});
+
+describe("Avail trip references", () => {
+  it("reads the trip number from the GTFS trip_id's hex first part, with the direction letter", () => {
+    expect(availTripRef("t3FB-b3E-sl1C-v65", "NB")).toBe("1019-N");
+    expect(availTripRef("t140-b1F5-sl1B-v64", "EB")).toBe("320-E");
+    expect(availTripRef("t4D3-b12D-sl1C-v65", "S")).toBe("1235-S");
+  });
+
+  it("drops the letter when the direction is missing or not a compass point", () => {
+    expect(availTripRef("t3FB-b3E-sl1C-v65", null)).toBe("1019");
+    expect(availTripRef("t3FB-b3E-sl1C-v65", "Loop")).toBe("1019");
+  });
+
+  it("is null for an id not in MVTA's form", () => {
+    expect(availTripRef("1436999", "NB")).toBeNull();
+    expect(availTripRef("gtfs-trip", "NB")).toBeNull();
   });
 });
 

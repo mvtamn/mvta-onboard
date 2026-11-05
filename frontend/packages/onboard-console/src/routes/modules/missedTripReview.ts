@@ -274,6 +274,22 @@ export function tripCode(scheduledDepartureAt: string | null, direction: string 
   return timePart ?? direction ?? "—";
 }
 
+// The trip as Avail and dispatch name it: "1019-N", the trip number and the
+// direction letter, so a reviewer can find the same trip in Avail. MVTA's GTFS
+// trip_id carries that number in hexadecimal as its first part ("t3FB-b3E-..."
+// is trip 1019) - the same rule as availTripNumber in functions-restapi's
+// ridership/rules.ts, which was checked against every Dispatch Log trip on
+// 2026-11-01/02 (847 of 847). The console does not import backend code, so it
+// keeps this copy. Null for an id not in that form (a Spare request, or a feed
+// that changed shape), so the caller shows the raw id instead.
+export function availTripRef(tripId: string, direction: string | null): string | null {
+  const match = tripId.match(/^t([0-9A-Fa-f]{1,4})-b[0-9A-Fa-f]+-/);
+  if (!match) return null;
+  const number = parseInt(match[1], 16);
+  const letter = direction?.trim().toUpperCase().match(/^([NSEW])(B|BOUND)?$/)?.[1];
+  return letter ? `${number}-${letter}` : String(number);
+}
+
 // "YYYYMM" -> "MM/YYYY" - a small local duplicate of the same helper OTP's
 // module keeps for itself (otp/OtpModule.tsx's formatServiceMonth); this
 // module isn't otherwise coupled to OTP's code, so it gets its own copy
