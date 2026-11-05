@@ -5,11 +5,17 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.36] - 2026-11-04
+## [1.7.39] - 2026-11-04
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.37] - 2026-11-04
+
+- **Two tables the health page could not see.** The schema drift check (1.5.296) reports a database that is behind the deployed code, but only for what `SCHEMA_REQUIREMENTS` declares. `OtpMonthlyRetiredKeys` (migration 152) and `DecisionMatrixQrgSeedings` (migration 158) were never declared, and on 2026-11-04 both were found absent from dev *and* prod while a note recorded 158 as applied to both. Nothing contradicted the note: retiring an OTP key is written to do nothing without its archive, and seeding a Draft from a QRG answers 503 only to whoever presses the button. Both are now declared, so Integrations & Data Health names them and the migration to run.
+- Only the declaration changed. No migration, no behaviour: the two features already degrade safely, and this is about saying so where somebody is looking.
+- A test keeps both declared, with the reason they earned a place - a feature that stays quiet when its table is absent is the case this page exists for.
+
 ## [1.7.33] - 2026-11-04
 
 - **Avail's reason for refusing a request is readable again.** Since 17:00 UTC on 2026-11-04 the Pullout Reports API has answered `success=false` on every call, on dev and on prod, while AVL, detours and the other Avail feeds kept working. The log and the feed ledger said only `success=false: [object Object]`: `fetchAvail` joined Avail's `errors` as strings, and these errors are objects. `describeAvailErrors` now prints each object as JSON (strings as before), accepts a lone non-array value, and when Avail sends no detail at all quotes the start of the body instead.

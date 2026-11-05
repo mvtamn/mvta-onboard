@@ -5,6 +5,7 @@
     "environment": { "value": "prod" },
     "location": { "value": "westus2" },
     "uniqueSuffix": { "value": "b0885v" },
-    "sqlAdminLogin": { "value": "mvtaonboardadmin" }
+    "sqlAdminLogin": { "value": "mvtaonboardadmin" },
+    "sqlDtu": { "value": 20 }
   }
 }
