@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.26] - 2026-11-04
+## [1.7.30] - 2026-11-04
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,13 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.7.28] - 2026-11-04
+
+- **The console could never renew an access token, so it hung on "Checking your access…".** MSAL renews silently in a hidden iframe: the iframe goes to `login.microsoftonline.com`, and Entra redirects it **back to the console's own origin** carrying the code. `staticwebapp.config.json` forbade that last hop three times over - `frame-src` listed only `login.microsoftonline.com`, `frame-ancestors` was `'none'`, and `X-Frame-Options` was `DENY`. `acquireTokenSilent` therefore could not complete for any reason other than a thrown error, and the console sat on its loading state. Reproduced on deployed dev 2026-11-01: the browser reported `Framing '.../console/#code=...' violates ... frame-src https://login.microsoftonline.com`.
+- **The fix** is the smallest set of changes that lets the console frame itself and nobody else: `frame-src 'self' https://login.microsoftonline.com`, `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`. Cross-origin framing is still refused, which is the clickjacking threat; an attacker who can serve a page from the console's own origin already has script execution there, so `'self'` gives up nothing real. No application code changes.
+- **Not done here, and it needs an Entra step.** MSAL's redirect URI is `/console/`, so the renewal frame boots the whole console inside itself. A dedicated blank redirect page would be lighter and would let `frame-ancestors` stay `'none'` for the app itself (SWA allows per-route headers), but the new URI has to be registered on the `MVTA OnBoard` app registration's SPA platform first, which is not a code change.
+- **Affects the console only.** The rider app has no MSAL and its config is untouched.
 
 ## [1.7.25] - 2026-11-03
 
