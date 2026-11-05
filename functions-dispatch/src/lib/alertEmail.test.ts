@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { buildAlertEmail, buildManageLinkEmail, buildManageLinkSms, manageLinkFor } from "./alertEmail";
+import { buildAlertEmail, buildManageLinkEmail, buildManageLinkSms, manageLinkFor, oneClickUnsubscribeUrl, unsubscribeHeaders } from "./alertEmail";
 
 const BASE = "https://endpoint-mvta-onboard-dev.example.azurefd.net";
 const KEY = "0123456789abcdef".repeat(4);
@@ -60,4 +60,31 @@ test("the recovery reply sends the link and says ignoring it changes nothing", (
   assert.ok(mail.text.includes(link));
   assert.match(mail.text, /didn’t ask for this.*haven’t changed/s);
   assert.ok(buildManageLinkSms(link).includes(link));
+});
+
+const DELIVERY = "3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b";
+
+test("the one-click address carries the delivery id, never the manage key", () => {
+  const url = new URL(oneClickUnsubscribeUrl(`${BASE}/`, DELIVERY.toUpperCase())!);
+  assert.strictEqual(url.origin + url.pathname, `${BASE}/api/subscribers/one-click-unsubscribe`);
+  assert.strictEqual(url.searchParams.get("d"), DELIVERY);
+  assert.ok(!url.href.includes("key"));
+});
+
+test("no one-click address from a bad base or a bad id", () => {
+  for (const base of [undefined, "", "http://plain.example.com", "https://a.example.com?x=1"]) {
+    assert.strictEqual(oneClickUnsubscribeUrl(base, DELIVERY), null, `base ${JSON.stringify(base)}`);
+  }
+  for (const id of ["", "not-a-guid", `${DELIVERY}&x=1`]) {
+    assert.strictEqual(oneClickUnsubscribeUrl(BASE, id), null, `id ${JSON.stringify(id)}`);
+  }
+});
+
+test("one-click headers follow RFC 8058, and are left off without an address", () => {
+  const url = oneClickUnsubscribeUrl(BASE, DELIVERY)!;
+  assert.deepStrictEqual(unsubscribeHeaders(url), {
+    "List-Unsubscribe": `<${url}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  });
+  assert.deepStrictEqual(unsubscribeHeaders(null), {});
 });
