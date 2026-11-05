@@ -7,6 +7,12 @@ import { escapeHtml } from "./html";
 // dist/src/lib/*.test.js, and the footer is the part of an alert email that
 // carries a credential.
 
+/** The rider app's base, if it is a plain https origin-and-path; see manageLinkFor. */
+function usableBase(baseUrl: string | undefined): string | null {
+  const base = (baseUrl ?? "").trim().replace(/\/+$/, "");
+  return /^https:\/\/[A-Za-z0-9.-]+(:\d+)?(\/[A-Za-z0-9._~/-]*)?$/.test(base) ? base : null;
+}
+
 /**
  * The link to a rider's own subscription.
  *
@@ -24,10 +30,43 @@ import { escapeHtml } from "./html";
  * the href it is placed in.
  */
 export function manageLinkFor(baseUrl: string | undefined, manageKey: string | null | undefined): string | null {
-  const base = (baseUrl ?? "").trim().replace(/\/+$/, "");
-  if (!/^https:\/\/[A-Za-z0-9.-]+(:\d+)?(\/[A-Za-z0-9._~/-]*)?$/.test(base)) return null;
+  const base = usableBase(baseUrl);
+  if (!base) return null;
   if (!manageKey || !/^[0-9a-f]{64}$/.test(manageKey)) return null;
   return `${base}/subscribe/preferences#key=${manageKey}`;
+}
+
+/**
+ * The one-click unsubscribe address for one delivered email (RFC 8058).
+ *
+ * Mail clients POST to this URL themselves, with no page and no rider in
+ * front of them, so the URL has to carry its own proof. It carries the
+ * delivery's log id, NOT the manage key: this one is in the query string, and
+ * so in access logs, and all it can do is stop email to the address it was
+ * sent to - the one thing its recipient is asking for. The manage key would
+ * hand whoever read a log line the rider's whole subscription.
+ *
+ * Same base rule as manageLinkFor, and null for the same reason: a header that
+ * points nowhere is an unsubscribe that silently fails.
+ */
+export function oneClickUnsubscribeUrl(baseUrl: string | undefined, deliveryId: string): string | null {
+  const base = usableBase(baseUrl);
+  if (!base) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deliveryId)) return null;
+  return `${base}/api/subscribers/one-click-unsubscribe?d=${deliveryId.toLowerCase()}`;
+}
+
+/**
+ * The headers that put an Unsubscribe button in Gmail, Yahoo and Outlook.
+ * Bulk senders without them are filtered harder; the footer link alone does
+ * not count.
+ */
+export function unsubscribeHeaders(oneClickUrl: string | null): Record<string, string> {
+  if (!oneClickUrl) return {};
+  return {
+    "List-Unsubscribe": `<${oneClickUrl}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
 }
 
 export interface EmailParts {

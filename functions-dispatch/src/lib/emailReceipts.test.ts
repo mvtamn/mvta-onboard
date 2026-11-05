@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { aggregateDelivery, parseEmailReceipts, validationResponse } from "./emailReceipts";
+import { aggregateDelivery, parseEmailReceipts, riderLogStatus, validationResponse } from "./emailReceipts";
 
 test("subscription validation echoes the code and is ignored otherwise", () => {
   assert.deepStrictEqual(validationResponse([{ eventType: "Microsoft.EventGrid.SubscriptionValidationEvent", data: { validationCode: "abc" } }]), { validationResponse: "abc" });
@@ -29,4 +29,14 @@ test("aggregate delivery distinguishes accepted, confirmed, partial, and failed"
   assert.deepStrictEqual(aggregateDelivery(["delivered", "expanded"]), { status: "delivered", failed: 0 });
   assert.deepStrictEqual(aggregateDelivery(["delivered", "bounced"]), { status: "partially_sent", failed: 1 });
   assert.deepStrictEqual(aggregateDelivery(["bounced", "suppressed"]), { status: "failed", failed: 2 });
+});
+
+test("rider delivery log statuses: expanded counts as delivered, the rest pass through", () => {
+  assert.strictEqual(riderLogStatus("delivered"), "delivered");
+  assert.strictEqual(riderLogStatus("expanded"), "delivered");
+  assert.strictEqual(riderLogStatus("bounced"), "bounced");
+  assert.strictEqual(riderLogStatus("suppressed"), "suppressed");
+  assert.strictEqual(riderLogStatus("filtered_spam"), "filtered_spam");
+  // "accepted" is the detour receipt's own starting state, never a report.
+  assert.strictEqual(riderLogStatus("accepted"), null);
 });
