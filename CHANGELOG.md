@@ -5,11 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.38] - 2026-11-04
+## [1.7.42] - 2026-11-04
 
 - **Missed Trips names the selected trip as Avail does.** The detail header read "Ref t3FB-b3E-sl1C-v65", the raw GTFS trip_id, which staff cannot look up in Avail. It now reads "Avail trip 1019-N": the trip number and the direction letter. MVTA's GTFS trip_id carries the trip number in hexadecimal as its first part (`t3FB` is 1019), the same rule the Count Sheets use (`availTripNumber`, 1.7.10, checked against 847 of 847 Dispatch Log trips). The console keeps its own copy as `availTripRef` in `missedTripReview.ts`, because it does not import backend code.
 - **The GTFS trip ID is not lost.** It is listed under Technical details as "GTFS trip ID" and shown when you point at the header's reference. An id not in MVTA's form (a Spare request, or a feed that changes shape) falls back to "Ref <id>" as before.
 - **Console only.** No API or database change.
+
+## [1.7.41] - 2026-11-04
+
+- **A Dispatch Log departure the producer predicted exactly now counts as a start.** `dispatchReading` (`lib/missedTripCase/adapters/gtfs.ts`) rejected any `trip_update` reading equal to `predicted_start_at` as "the last prediction standing in for a reading the poller missed" (#440). But MVTA's producer usually predicts the origin departure exactly, and `planCapture` copies that prediction alongside the realised reading. On dev, 144 of 155 such readings since 2026-10-01 were written within three minutes of the departure: the poller saw them realised, live. Of the 19 escalated `gtfs-silent-v4` cases with a realised departure inside the grace, 11 were this shape (e.g. `t483-b4-sl1C-v65`, 2026-11-03: left 17:55:21, predicted 17:55:21, recorded 99 s later).
+- **Why the jump in November.** With the departure discarded, the start fell back to `first_underway_at`. On 2026-11-01 and 11-02 vehicle-position evidence landed 10-45 minutes after the departure (normally about 6), so trips that left on time were proven only after their deadline. Weekly escalations went from 1-7 to 30. The v64→v65 trip ids and the dead-zone bar (#470) play no part.
+- **The rule now.** `predictionStoodIn` treats a reading equal to its prediction as stood in only when `TripStartLog.actuals_updated_at` is at least `LINGER_WINDOW_SECONDS` (15 min) after it, or unknown. `planCapture` writes a stood-in prediction only after the first stop has dropped out of the feed, which takes about that long. `operatedSql` applies the same test; the contract test seeds both shapes. On dev, 2 readings since 2026-10-01 still count as stood in.
+- **Effect on deploy.** The 11 open, unreviewed cases receive a `trip_start` inside the grace from `openCaseStarts` and resolve as Timely service on the next pass. The other 8 had no vehicle report against the trip at all and stay escalated: that is the vehicle rule working as designed. The detector version stays `gtfs-silent-v4`, as in #440.
 
 ## [1.7.37] - 2026-11-04
 
