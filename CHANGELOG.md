@@ -5,11 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.27] - 2026-11-04
+## [1.7.29] - 2026-11-04
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.28] - 2026-11-04
+
+- **The console could never renew an access token, so it hung on "Checking your access…".** MSAL renews silently in a hidden iframe: the iframe goes to `login.microsoftonline.com`, and Entra redirects it **back to the console's own origin** carrying the code. `staticwebapp.config.json` forbade that last hop three times over - `frame-src` listed only `login.microsoftonline.com`, `frame-ancestors` was `'none'`, and `X-Frame-Options` was `DENY`. `acquireTokenSilent` therefore could not complete for any reason other than a thrown error, and the console sat on its loading state. Reproduced on deployed dev 2026-11-01: the browser reported `Framing '.../console/#code=...' violates ... frame-src https://login.microsoftonline.com`.
+- **The fix** is the smallest set of changes that lets the console frame itself and nobody else: `frame-src 'self' https://login.microsoftonline.com`, `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`. Cross-origin framing is still refused, which is the clickjacking threat; an attacker who can serve a page from the console's own origin already has script execution there, so `'self'` gives up nothing real. No application code changes.
+- **Not done here, and it needs an Entra step.** MSAL's redirect URI is `/console/`, so the renewal frame boots the whole console inside itself. A dedicated blank redirect page would be lighter and would let `frame-ancestors` stay `'none'` for the app itself (SWA allows per-route headers), but the new URI has to be registered on the `MVTA OnBoard` app registration's SPA platform first, which is not a code change.
+- **Affects the console only.** The rider app has no MSAL and its config is untouched.
+
 ## [1.7.25] - 2026-11-03
 
 - **Dev's Function Apps sign in to SQL as themselves.** `main-phase1.bicep` gains `sqlAuthentication` (`password` | `managedIdentity`, default `password`) and builds one `SQL_CONNECTION_STRING` for the REST, dispatch and Spare webhook apps: the Key Vault reference to `sql-connection-string` as before, or `Server=tcp:<server>,1433;Database=sqldb-mvta-onboard-<env>;Authentication=Active Directory Default;...`, which holds no secret. `functionapp.bicep` takes it as `sqlConnectionString` instead of hardcoding the Key Vault reference. `phase1-dev.parameters.json` sets `managedIdentity`; prod keeps the password.
