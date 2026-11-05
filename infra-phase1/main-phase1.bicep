@@ -217,6 +217,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     riderAppBaseUrl: riderAppBaseUrl
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
+    ridershipScansStorageAccountName: take('stmvtasheetscan${environment}${cleanSuffix}', 24)
     predictionCaptureStorageAccountName: take('stmvtapredcap${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
     onDemandDeparturesEnabled: onDemandDeparturesEnabled
@@ -416,6 +417,22 @@ module complianceReportsStorage 'modules/storage-compliance-reports.bicep' = {
   }
 }
 
+// Scanned Count Sheets (plans/count-sheet-scan-upload.md §5, increment S1):
+// the originals under an unlocked WORM retention policy, and the derived page
+// images. New resource, real (small) cost: approved by the user before the
+// infra workflow deploys it (PR description).
+module countSheetScansStorage 'modules/storage-count-sheet-scans.bicep' = {
+  name: 'count-sheet-scans-storage-deployment'
+  params: {
+    location: location
+    storageAccountName: take('stmvtasheetscan${environment}${cleanSuffix}', 24)
+    functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+    manageRoleAssignments: manageRoleAssignments
+    // The console PUTs the original straight to Blob Storage.
+    allowedCorsOrigins: allowedCorsOrigins
+  }
+}
+
 // Azure Maps account for Event Monitoring's real map overlay
 // (event-module-implementation-plan.md, Part A3). CONFIRMED LIVE 2026-08-06:
 // the owner provisioned this manually (az/Portal), not via this module -
@@ -445,4 +462,5 @@ output serviceBusNamespace string = serviceBus.outputs.namespaceName
 output serviceBusQueueName string = serviceBus.outputs.queueName
 output detourImagesStorageAccount string = detourImagesStorage.outputs.storageAccountName
 output detourImagesContainer string = detourImagesStorage.outputs.containerName
+output countSheetScansStorageAccount string = countSheetScansStorage.outputs.storageAccountName
 output spareWebhookFunctionHostname string = spareWebhookFunction.outputs.functionAppHostname

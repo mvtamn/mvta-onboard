@@ -148,6 +148,10 @@ import type {
   RidershipBlockGarageSave,
   RidershipPrintRequest,
   RidershipPrintStatus,
+  RidershipScanDesk,
+  RidershipScanPage,
+  RidershipScanPageAction,
+  RidershipScanUpload,
   RidershipSheet,
   RidershipSheetSave,
   RidershipWorklist,
@@ -1349,6 +1353,38 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     /** One PDF of the garage's Count Sheets (or the reprinted blocks), logged as it is made. */
     printRidershipSheets(print: RidershipPrintRequest) {
       return postForFile("/api/ridership/print", print);
+    },
+
+    // Count Sheet scans (migration 163). The PDF goes straight to Blob Storage
+    // through the create-only `upload_url`; then submit queues it.
+    createRidershipScanUpload(input: { file_name: string; size_bytes: number; garage: string | null; content_type: "application/pdf" }) {
+      return request<{ upload_id: string; upload_url: string }>("/api/ridership/scans", { method: "POST", body: JSON.stringify(input) }, true);
+    },
+
+    submitRidershipScanUpload(uploadId: string, sha256: string) {
+      return request<RidershipScanUpload>(`/api/ridership/scans/${encodeURIComponent(uploadId)}/submit`, { method: "POST", body: JSON.stringify({ sha256 }) }, true);
+    },
+
+    getRidershipScanUpload(uploadId: string) {
+      return request<RidershipScanUpload>(`/api/ridership/scans/${encodeURIComponent(uploadId)}`, {}, true);
+    },
+
+    /** `garage` undefined is every garage; null is uploads that named none. */
+    getRidershipScanDesk(query: { date?: string; garage?: string | null } = {}) {
+      const params = new URLSearchParams();
+      if (query.date) params.set("date", query.date);
+      if (query.garage !== undefined) params.set("garage", query.garage ?? "");
+      const search = params.toString();
+      return request<RidershipScanDesk>(`/api/ridership/scans${search ? `?${search}` : ""}`, {}, true);
+    },
+
+    updateRidershipScanPage(pageId: string, action: RidershipScanPageAction) {
+      return request<RidershipScanPage>(`/api/ridership/scan-pages/${encodeURIComponent(pageId)}`, { method: "PATCH", body: JSON.stringify(action) }, true);
+    },
+
+    /** A 5-minute link to a page image. Every call is logged as an open. */
+    getRidershipScanImage(pageId: string) {
+      return request<{ url: string; expires_at: string }>(`/api/ridership/scan-pages/${encodeURIComponent(pageId)}/image`, {}, true);
     },
 
     getMissedTripDetectorPromotions() {

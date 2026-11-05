@@ -2745,6 +2745,9 @@ export interface RidershipWorklistSheet {
   entered_by: string | null;
   reconstructed: boolean;
   progress: RidershipSheetProgress;
+  /** Migration 163: "scanned", "not_scanned" for a garage that scans, else null; absent before the migration. */
+  scan?: "scanned" | "not_scanned" | null;
+  first_scanned_at?: string | null;
 }
 
 export interface RidershipGarageCompleteness {
@@ -2758,6 +2761,9 @@ export interface RidershipGarageCompleteness {
   required_trips: number;
   missing_trips: number;
   not_counted_trips: number;
+  /** Scanned but not entered, and not scanned (migration 163); null for a garage that does not scan. */
+  scanned_open?: number | null;
+  not_scanned?: number | null;
 }
 
 export interface RidershipWorklist {
@@ -2840,7 +2846,58 @@ export interface RidershipSheet {
   added_trips: RidershipAddedTrip[];
   progress: RidershipSheetProgress;
   history: RidershipSheetHistoryEntry[];
+  /** Migration 163: the sheet's scanned pages. Null before the migration; absent on a save's response. */
+  scan?: { pages: RidershipScanPage[]; can_view_images: boolean } | null;
 }
+
+// ---------------------------------------------------------------- Count Sheet scans (migration 163)
+
+export type RidershipScanPageState = "pending" | "matched" | "blank" | "duplicate" | "superseded" | "unreadable" | "ignored";
+
+export interface RidershipScanPage {
+  page_id: string;
+  /** 1-based page of the uploaded file. */
+  page_number: number;
+  state: RidershipScanPageState;
+  /** Why a page is unreadable: marks_missing, not_identified, processing_failed, ... */
+  reason: string | null;
+  service_date: string | null;
+  block: string | null;
+  sheet_page: number | null;
+  identified_by: "qr" | "printed_text" | "person" | null;
+  straightened: boolean;
+  /** When the copy was printed; null when the print run is not known. */
+  printed_at: string | null;
+  /** The sheet's date is more than two days from the upload. */
+  date_flag: boolean;
+  processed_at: string | null;
+  assigned_by: string | null;
+}
+
+export interface RidershipScanUpload {
+  upload_id: string;
+  garage: string | null;
+  file_name: string;
+  status: "awaiting" | "queued" | "splitting" | "processing" | "done" | "failed";
+  status_detail: string | null;
+  page_count: number | null;
+  created_at: string;
+  created_by: string;
+  pages: RidershipScanPage[];
+}
+
+export interface RidershipScanDesk {
+  service_date: string;
+  garage: string | null;
+  uploads: RidershipScanUpload[];
+  expected: { block: string; pages: number; scanned_pages: number }[];
+  unassigned: number;
+}
+
+export type RidershipScanPageAction =
+  | { action: "assign"; service_date: string; block: string; sheet_page?: number }
+  | { action: "ignore" }
+  | { action: "blank" };
 
 /**
  * A relief operator or bus change part way through the block (migration 162):

@@ -146,6 +146,21 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     column: "trip_ids",
     breaks: "Ridership: printed Count Sheets do not record which trips were on each row, so a scanned sheet cannot be matched row by row",
   },
+  {
+    migration: "163",
+    table: "RidershipScanUploads",
+    breaks: "Ridership: the garage desk cannot upload scanned Count Sheets",
+  },
+  {
+    migration: "163",
+    table: "RidershipScanPages",
+    breaks: "Ridership: scanned pages are not identified, and the worklist shows no Scanned / Not scanned marker",
+  },
+  {
+    migration: "163",
+    table: "RidershipScanViews",
+    breaks: "Ridership: Count Sheet scan images cannot be opened, because each open must be logged",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */

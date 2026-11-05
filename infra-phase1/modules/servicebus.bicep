@@ -129,6 +129,23 @@ resource eventGeofenceQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-p
   }
 }
 
+// Count Sheet scan work (plans/count-sheet-scan-upload.md §4): one message to
+// split an upload, then one per page, sent and received by the REST app
+// (namespace-scoped Sender and Receiver roles above cover it). A page takes a
+// few seconds; the lock allows for the worker taking pages one at a time.
+// After three failed deliveries the worker marks the page for a person, so
+// the dead-letter queue stays for the unexpected.
+resource ridershipScanQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+  parent: serviceBusNamespace
+  name: 'ridership-scan-pages'
+  properties: {
+    maxDeliveryCount: 3
+    lockDuration: 'PT5M'
+    defaultMessageTimeToLive: 'P7D'
+    deadLetteringOnMessageExpiration: true
+  }
+}
+
 output namespaceName string = serviceBusNamespace.name
 output namespaceId string = serviceBusNamespace.id
 output queueName string = messageCreatedQueue.name
