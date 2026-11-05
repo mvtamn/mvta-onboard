@@ -1,12 +1,25 @@
 // Nightly materialization of the Dispatch Log (plans/dispatch-log-spec.md
 // §4.2): one TripStartLog row per revenue trip scheduled on a service date,
-// for today and tomorrow, so the day's log exists before its first pullout.
+// for today and the next three days, so the day's log exists before its first
+// pullout and a garage desk can print Count Sheets ahead for a weekend
+// (Friday evening prints Saturday through Monday). Each later run refreshes
+// the days ahead from the morning's schedule, and the print page compares
+// what it printed against that, so a day printed early still shows any sheet
+// that changed.
 //
 // Scheduled in UTC on purpose. gtfsStopsSync replaces the schedule tables at
 // 09:00 UTC; a "03:00 local" slot lands at 08:00 UTC through the eight months
 // of daylight time and would build the day from yesterday's schedule, which
 // the sync then truncates out from under it. 09:30 UTC is 04:30 CDT / 03:30
 // CST - after the sync, before most of the day's service.
+//
+// A day that has not started yet also drops any trip the schedule no longer
+// has: built days ahead, a day can be written from the outgoing schedule
+// before a service change lands, and a trip left behind would be printed on
+// a Count Sheet nobody drives. Dropping it changes the sheet's fingerprint,
+// so the print page shows it as changed and the morning desk reprints it.
+// Today and earlier are never pruned - their rows carry actuals,
+// verifications and counts.
 //
 // What the row carries is a snapshot. Route name, origin stop name and the
 // resolved start instant are copied in because GtfsScheduledTrips is a full
@@ -52,6 +65,8 @@ export interface MaterializeResult {
   outcome: "written" | "no_service" | "no_anchor" | "schema_missing";
   inserted: number;
   refreshed: number;
+  /** Trips removed because the schedule no longer runs them (days not yet started only). */
+  dropped: number;
   rotation_count: number;
   week_offset: number | null;
 }
@@ -265,14 +280,37 @@ async function upsertTrip(
   return result.recordset[0]?.action === "INSERT" ? "inserted" : "refreshed";
 }
 
+/**
+ * Whether a run may remove the date's trips that left the schedule: only for
+ * a day after today, and never on an empty trip list (a schedule that read
+ * back nothing is a failed read, not a day with no trips).
+ */
+export function mayDropUnscheduled(serviceDate: string, today: string, scheduledTrips: number): boolean {
+  return serviceDate > today && scheduledTrips > 0;
+}
+
+async function dropUnscheduled(tx: sql.Transaction, serviceDate: string, keep: readonly string[]): Promise<number> {
+  const req = new sql.Request(tx);
+  req.input("service_date", sql.Char(8), serviceDate);
+  req.input("keep", sql.NVarChar(sql.MAX), JSON.stringify(keep));
+  const result = await req.query(`
+    DELETE l FROM TripStartLog l
+    WHERE l.service_date = @service_date
+      AND NOT EXISTS (SELECT 1 FROM OPENJSON(@keep) WITH (trip_id NVARCHAR(100) '$') k WHERE k.trip_id = l.trip_id)
+      AND NOT EXISTS (SELECT 1 FROM TripStartVerifications v WHERE v.service_date = l.service_date AND v.trip_id = l.trip_id)
+  `);
+  return result.rowsAffected[0] ?? 0;
+}
+
 export async function materializeServiceDate(
   pool: sql.ConnectionPool,
   context: InvocationContext,
   serviceDate: string,
   dow: string,
+  today: string = serviceDate,
 ): Promise<MaterializeResult> {
   const base: MaterializeResult = {
-    service_date: serviceDate, outcome: "written", inserted: 0, refreshed: 0, rotation_count: 0, week_offset: null,
+    service_date: serviceDate, outcome: "written", inserted: 0, refreshed: 0, dropped: 0, rotation_count: 0, week_offset: null,
   };
   if (!(await schemaReady(pool))) {
     context.warn("Trip-start log schema is unavailable - apply migrations 027 and 094 before materialization can run.");
@@ -309,12 +347,16 @@ export async function materializeServiceDate(
   let inserted = 0;
   let refreshed = 0;
   let rotationCount = 0;
+  let dropped = 0;
   try {
     for (const trip of revenueTrips) {
       const action = await upsertTrip(tx, serviceDate, dow, trip, rotation, withEnd);
       if (action === "inserted") inserted++;
       else if (action === "refreshed") refreshed++;
       if (action !== "skipped" && inRotation(rotation, trip.trip_id, dow)) rotationCount++;
+    }
+    if (mayDropUnscheduled(serviceDate, today, revenueTrips.length)) {
+      dropped = await dropUnscheduled(tx, serviceDate, revenueTrips.map((t) => t.trip_id));
     }
     await tx.commit();
   } catch (err) {
@@ -323,11 +365,19 @@ export async function materializeServiceDate(
   }
 
   context.log(
-    `Trip-start log ${serviceDate} (${dow}): ${inserted} trips added, ${refreshed} refreshed, ` +
+    `Trip-start log ${serviceDate} (${dow}): ${inserted} trips added, ${refreshed} refreshed, ${dropped} dropped, ` +
       `${rotationCount} on the verification list (week ${rotation.week_offset} from ${anchor}; ` +
       `pools ${rotation.weekday_pool_size} weekday / ${rotation.weekend_pool_size} weekend).`,
   );
-  return { ...base, inserted, refreshed, rotation_count: rotationCount, week_offset: rotation.week_offset };
+  return { ...base, inserted, refreshed, dropped, rotation_count: rotationCount, week_offset: rotation.week_offset };
+}
+
+/** How many days past today the log is built for (see the header). */
+export const MATERIALIZE_DAYS_AHEAD = 3;
+
+/** The service dates one run builds, today first, counted in agency (Central) time. */
+export function materializedServiceDates(now: Date): { serviceDate: string; dow: string }[] {
+  return Array.from({ length: MATERIALIZE_DAYS_AHEAD + 1 }, (_, dayOffset) => agencyServiceDate(now, dayOffset));
 }
 
 app.timer("tripStartLogMaterialize", {
@@ -335,10 +385,11 @@ app.timer("tripStartLogMaterialize", {
   handler: async (_timer: Timer, context: InvocationContext) => {
     const pool = await getPool();
     const now = new Date();
-    for (const dayOffset of [0, 1]) {
-      const { serviceDate, dow } = agencyServiceDate(now, dayOffset);
+    const days = materializedServiceDates(now);
+    const today = days[0].serviceDate;
+    for (const { serviceDate, dow } of days) {
       try {
-        await materializeServiceDate(pool, context, serviceDate, dow);
+        await materializeServiceDate(pool, context, serviceDate, dow, today);
       } catch (err) {
         context.error(`Trip-start log materialization failed for ${serviceDate}:`, err);
       }

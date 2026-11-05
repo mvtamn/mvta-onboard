@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.43] - 2026-11-04
+
+- **The Dispatch Log is built three days ahead.** `tripStartLogMaterialize` now writes today and the next three service days (`MATERIALIZE_DAYS_AHEAD = 3`, `materializedServiceDates`) instead of today and tomorrow. Count Sheets are printed from the log, so a garage desk can now print a weekend on Friday evening (Saturday through Monday), as the Ridership SOP allows. Each 09:30 UTC run still refreshes the days ahead from that morning's schedule, and the print page compares what it printed with the log by fingerprint, so a sheet printed early still shows as changed if a trip moves.
+- **Days not yet started drop trips the schedule no longer runs.** The materializer only ever inserted and refreshed. Built days ahead, a date can be written from the outgoing schedule just before a service change lands (7 December 2026 is the first one with OnBoard sheets), and the stale trips would stay on the log and on the printed sheet. For a date after today, a run now deletes the date's rows whose trip is not in the schedule read, unless the trip has a desk verification. Today and earlier are never pruned, and an empty schedule read never prunes. Nothing references `TripStartLog` by foreign key, and a count cannot be saved for a future date.
+- No migration. The console's empty-log message now says the build covers the next three days.
+
 ## [1.7.41] - 2026-11-04
 
 - **A Dispatch Log departure the producer predicted exactly now counts as a start.** `dispatchReading` (`lib/missedTripCase/adapters/gtfs.ts`) rejected any `trip_update` reading equal to `predicted_start_at` as "the last prediction standing in for a reading the poller missed" (#440). But MVTA's producer usually predicts the origin departure exactly, and `planCapture` copies that prediction alongside the realised reading. On dev, 144 of 155 such readings since 2026-10-01 were written within three minutes of the departure: the poller saw them realised, live. Of the 19 escalated `gtfs-silent-v4` cases with a realised departure inside the grace, 11 were this shape (e.g. `t483-b4-sl1C-v65`, 2026-11-03: left 17:55:21, predicted 17:55:21, recorded 99 s later).
