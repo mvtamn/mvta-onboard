@@ -5,6 +5,13 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.38] - 2026-11-04
+
+- **The Detour Register's CSV could carry a live formula.** `lib/detourSearch.ts`'s `csvCell` quoted every field but did nothing about a leading `=`, `+`, `-` or `@`, so a closure, note or location typed as `=HYPERLINK(...)` ran as a formula in the Excel workbook the export is pasted into. The Access inventory export already guarded against this with `spreadsheetSafeText`; the detour export did not.
+- **One rule for both.** `spreadsheetSafeText` moves from `routes/access/accessData.tsx` to `lib/spreadsheetSafeText.ts` (accessData re-exports it, so its callers are unchanged), and the detour `csvCell` runs every cell through it. Only the file is guarded: the export preview table shows the text as typed.
+- **Trade-off, same as the Access export:** a cell that legitimately starts with `-` (a location like "-3rd St") gets a leading apostrophe in the file. Excel hides the apostrophe in the cell.
+- Found by the reporting module review (`plans/reporting-module-review.md` §3.4).
+
 ## [1.7.37] - 2026-11-04
 
 - **Two tables the health page could not see.** The schema drift check (1.5.296) reports a database that is behind the deployed code, but only for what `SCHEMA_REQUIREMENTS` declares. `OtpMonthlyRetiredKeys` (migration 152) and `DecisionMatrixQrgSeedings` (migration 158) were never declared, and on 2026-11-04 both were found absent from dev *and* prod while a note recorded 158 as applied to both. Nothing contradicted the note: retiring an OTP key is written to do nothing without its archive, and seeding a Draft from a QRG answers 503 only to whoever presses the button. Both are now declared, so Integrations & Data Health names them and the migration to run.
