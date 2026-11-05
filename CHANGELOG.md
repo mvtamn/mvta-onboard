@@ -5,6 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.49] - 2026-11-05
+
+### Changed
+
+- **The "Two records, one key" comment in `functions-restapi/src/lib/otpMonthlyFeed.ts` now gives the settled reading of March 2026.** It said the per-weekday split "is what a mid-month schedule change looks like" and dated it to "about 18 March". Both were wrong, and 1.6.48 already carries the correction: the record holding the old `StopInternetName` is the *smaller* of the pair, not the larger, which puts the change at **Monday 16 March** - the only date of the 31 consistent with all 27 pairs (the 15th fails one, the 17th five, the 18th ten) - and makes the cause the **rename itself**, not a service pattern change. The weekday counts date *a* change; only the names say *what* changed. This was the last place in the repo still carrying the superseded reading.
+- **The same comment no longer claims the published record shape "carries nothing to key on".** It carries `StopInternetName`, which is precisely how the collision was diagnosed. What it carries is no *stable stop-record identifier* and no *effective date*, which is a different thing and is the one question put to Avail in `docs/handoffs/avail-reply-2026-10-29.md`. The distinction is the argument for summing rather than keying: a key built on a display label would split one stop into two every time its name is edited, which is the failure the sum avoids. Behaviour is unchanged - `collapseOtpMonthlyReports` already sums, and March's 90.50% already reflects both records.
+- `docs/handoffs/avail-reply-2026-10-29.md` closes out its own note that this comment "needs correcting, but not here". Nothing above that file's `END OF MESSAGE` marker changed, so the message to Avail is byte-for-byte what #467 landed.
+
+No migration, no schema change, no API or console behaviour change. Comments and
+documentation only; the version exists because the release record and the
+console's displayed version are checked against each other in CI.
+
 ## [1.7.45] - 2026-11-04
 
 Follows 1.7.41. **Migration 165** repairs the history; apply it after this deploys. Merging redeploys and restarts the REST Function App.

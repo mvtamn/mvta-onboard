@@ -354,19 +354,32 @@ export function monthsBetween(fromYyyymm: string, toYyyymm: string): string[] {
 // Route 497 at stop 31768 came back as 30 and 48; the terminal every one of
 // those trips passes (31723) reports 78. Across all 27 keys the two values sum
 // to the neighbouring stop's own total, day by day, and the split follows the
-// count of each weekday before and after about 18 March - three Mondays and two
-// Mondays, two Wednesdays and two Wednesdays - which is what a mid-month
-// schedule change looks like when the month is aggregated per day of week.
+// count of each weekday before and from Monday 16 March - two Mondays and
+// three, two Tuesdays and three, two Wednesdays and two - which is what a
+// mid-month STOP RENAME looks like when the month is aggregated per day of
+// week. The weekday counts only date the change; what changed is settled by
+// the one non-measurement field the two records disagree on, StopInternetName:
+// February returns the old spelling alone and April onward the new, so the
+// record carrying the old spelling is the smaller of the pair, holding the
+// first two occurrences of each weekday. Fitting all 27 pairs against every
+// candidate date leaves one answer - the 16th is consistent with all 27, the
+// 15th fails one, the 17th five, the 18th ten. An earlier reading of this
+// table dated it to 18 March and called it a service pattern change, having
+// the halves the wrong way round. The full fitting is recorded in
+// docs/handoffs/otp-compliance-validation-plan-2026-09-22.md.
 //
 // So the month's figure is the SUM of the records sharing a key, and that is
-// what is stored. Keying on a discriminator instead would be preferable, except
-// that the operation's published record shape (OTP-Feed-Evaluation-and-
-// Recommendation.md) carries nothing to key on - no direction, no pattern, no
-// effective date - which is why `describeOtpMonthlyCollision` names the raw
-// fields that actually differ between the records. If a future collision turns
-// out to differ by a field we do not map, that log line says so, and widening
-// the key the way migration 123 widened the daily table's becomes the better
-// fix.
+// what is stored. Keying on the discriminator instead would be preferable,
+// except that the one field that discriminates is a display label: the
+// operation's published record shape (OTP-Feed-Evaluation-and-
+// Recommendation.md) carries no stable stop-record identifier and no effective
+// date, so a renamed stop is indistinguishable from a differently named one,
+// and a key built on the name would split a stop every time its label is
+// edited. That is why `describeOtpMonthlyCollision` names the raw fields that
+// actually differ between the records rather than keying on any of them. If a
+// future collision turns out to differ by a field we do not map, that log line
+// says so, and widening the key the way migration 123 widened the daily
+// table's becomes the better fix.
 //
 // Two records identical in their counts are not summed. Identical records carry
 // no new information, and summing them would double a figure to describe a
