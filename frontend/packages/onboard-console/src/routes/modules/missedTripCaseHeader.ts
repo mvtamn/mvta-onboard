@@ -221,7 +221,7 @@ export function caseHeader(alert: HeaderAlert, time: Time, options: { evidenceUn
     { label: "Data", value: dataQualityLabel(alert.dataQualityStatus) },
     { label: "Detector version", value: alert.detectorVersion ?? "Not recorded" },
     { label: "Flagged", value: flaggedDetail(alert, time) },
-    { label: "Ref", value: alert.tripId },
+    { label: alert.sourceSystem === "spare" ? "Ref" : "GTFS trip ID", value: alert.tripId },
   ];
   const counting = countingLine(alert);
 
