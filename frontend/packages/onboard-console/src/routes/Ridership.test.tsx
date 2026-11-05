@@ -6,6 +6,7 @@ import { ApiError, type RidershipPrintStatus, type RidershipSheet, type Ridershi
 import { Ridership, SheetLink } from "./Ridership.js";
 import { visibleAreas } from "../components/adminNav.js";
 import { accessStateWith } from "../auth/AccessContext.js";
+import { centralDay } from "../lib/ridership.js";
 
 let actions: string[] = ["ridership.view", "ridership.enter", "ridership.print"];
 vi.mock("../auth/AccessContext.js", async () => {
@@ -48,8 +49,8 @@ const sheetFor = (service_date: string, block: string, overrides: Partial<Riders
   pullout: { prefill: { run: 1, operator_name: "Test Operator A", operator_id: "9001", bus: "4401" }, other_runs: [{ run: 2, operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" }] },
   header: null, version: null,
   trips: [
-    { trip_id: `${block}-1`, route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
-    { trip_id: `${block}-2`, route_short_name: "460", route_label: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: 27000, start_status: "unknown", required: true, excused_reason: null, entry: null },
+    { trip_id: `${block}-1`, route_short_name: "460", route_label: "460", trip_number: "600-N", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
+    { trip_id: `${block}-2`, route_short_name: "460", route_label: "460", trip_number: null, direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: 27000, start_status: "unknown", required: true, excused_reason: null, entry: null },
   ],
   added_trips: [], progress: progress(2), history: [],
   ...overrides,
@@ -72,6 +73,7 @@ describe("Ridership › Enter sheets", () => {
     getRidershipWorklist.mockReset().mockResolvedValue(WORKLIST);
     getRidershipSheet.mockReset().mockImplementation(async (date: string, block: string) => sheetFor(date, block));
     saveRidershipSheet.mockReset().mockImplementation(async (date: string, block: string) => sheetFor(date, block, { state: "entered", version: "v1" }));
+    getRidershipPrintStatus.mockReset().mockResolvedValue(printStatus(null, []));
   });
   afterEach(cleanup);
 
@@ -124,13 +126,16 @@ describe("Ridership › Enter sheets", () => {
     expect(screen.getByRole("status").textContent).toMatch(/Block 105 .* saved\. Now on block 024/);
   });
 
-  it("names each trip as the paper sheet does, with its GTFS id beneath", async () => {
+  it("names each trip as the paper sheet does, with Avail's trip number beneath", async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByRole("button", { name: "105" }));
     const row = (await screen.findByLabelText("Boardings, 460 N 6:00 AM")).closest("tr")!;
     expect(within(row).getByText("6:00 AM – 6:40 AM")).toBeTruthy();
-    expect(within(row).getByTitle("GTFS trip ID").textContent).toBe("105-1");
+    expect(within(row).getByTitle("Avail trip 600-N · GTFS trip ID 105-1").textContent).toBe("Trip 600-N");
+    // A GTFS id not in MVTA's form has no Avail number, so the id shows instead.
+    const other = screen.getByLabelText("Boardings, 460 S 7:00 AM").closest("tr")!;
+    expect(within(other).getByTitle("Avail trip ? · GTFS trip ID 105-2").textContent).toBe("105-2");
   });
 
   it("shows a route by the guide's number, with its GTFS name on hover", async () => {
@@ -208,6 +213,28 @@ describe("Ridership › Enter sheets", () => {
     expect(screen.getByText(/Changed from Avail/)).toBeTruthy();
   });
 
+  it("keys the sheet's relief or bus change: Avail's next run pre-fills, the sheet's trip # says from when", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "024" }));
+    await user.click(await screen.findByRole("button", { name: "Add relief or bus change" }));
+    const line = screen.getByRole("group", { name: "Relief or bus change" });
+    expect((within(line).getByLabelText("Operator") as HTMLInputElement).value).toBe("Test Operator Relief");
+    expect((within(line).getByLabelText("Bus") as HTMLInputElement).value).toBe("4402");
+    // Trip #1 is the header's operator; the line starts from #2 or later.
+    const from = within(line).getByLabelText("From trip") as HTMLSelectElement;
+    expect([...from.options].map((o) => o.textContent)).toEqual(["Choose the sheet's trip #", "#2 · 7:00 AM · 460 S"]);
+    await user.selectOptions(from, "024-2");
+    expect(screen.getByText("Relief or bus change from here")).toBeTruthy();
+    await user.type(screen.getByLabelText("Boardings, 460 N 6:00 AM"), "12");
+    await user.type(screen.getByLabelText("Boardings, 460 S 7:00 AM"), "9");
+    await user.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(saveRidershipSheet).toHaveBeenCalledWith("20261130", "024", expect.objectContaining({
+      operator_name: "Test Operator A",
+      change: { from_trip_id: "024-2", operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" },
+    })));
+  });
+
   it("opens a sheet from a scanned QR link", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -246,6 +273,8 @@ function printStatus(garage: string | null, sheets: RidershipPrintStatus["sheets
   };
 }
 
+const morningNote = () => screen.queryAllByRole("note").find((n) => /changed after printing/.test(n.textContent ?? "")) ?? null;
+
 describe("Ridership › Print sheets", () => {
   const opened = { location: { href: "" }, close: vi.fn() };
 
@@ -256,6 +285,8 @@ describe("Ridership › Print sheets", () => {
     getRidershipPrintStatus.mockReset().mockImplementation(async ({ garage }: { garage?: string | null }) =>
       garage === "Eagan"
         ? printStatus("Eagan", [printRow("212", 1, "not_printed", "Eagan")])
+        : garage === null
+        ? printStatus(null, [printRow("330", 1, "not_printed", null), printRow("331", 2, "not_printed", null)])
         : printStatus(garage ?? "Burnsville", [printRow("024", 1, "not_printed"), printRow("105", 2, "not_printed")]));
     printRidershipSheets.mockReset().mockResolvedValue(new Blob(["%PDF-"], { type: "application/pdf" }));
     opened.location.href = "";
@@ -273,7 +304,7 @@ describe("Ridership › Print sheets", () => {
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows.map((r) => within(r).getAllByRole("cell")[1].textContent)).toEqual(["024", "105"]);
     expect((screen.getByLabelText("Garage") as HTMLSelectElement).value).toBe("Burnsville");
-    expect(getRidershipPrintStatus).toHaveBeenLastCalledWith(expect.objectContaining({ garage: "Burnsville" }));
+    expect(getRidershipPrintStatus).toHaveBeenCalledWith(expect.objectContaining({ garage: "Burnsville" }));
     expect(screen.getByRole("button", { name: "Print 2 sheets · Burnsville" })).toBeTruthy();
   });
 
@@ -311,10 +342,66 @@ describe("Ridership › Print sheets", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/Block 330 no longer runs .* Take it back/);
   });
 
+  it("calls out today's sheets that changed after the evening print, and reprints them for today", async () => {
+    const today = centralDay(0).replace(/-/g, "");
+    getRidershipPrintStatus.mockImplementation(async ({ date, garage }: { date?: string; garage?: string | null }) => date === today
+      ? { ...printStatus(garage ?? "Burnsville", [printRow("024", 1, "printed"), printRow("105", 2, "changed"), printRow("106", 3, "not_printed")], true),
+        dropped: [{ block: "330", printed_at: "2026-12-01T03:05:00Z", printed_by: "desk@example.test" }] }
+      : printStatus("Burnsville", [printRow("024", 1, "not_printed")]));
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=print");
+    // The tab counts every garage's; the note is the chosen garage's.
+    expect(await screen.findByRole("tab", { name: /Print sheets\s*3 to reprint today/ })).toBeTruthy();
+    // The Unassigned warning is a note too; the morning one names today.
+    await waitFor(() => expect(morningNote()).not.toBeNull());
+    const note = morningNote()!;
+    expect(note.textContent).toMatch(/3 sheets changed after printing for Burnsville/);
+    expect(note.textContent).toMatch(/changed block 105/);
+    expect(note.textContent).toMatch(/Block 106 is new since printing/);
+    expect(note.textContent).toMatch(/Take back the sheet for block 330/);
+    await user.click(within(note).getByRole("button", { name: "Reprint today's 2 sheets" }));
+    await waitFor(() => expect(printRidershipSheets).toHaveBeenCalledWith(expect.objectContaining({ date: today, garage: "Burnsville", blocks: ["105", "106"] })));
+  });
+
+  it("shows no morning note when today's printed sheets are current", async () => {
+    getRidershipPrintStatus.mockImplementation(async ({ garage }: { garage?: string | null }) => printStatus(garage ?? "Burnsville", [printRow("024", 1, "printed")], true));
+    renderPage("/ridership?tab=print");
+    await screen.findByText(/nothing has changed since/);
+    expect(morningNote()).toBeNull();
+    expect(screen.getByRole("tab", { name: "Print sheets" })).toBeTruthy();
+  });
+
   it("says when everything printed is still current", async () => {
     getRidershipPrintStatus.mockImplementation(async () => printStatus("Burnsville", [printRow("024", 1, "printed")], true));
     renderPage("/ridership?tab=print");
     expect((await screen.findByText(/nothing has changed since/)).textContent).toMatch(/desk@example\.test/);
+  });
+
+  it("opens straight on Print sheets for the check-in desk, which holds print only", async () => {
+    actions = ["ridership.print"];
+    renderPage();
+    expect(await screen.findByRole("button", { name: "Print 2 sheets · Burnsville" })).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(getRidershipWorklist).not.toHaveBeenCalled();
+  });
+
+  it("tells a garage's desk which blocks have no garage, and opens them", async () => {
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=print");
+    const note = await screen.findByRole("note");
+    expect(note.textContent).toMatch(/2 blocks have no garage .* not in any garage's stack: 330 and 331\. Print them from Unassigned/);
+    await user.click(within(note).getByRole("button", { name: "Unassigned" }));
+    expect(await screen.findByRole("button", { name: "Print 2 sheets · Unassigned" })).toBeTruthy();
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.getByText(/These blocks have no garage/)).toBeTruthy();
+  });
+
+  it("says nothing about Unassigned when every block has a garage", async () => {
+    getRidershipPrintStatus.mockImplementation(async () => ({ ...printStatus("Burnsville", [printRow("024", 1, "not_printed")]), garages: ["Burnsville"] }));
+    renderPage("/ridership?tab=print");
+    await screen.findByText(/Not printed yet/);
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(getRidershipPrintStatus).not.toHaveBeenCalledWith(expect.objectContaining({ garage: null }));
   });
 
   it("switches garage, and keeps the desk's garage for next time", async () => {

@@ -125,6 +125,12 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     breaks: "Count Sheets show no scheduled end time for their trips",
   },
   {
+    migration: "162",
+    table: "RidershipSheets",
+    column: "change_from_trip_id",
+    breaks: "Ridership: a Count Sheet with a relief operator or bus change cannot be saved",
+  },
+  {
     migration: "157",
     table: "RidershipPrintRuns",
     breaks: "Ridership: Count Sheets cannot be printed, and nobody can see whether a garage has printed",
@@ -133,6 +139,12 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     migration: "157",
     table: "RidershipPrintedSheets",
     breaks: "Ridership: a block changed in the Dispatch Log since printing is not flagged for reprint",
+  },
+  {
+    migration: "161",
+    table: "RidershipPrintedSheets",
+    column: "trip_ids",
+    breaks: "Ridership: printed Count Sheets do not record which trips were on each row, so a scanned sheet cannot be matched row by row",
   },
 ];
 

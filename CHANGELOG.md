@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.3] - 2026-11-02
+## [1.7.29] - 2026-11-04
 
 Follows the email delivery evaluation (2026-11-01): the rider email path was built end to end but had no delivery reports, no one-click unsubscribe, and logged an unconfigured sender as a failure. **Migration 160** widens the delivery-log statuses; the code runs without it (the new statuses are refused and logged, as today). Both Function Apps redeploy on merge, and the REST app restarts.
 
@@ -15,6 +15,94 @@ Follows the email delivery evaluation (2026-11-01): the rider email path was bui
 - **`skipped`, not `failed`** (`deliveryLogStatus`, `lib/deliveryChannels.ts`) for SMS and email when ACS is not configured.
 - **Bicep:** `functionapp.bicep` takes `acsResourceName` and, under `manageRoleAssignments`, grants the app identity Contributor on it. The dispatch app passes `acs-mvta-onboard-<env>`. Prod's dispatch identity had no role there, so every prod send would have failed. Routine deploys keep `manageRoleAssignments` false, so prod's grant is still a one-time `az role assignment create`.
 - Tests: dispatch `alertEmail.test.ts` (+3), `deliveryChannels.test.ts` (+1), `emailReceipts.test.ts` (+1); REST `subscribersOneClickUnsubscribe.test.ts` (new, 3).
+
+## [1.7.25] - 2026-11-03
+
+- **Dev's Function Apps sign in to SQL as themselves.** `main-phase1.bicep` gains `sqlAuthentication` (`password` | `managedIdentity`, default `password`) and builds one `SQL_CONNECTION_STRING` for the REST, dispatch and Spare webhook apps: the Key Vault reference to `sql-connection-string` as before, or `Server=tcp:<server>,1433;Database=sqldb-mvta-onboard-<env>;Authentication=Active Directory Default;...`, which holds no secret. `functionapp.bicep` takes it as `sqlConnectionString` instead of hardcoding the Key Vault reference. `phase1-dev.parameters.json` sets `managedIdentity`; prod keeps the password.
+- **Rollback** is setting dev back to `password` and re-running the infra workflow; the Key Vault secret stays until Entra-only auth is on.
+- **Needs, before it deploys:** 1.7.18's `db.ts` (which understands `Authentication=Active Directory Default`) on dev, and `infra-stage0/scripts/grant-function-app-sql-users.sql` run against dev's database. Without the database users, every SQL call on dev fails at login.
+
+## [1.7.22] - 2026-11-03
+
+A relief operator or bus change on a Count Sheet (migration 162). Check-in staff assign operators in Avail on the day and the bus joins at MDT login, after the desk prints the sheet the evening before, so operator and bus stay handwritten and entry pre-fills them from Avail's pull-out. A block that changed hands or buses part way had nowhere to say so, and the bus matters for comparing counts with the bus's passenger counter.
+
+- **Migration 162** adds `change_from_trip_id`, `change_operator_name`, `change_operator_id` and `change_bus` to `RidershipSheets`, with `CK_RidershipSheets_Change`: all NULL, or a trip plus at least one of the three. One change per sheet, matching the one line on the paper.
+- **The API reads the columns only once they exist** (`sheetChangeReady`, the same `COL_LENGTH` probe as `scheduled_end_seconds`). Before migration 162 every sheet loads with `change: null` and saves as before; a save carrying a change answers 503 naming the migration. Schema drift lists 162.
+- **`SheetSave.change` / `header.change`**: `{ from_trip_id, operator_name, operator_id, bus }`. `checkSheetSave` refuses a trip not on the sheet, and the first trip (that is the header). The four fields are flattened into the history, one row per field that moved.
+- **The printed sheet** gets a second operator row: "Relief or bus change: operator name", Operator ID, Bus #, Initials and From trip # (the row number). `TRIP_ROW` goes from 26 to 24 so a full 14-trip last page still clears the footer; the print fingerprint is the trips, not the layout, so printed sheets do not flip to changed.
+- **Enter sheets**: "Add relief or bus change" opens the row, pre-filled from Avail's next run (`newChange`); From trip lists the sheet's trips from #2; the chosen trip is marked "Relief or bus change from here".
+
+**Restarts the REST app on merge.**
+
+## [1.7.18] - 2026-11-02
+
+- **Both SQL servers have their Entra admin declared in Bicep.** Dev's admin was set by hand and prod had none, and without an Entra admin nobody can run `CREATE USER ... FROM EXTERNAL PROVIDER` for the Function Apps' managed identities. `sql.bicep` now declares `administrators/ActiveDirectory` from `sqlEntraAdminLogin` / `sqlEntraAdminObjectId`, which `infra.yml` passes from the `SQL_ENTRA_ADMIN_LOGIN` / `SQL_ENTRA_ADMIN_OBJECT_ID` GitHub environment variables (not a parameter file: the repository is public). Both empty leaves the server's admin alone. What-if: no change on dev, prod gains the admin.
+- **`SQL_CONNECTION_STRING` can sign in without a password.** `Authentication=Active Directory Default` in the connection string makes both `db.ts` files connect as the app's own identity (managed identity in Azure, `az login` on a laptop). Without the key, or with `Authentication=Sql Password`, the login and password are used as before; any other value is refused. The REST API's connect retry also retries a failed token fetch (`EFEDAUTH`, which mssql wraps in an AggregateError with no code of its own) but not a rejected login. The password parser now ends a password at `Authentication=`.
+- **Nothing switches over in this release.** Key Vault's `sql-connection-string` still holds the password. The database users for the managed identities, the switch to the new connection string, and Entra-only auth follow.
+
+## [1.7.14] - 2026-11-02
+
+A Count Sheet's QR code names the block and date, not the copy, and migration 157 kept only a fingerprint of each printed sheet: enough to say a reprint differs, not how. Scanned sheets (the Burnsville capture pilot agreed 2026-11-02, `plans/count-sheet-scan-upload.md` decision 8) are read row by row, so each row has to map to the trip printed on it. **The REST app restarts on merge.**
+
+- **Migration 161** adds `RidershipPrintedSheets.trip_ids`: a JSON array of the GTFS trip_ids printed on the sheet, row 1 first, checked with `ISJSON`. Sheets printed earlier stay NULL.
+- **`writePrintRun`** writes it from the sheet's trips in print order, and only once the column exists, so printing keeps working until 161 is applied on dev and prod. `SCHEMA_REQUIREMENTS` lists the column, so Integrations & Data Health says when it is missing.
+- Tests: `ridership.db.contract.test.ts` applies migration 161 and checks that the evening copy and the reprint after a late tripper record their own trips in row order.
+
+## [1.7.10] - 2026-11-02
+
+The printed Count Sheet's Trip ID column carried the 16-18 character GTFS trip_id (`t140-b1F5-sl1B-v64`), which nobody at the desk or in dispatch uses. Avail's event log and dispatch call the same trip **320-E**. MVTA's GTFS id encodes that number: its first part is the trip number in hexadecimal (0x140 = 320), and the number is the scheduled start as H:MM (3:20 AM). The block part encodes the block the same way (0x1F5 = 501). This held for all 847 Dispatch Log trips on 2026-11-01/02. **The REST app restarts on merge.**
+
+- **`availTripNumber(tripId, directionLabel)`** (`lib/ridership/rules.ts`) decodes the number and adds the direction letter: "320-E", or "320" without a direction. It returns null for an id not in that form. `loadLoggedTrips` sets `trip_number` on every trip, and it is carried on `LoggedTrip`, `SheetTrip`, `PrintTrip` and the shared `RidershipSheetTrip`.
+- **Printed sheet:** the column is headed "Trip" and prints `trip_number` in bold Courier up to 11 pt. With no number it prints the GTFS id as before, shrunk to fit.
+- **Enter sheets:** "Trip 320-E" under the times, with the GTFS id in the tooltip. The GTFS trip_id is still the key for counts, QR codes and the print log.
+- **Print log:** the fingerprint is unchanged, because the number is derived from trip_id and direction, which it already hashes. Sheets already printed stay "Printed"; their copies show the GTFS id.
+- Tests: REST `rules.test.ts` (+1). Console `Ridership.test.tsx` (one updated).
+
+## [1.7.9] - 2026-11-02
+
+Who prints Count Sheets was an open decision: the spec gave printing to Ridership Recorder, while the SOP draft gives it to the garage check-in desk. Recorder also keys counts, which the desk should not do. Decided 2026-11-02: add a print-only role. **The REST app restarts on merge** (`seeds.ts`).
+
+- **Migration 159** seeds `ridership-printer` (Ridership Printer) with `ridership.print` only, granted to nobody. It follows the same insert-when-missing pattern as 129 and 154, and `seeds.ts` carries the same role.
+- **Console:** Ridership is reachable with `ridership.view` *or* `ridership.print` (nav item and route). A caller without `ridership.view` gets Print sheets alone, with no tabs, and the Count Sheets worklist is never loaded. The REST print endpoints already checked `ridership.print` only. The mock sign-in gains a "Desk" preset.
+- Tests: REST `access.test.ts` (+1, one updated); `access.db.contract.test.ts` applies migration 159. Console `Ridership.test.tsx` (+1).
+
+## [1.7.8] - 2026-11-02
+
+A block with no garage is in no garage's stack. Unassigned was printable from the Garage list, but nothing told a Burnsville or Eagan desk that such blocks existed, so in practice nobody printed them and the operator went out without a sheet. Console only: the REST app does not restart.
+
+- **Unassigned warning** (`PrintSheets.tsx`): while a named garage is chosen and the date has Unassigned blocks (`garages` includes `null`), the tab makes one more `GET /ridership/print?garage=` call. It then names the blocks ("3 blocks have no garage … 330, 331 and 340"; past twelve, the first ten and how many more) with an **Unassigned** button that switches to that stack. The Unassigned view says why these blocks are there and that Planning sets their garage in Ridership setup. If that extra call fails, the warning is left out and the page still works.
+- **No-trips-yet note:** `tripStartLogMaterialize` runs at 09:30 UTC, which is 03:30 CST or 04:30 CDT. The note said 04:30, which was right only during daylight saving time.
+- Tests: console `Ridership.test.tsx` (+2); the default print mock now returns distinct Unassigned blocks.
+
+## [1.7.7] - 2026-11-02
+
+Ridership setup showed 180 blocks, every one Unassigned, each with its own free-text Garage box. Each garage prints only its own Count Sheets, so until the list is filled every sheet lands under Unassigned. A block rarely changes garage between service changes, and a row already stays in force until a later one replaces it, so what was missing was a fast way to set many blocks at once. Console only: the REST app does not restart.
+
+- **Garage from a list:** `RIDERSHIP_GARAGES` (Burnsville, Eagan) in `lib/ridership.ts`; `garageOptions()` adds any other name already saved so nothing is hidden. Each row is a `<select>`, not free text.
+- **Select several and assign:** a checkbox per row, a select-all-shown header (indeterminate when part-selected), shift-click for a run, and "Select blocks by number" (`parseBlockSelection`: "1-69, 306, 309"). "Assign to Burnsville / Eagan" and "Make unassigned" set every selected block in the draft; Save still sends only the rows that differ from what is in force.
+- **Filter by garage:** All / Burnsville / Eagan / Unassigned counts double as filters. Save and its message moved above the table.
+- **Garage evidence for Planning** (not built in): on dev, buses' overnight parking (EventVehiclePositionHistory against the EBG/BBG locations) puts every one of the 180 v64 blocks at one garage with at least 80% agreement: Burnsville 004, 006, 009, 013, 016, 017, 019, 024, 028, 031, 050, 306, 307, 309, 313, 315, 319-321, 333; Eagan the rest. Planning should confirm before saving.
+- Tests: console `RidershipSetupAdmin.test.tsx` (+4, three updated for the select) and `ridership.test.ts` (+3).
+
+## [1.7.6] - 2026-11-02
+
+The morning desk's reprint check, agreed for nightly Count Sheet printing: the desk prints tomorrow's sheets each evening, and the 03:30 Dispatch Log run can change a block after it was printed. Console only; no API change and no migration.
+
+- **`reprintsAfterPrinting(status)`** (lib/ridership.ts) counts what the morning desk reprints from a print status: `changed` sheets, `added` blocks (not printed, in a garage that has printed some of today's sheets; a garage with no print yet is a first print, not a reprint), and `dropped` blocks. It works on one garage's status or on every garage's.
+- **The Print sheets tab** reads today's status for every garage (`GET /api/ridership/print?date=` with no garage already returns them all) and shows "N to reprint today" when the count is above zero. A failed read shows nothing.
+- **Print sheets** reads today's status for the chosen garage whenever the date shown is another day, and puts a `role="note"` above the toolbar naming the changed, new and dropped blocks, with "Reprint today's N sheets" printing the changed and new ones for today. `print()` takes the service date, so the reprint logs against today rather than the date on screen.
+
+## [1.7.1] - 2026-11-02
+
+The Watched SOP Folder is chosen by browsing the library, not set by an app setting. `DECISION_MATRIX_SOP_FOLDER` on dev and prod names `_SOPs`, a folder that does not exist in the library - and the only symptom was a walk reporting `not_found` at 06:30, behind a `forbidden` that has masked it since September. Correcting it required an infra deploy.
+
+- **`watchedSopLocation(pool, library)`** is what every reader now asks: the one active location in this library, whoever set it, with `chosen` telling an Admin's choice from a seeded default. `unreferencedSopReport` and the daily walk both read it instead of looking the location up by the setting's path.
+- **`chooseSopLocation(pool, library, folder, actor)`** retires every other active location in the library - including one an earlier Admin chose - and records who chose this one. Re-choosing the folder already watched keeps the location, so `DecisionMatrixLocationDocuments` history survives; `added_by` is updated.
+- **`ensureSopLocation` seeds, it does not lock.** A *chosen* location comes back untouched, because the walk's own call would otherwise drag the watch back to the configured folder every morning - the contract test asserts exactly that. A merely *seeded* location still follows the setting, so correcting `DECISION_MATRIX_SOP_FOLDER` still works in an environment where nobody has chosen yet. Dev and prod each already hold a seeded `_SOPs` row, so treating any existing row as a lock would have left the setting inert in exactly the two places it still has to work.
+- **`PUT /api/manage/decision-matrix/library/sop-folder`** (`decision-matrix.manage`) takes `{folder_path}` or `{whole_library: true}` and **lists the folder before storing it**: `not_found` → 400, `forbidden` → 409, outage → 503, each with SharePoint's own sentence. Answers 503 naming migration 116 where the tables are absent.
+- **One picker, two modes.** `DocumentPicker` takes `mode: "file" | "folder"`; in folder mode the folder being viewed is the choice ("Watch Operations/SOPs", or "Watch the whole library" at the root) and documents are shown disabled as context. A second browser would have duplicated the listing, the refusal handling and the diagnostics.
+- **Two existing tests were restated, not loosened.** Both asserted that an unconfigured environment asks nothing of the database. That can no longer hold: a chosen folder lives only in `DecisionMatrixDocumentLocations`, so "is one chosen?" is a question only SQL can answer. The narrower property - no library means no query - is now its own test.
+- CONTEXT.md gains **Watched SOP Folder**; **Unreferenced SOP** points at it rather than implying configuration. No migration: migration 116's tables already hold a location with an `added_by`.
 
 ## [1.7.0] - 2026-11-02
 

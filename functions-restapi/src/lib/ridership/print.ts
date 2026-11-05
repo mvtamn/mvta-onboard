@@ -8,7 +8,8 @@
 //     double-sided never puts two blocks on one piece of paper;
 //   * logged: who printed which garage and date, and when, with a fingerprint
 //     of each block's trips so a block the Dispatch Log changed since is
-//     flagged and can be reprinted on its own.
+//     flagged and can be reprinted on its own, and the trips printed in row
+//     order, so a scanned page's rows map to the trips on that copy.
 // Any service date prints, not only tomorrow's, so a lost sheet can be
 // reprinted; the copy carries the same code because the code names the
 // sheet, not the copy.
@@ -28,6 +29,8 @@ export interface PrintTrip {
   route_short_name: string | null;
   /** What the sheet prints in the Route column. */
   route_label: string | null;
+  /** What the sheet prints in the Trip column: "320-E", as Avail and dispatch name the trip. */
+  trip_number: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;
@@ -82,6 +85,7 @@ export function sheetsToPrint(
       trip_id: trip.trip_id,
       route_short_name: trip.route_short_name,
       route_label: trip.route_label,
+      trip_number: trip.trip_number,
       direction_label: trip.direction_label,
       scheduled_start_seconds: trip.scheduled_start_seconds,
       scheduled_end_seconds: trip.scheduled_end_seconds,
@@ -341,7 +345,7 @@ export async function printCountSheets(pool: sql.ConnectionPool, input: PrintReq
       scope: input.blocks ? "blocks" : "garage",
       blank_backs: input.blank_backs,
       page_count: pages,
-      sheets: chosen.map((s) => ({ block: s.block, fingerprint: s.fingerprint, pages: s.pages })),
+      sheets: chosen.map((s) => ({ block: s.block, fingerprint: s.fingerprint, pages: s.pages, trip_ids: s.trips.map((t) => t.trip_id) })),
     }, actor, now);
     await tx.commit();
   } catch (err) {

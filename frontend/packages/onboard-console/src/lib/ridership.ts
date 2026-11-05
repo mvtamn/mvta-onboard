@@ -9,6 +9,7 @@ import {
   type RidershipExcusedReason,
   type RidershipGarageCompleteness,
   type RidershipPrintState,
+  type RidershipPrintStatus,
   type RidershipPrintStatusSheet,
   type RidershipPulloutRun,
   type RidershipSheet,
@@ -192,10 +193,20 @@ export interface AddedDraft {
   cell: Cell;
 }
 
+/** The sheet's "Relief or bus change" line, as typed. Blank text carries on from the header. */
+export interface ChangeDraft {
+  from_trip_id: string;
+  operator_name: string;
+  operator_id: string;
+  bus: string;
+}
+
 export interface SheetDraft {
   operator_name: string;
   operator_id: string;
   bus: string;
+  /** Null: the sheet's relief line is blank. */
+  change: ChangeDraft | null;
   reconstructed: boolean;
   cells: Record<string, Cell>;
   added: AddedDraft[];
@@ -208,6 +219,14 @@ export function draftFromSheet(sheet: RidershipSheet): SheetDraft {
     operator_name: who?.operator_name ?? "",
     operator_id: who?.operator_id ?? "",
     bus: who?.bus ?? "",
+    change: sheet.header?.change
+      ? {
+          from_trip_id: sheet.header.change.from_trip_id,
+          operator_name: sheet.header.change.operator_name ?? "",
+          operator_id: sheet.header.change.operator_id ?? "",
+          bus: sheet.header.change.bus ?? "",
+        }
+      : null,
     reconstructed: sheet.header?.reconstructed ?? false,
     cells: Object.fromEntries(sheet.trips.map((trip) => [trip.trip_id, cellFromEntry(trip.entry)])),
     added: sheet.added_trips.map((trip) => ({
@@ -235,6 +254,16 @@ export function isOverridden(draft: Pick<SheetDraft, "operator_name" | "operator
   return !sameText(draft.operator_name, prefill.operator_name)
     || !sameText(draft.operator_id, prefill.operator_id)
     || !sameText(draft.bus, prefill.bus);
+}
+
+/**
+ * A new relief line, pre-filled from Avail's next run when it has one: Avail
+ * knows who relieved and on which bus, but not from which trip - that comes
+ * from the sheet ("From trip #", the row number).
+ */
+export function newChange(sheet: RidershipSheet): ChangeDraft {
+  const relief = sheet.pullout.other_runs[0];
+  return { from_trip_id: "", operator_name: relief?.operator_name ?? "", operator_id: relief?.operator_id ?? "", bus: relief?.bus ?? "" };
 }
 
 /** Trips that need a count and have nothing yet, in sheet order. */
@@ -284,6 +313,14 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
       });
     }
   }
+  let change: RidershipSheetSave["change"] = null;
+  if (draft.change) {
+    const c = draft.change;
+    const named = { operator_name: blankToNull(c.operator_name), operator_id: blankToNull(c.operator_id), bus: blankToNull(c.bus) };
+    if (!c.from_trip_id) problems.push({ target: "change", message: "The relief or bus change needs the trip it starts from: the sheet's \"From trip #\"." });
+    if (!named.operator_name && !named.operator_id && !named.bus) problems.push({ target: "change", message: "The relief or bus change names the operator or the bus that took over. Remove it if the line is blank." });
+    if (c.from_trip_id) change = { from_trip_id: c.from_trip_id, ...named };
+  }
   if (problems.length > 0) return { save: null, problems };
   return {
     save: {
@@ -291,6 +328,7 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
       operator_name: blankToNull(draft.operator_name),
       operator_id: blankToNull(draft.operator_id),
       bus: blankToNull(draft.bus),
+      change,
       reconstructed: draft.reconstructed,
       trips,
       added_trips: added,
@@ -338,6 +376,36 @@ export function parseSheetScan(raw: string): { serviceDate: string | null; block
 // ---------------------------------------------------------------- block -> garage
 
 type GarageRow = { block: string; effective_from: string; garage: string | null };
+
+/**
+ * MVTA's garages. The setup page picks from these rather than taking free
+ * text, so a typo can't start a third print stack. A name already saved that
+ * is not here (an older list) still shows, so nothing is hidden.
+ */
+export const RIDERSHIP_GARAGES = ["Burnsville", "Eagan"] as const;
+
+export function garageOptions(inUse: readonly string[]): string[] {
+  return [...new Set([...RIDERSHIP_GARAGES, ...inUse])];
+}
+
+/**
+ * Block numbers typed as a list of numbers and ranges ("1-69, 306, 309") as
+ * the three-digit blocks they name, or null when any part is not a number or
+ * range. A range runs low to high whichever way it is typed.
+ */
+export function parseBlockSelection(raw: string): string[] | null {
+  const parts = raw.split(/[,\s]+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  const blocks = new Set<string>();
+  for (const part of parts) {
+    const m = part.match(/^(\d{1,3})(?:[-\u2013](\d{1,3}))?$/);
+    if (!m) return null;
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? a : Number(m[2]);
+    for (let n = Math.min(a, b); n <= Math.max(a, b); n++) blocks.add(String(n).padStart(3, "0"));
+  }
+  return [...blocks].sort();
+}
 
 /** The row in force for a block on a day (YYYY-MM-DD): the latest on or before it. None is Unassigned. */
 export function rowInForce<T extends GarageRow>(rows: readonly T[], block: string, day: string): T | null {
@@ -394,6 +462,21 @@ export function printedTime(iso: string): string {
 /** The blocks a desk still needs to print: never printed, or changed since. */
 export function blocksToPrint(sheets: readonly RidershipPrintStatusSheet[]): string[] {
   return sheets.filter((s) => s.state !== "printed").map((s) => s.block);
+}
+
+/**
+ * What the morning desk reprints before pull-out: the 03:30 Dispatch Log run
+ * can change a block printed the evening before. A changed sheet, a block new
+ * since its garage printed (a garage with no print yet is not a reprint), and a
+ * printed block that no longer runs. Works on one garage's status or on every
+ * garage's, which is how the Ridership tab counts them.
+ */
+export function reprintsAfterPrinting(status: RidershipPrintStatus): { changed: string[]; added: string[]; dropped: string[]; total: number } {
+  const printedGarages = new Set(status.sheets.filter((s) => s.state !== "not_printed").map((s) => s.garage));
+  const changed = status.sheets.filter((s) => s.state === "changed").map((s) => s.block);
+  const added = status.sheets.filter((s) => s.state === "not_printed" && printedGarages.has(s.garage)).map((s) => s.block);
+  const dropped = status.dropped.map((d) => d.block);
+  return { changed, added, dropped, total: changed.length + added.length + dropped.length };
 }
 
 /**

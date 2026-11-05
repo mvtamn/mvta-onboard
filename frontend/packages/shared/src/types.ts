@@ -432,6 +432,15 @@ export interface ProcedureDraft extends Omit<ProcedureDraftInput, "document_refe
 }
 
 /** What a QRG was asked to seed, as the author chose it. */
+/** Where the SOP watch points, after an Admin chose it. */
+export interface SopFolderChoice {
+  folder: string;
+  whole_library: boolean;
+  documents_in_folder: number;
+  folders_in_folder: number;
+  walked: false;
+}
+
 export interface QrgSeedChosenDocument {
   item_id: string;
   seen_version: string;
@@ -2766,6 +2775,8 @@ export interface RidershipSheetTrip {
   route_short_name: string | null;
   /** The route as the guide prints it: 425, not "Orange LINK". */
   route_label: string | null;
+  /** The trip as Avail and dispatch name it: "320-E"; null when the GTFS id is not in MVTA's form. */
+  trip_number: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;
@@ -2814,6 +2825,7 @@ export interface RidershipSheet {
     operator_name: string | null;
     operator_id: string | null;
     bus: string | null;
+    change: RidershipSheetChange | null;
     prefill_run: number | null;
     operator_overridden: boolean;
     reconstructed: boolean;
@@ -2830,11 +2842,25 @@ export interface RidershipSheet {
   history: RidershipSheetHistoryEntry[];
 }
 
+/**
+ * A relief operator or bus change part way through the block (migration 162):
+ * from this trip on, the named operator and bus ran it. A null field carries
+ * on from the header - a bus swap names no operator.
+ */
+export interface RidershipSheetChange {
+  from_trip_id: string;
+  operator_name: string | null;
+  operator_id: string | null;
+  bus: string | null;
+}
+
 export interface RidershipSheetSave {
   version: string | null;
   operator_name: string | null;
   operator_id: string | null;
   bus: string | null;
+  /** Null when nobody took over and the bus stayed. */
+  change: RidershipSheetChange | null;
   reconstructed: boolean;
   trips: { trip_id: string; count_status: RidershipCountStatus; boardings: number | null }[];
   /** The whole list. A saved row whose id is missing here is removed. */

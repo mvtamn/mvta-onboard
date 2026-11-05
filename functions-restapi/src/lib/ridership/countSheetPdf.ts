@@ -6,7 +6,8 @@
 //     and a handwriting reader both read far better than free text;
 //   * four solid corner marks and the QR code let a scan be straightened and
 //     matched to its block, date and page;
-//   * the trips are printed, so nothing needs the operator to know a code.
+//   * the trips are printed, so nothing needs the operator to know a code;
+//     each is named as Avail and dispatch name it ("320-E"), not by GTFS id.
 // A PDF rather than browser printing (evaluation 2026-10-31): fixed US Letter,
 // no browser margins or "background graphics" setting, the same on every
 // garage PC. Every rule and box is a stroke, never a fill behind text, and the
@@ -27,11 +28,15 @@ const QR_MODULE = 0.7 * MM;
 /** The rule under the header: the largest code (30 mm from y 34) ends above it. */
 const RULE_Y = 122;
 const DIGIT = 16;
-const TRIP_ROW = 26;
+/** 24 rather than 26 since the relief line (migration 162): a full last page still clears the footer. */
+const TRIP_ROW = 24;
+/** The operator rows - the one who pulled out, and a relief or bus change - then How to count. */
+const OPERATOR_ROW = 32;
 
 const FONT = "Helvetica";
 const BOLD = "Helvetica-Bold";
 const MONO = "Courier";
+const MONO_BOLD = "Courier-Bold";
 const GUIDE = "#8a8a8a";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -168,10 +173,28 @@ function operatorSection(doc: Doc) {
   x += digitBoxes(doc, x, y + 10, 4) + 14;
   doc.text("Initials", x, y, { lineBreak: false });
   box(doc, x, y + 10, 40, DIGIT + 2);
+
+  // Operators are assigned and buses joined on the day, after this prints, so
+  // a relief or a swapped bus is written here. Same columns as the row above;
+  // the trip # is the row number in the table below.
+  const r = y + OPERATOR_ROW;
+  doc.font(BOLD).text("Relief or bus change: operator name", MARGIN, r, { continued: true });
+  doc.font(FONT).text("  (blank if none)", { lineBreak: false });
+  doc.lineWidth(0.8).moveTo(MARGIN, r + 28).lineTo(MARGIN + 200, r + 28).stroke();
+  x = MARGIN + 216;
+  doc.text("Operator ID", x, r, { lineBreak: false });
+  x += digitBoxes(doc, x, r + 10, 5) + 14;
+  doc.text("Bus #", x, r, { lineBreak: false });
+  x += digitBoxes(doc, x, r + 10, 4) + 14;
+  doc.text("Initials", x, r, { lineBreak: false });
+  box(doc, x, r + 10, 40, DIGIT + 2);
+  x += 40 + 14;
+  doc.font(BOLD).text("From trip #", x, r, { lineBreak: false });
+  digitBoxes(doc, x, r + 10, 2);
 }
 
 function howToCount(doc: Doc) {
-  const y = RULE_Y + 38;
+  const y = RULE_Y + 38 + OPERATOR_ROW;
   box(doc, MARGIN, y, RIGHT - MARGIN, 30, 0.6);
   doc.fillColor("#000").font(BOLD).fontSize(7.5).text("How to count: ", MARGIN + 6, y + 5, { width: RIGHT - MARGIN - 12, continued: true });
   doc.font(FONT).text(
@@ -181,7 +204,8 @@ function howToCount(doc: Doc) {
   );
 }
 
-// Trip IDs are GTFS ids such as "t1A4-b1F6-sl1B-v63" (16-18 characters); the column fits 18 at 7.4 pt.
+// The Trip column prints Avail's trip number ("320-E", "1235-N"). A trip whose
+// id is not in MVTA's form prints the GTFS id instead, shrunk to fit.
 const TRIP_COLUMNS = { n: 18, route: 40, dir: 22, scheduled: 92, trip: 84, total: 3 * DIGIT + 10, dno: 30 };
 
 function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): number {
@@ -190,8 +214,8 @@ function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): 
   const xs = [MARGIN];
   for (const w of [c.n, c.route, c.dir, c.scheduled, c.trip, tallyWidth, c.total]) xs.push(xs[xs.length - 1] + w);
 
-  let y = RULE_Y + 76;
-  const heads = ["#", "Route", "Dir", "Ride", "Trip ID", "Tally", "Total boardings", "DNO"];
+  let y = RULE_Y + 76 + OPERATOR_ROW;
+  const heads = ["#", "Route", "Dir", "Ride", "Trip", "Tally", "Total boardings", "DNO"];
   doc.font(BOLD).fontSize(7).fillColor("#000");
   heads.forEach((h, i) => doc.text(h, xs[i] + 2, y + 3, { lineBreak: false }));
   y += 13;
@@ -209,9 +233,10 @@ function tripTable(doc: Doc, trips: readonly PrintTrip[], firstNumber: number): 
     // The trip as the current paper sheet names it: "5:20 AM - 6:40 AM".
     const span = `${clock(trip.scheduled_start_seconds)} - ${trip.scheduled_end_seconds === null ? "" : clock(trip.scheduled_end_seconds)}`;
     doc.font(BOLD).fontSize(8.5).text(span, xs[3] + 2, mid - 4, { width: c.scheduled - 4, lineBreak: false });
-    // Courier is 0.6 em a character: shrink a long id to fit rather than cut it, since OCC reads it.
-    const idSize = Math.min(7.5, (c.trip - 4) / (0.6 * Math.max(1, trip.trip_id.length)));
-    doc.font(MONO).fontSize(idSize).text(trip.trip_id, xs[4] + 2, mid - idSize / 2, { lineBreak: false });
+    // Courier is 0.6 em a character: shrink a long GTFS id to fit rather than cut it, since OCC reads it.
+    const tripName = trip.trip_number ?? trip.trip_id;
+    const idSize = Math.min(trip.trip_number ? 11 : 7.5, (c.trip - 4) / (0.6 * Math.max(1, tripName.length)));
+    doc.font(trip.trip_number ? MONO_BOLD : MONO).fontSize(idSize).text(tripName, xs[4] + 2, mid - idSize / 2, { lineBreak: false });
     tallyGuides(doc, xs[5] + 4, y + 4, tallyWidth - 8, TRIP_ROW - 9);
     digitBoxes(doc, xs[6] + 4, mid - (DIGIT + 2) / 2, 3);
     tickBox(doc, xs[7] + 9, mid - 5.5);

@@ -7,8 +7,8 @@
 // be granted from the console at all. Seeding from intent fixes all of that in
 // one place.
 //
-// Migration 129 inserts the first nine rows and migration 154 the two ridership
-// roles, each only when missing, so an Access Administrator's later edits
+// Migration 129 inserts the first nine rows, migration 154 the two ridership
+// roles and migration 159 the Ridership Printer, each only when missing, so an Access Administrator's later edits
 // survive a re-run. The contract test fails if the SQL and this file disagree.
 import { ACCESS_MODULE, actionKey, MODULES, VIEW } from "./catalog";
 
@@ -120,6 +120,14 @@ export const SEEDED_ROLES: SeededRole[] = [
     name: "Ridership Manager",
     purpose: "Runs ridership counting: everything a recorder does, plus the block-to-garage list.",
     actions: [...RIDERSHIP_RECORDER_ACTIONS, actionKey("ridership", "configure")],
+  },
+  // Migration 159: the garage check-in desk prints and does nothing else, so it
+  // holds print without view and never sees the Count Sheets or their counts.
+  {
+    key: "ridership-printer",
+    name: "Ridership Printer",
+    purpose: "Prints Count Sheets at the garage check-in desk.",
+    actions: [actionKey("ridership", "print")],
   },
   {
     key: "system-administrator",

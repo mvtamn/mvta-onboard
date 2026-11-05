@@ -10,14 +10,18 @@ import {
   draftFromSheet,
   dueLabel,
   garageChanges,
+  garageOptions,
   garageFromValue,
   garagePercent,
   garageValue,
   isOverridden,
+  newChange,
   normalizeBlock,
+  parseBlockSelection,
   parseClock,
   parseSheetScan,
   printedTime,
+  reprintsAfterPrinting,
   rowInForce,
   saveFromDraft,
   sheetLinkBase,
@@ -34,9 +38,9 @@ const sheet = (overrides: Partial<RidershipSheet> = {}): RidershipSheet => ({
   header: null,
   version: null,
   trips: [
-    { trip_id: "t1", route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
-    { trip_id: "t2", route_short_name: "460", route_label: "460", direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: null, start_status: "unknown", required: true, excused_reason: null, entry: null },
-    { trip_id: "t3", route_short_name: "460", route_label: "460", direction_label: "N", scheduled_start_seconds: 28800, scheduled_end_seconds: null, start_status: "canceled", required: false, excused_reason: "dispatch_log_canceled", entry: null },
+    { trip_id: "t1", route_short_name: "460", route_label: "460", trip_number: null, direction_label: "N", scheduled_start_seconds: 21600, scheduled_end_seconds: 24000, start_status: "on_time", required: true, excused_reason: null, entry: null },
+    { trip_id: "t2", route_short_name: "460", route_label: "460", trip_number: null, direction_label: "S", scheduled_start_seconds: 25200, scheduled_end_seconds: null, start_status: "unknown", required: true, excused_reason: null, entry: null },
+    { trip_id: "t3", route_short_name: "460", route_label: "460", trip_number: null, direction_label: "N", scheduled_start_seconds: 28800, scheduled_end_seconds: null, start_status: "canceled", required: false, excused_reason: "dispatch_log_canceled", entry: null },
   ],
   added_trips: [],
   progress: { trips: 3, required: 2, keyed: 0, counted: 0, not_counted: 0, did_not_operate: 0, added_trips: 0, boardings: 0 },
@@ -104,10 +108,26 @@ describe("the draft", () => {
 
   it("opens a saved sheet with what was saved", () => {
     const saved = sheet({
-      header: { operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402", prefill_run: 1, operator_overridden: true, reconstructed: true, entered_at: null, entered_by: null, updated_at: null, updated_by: null },
+      header: { operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402", change: { from_trip_id: "t2", operator_name: null, operator_id: null, bus: "4403" }, prefill_run: 1, operator_overridden: true, reconstructed: true, entered_at: null, entered_by: null, updated_at: null, updated_by: null },
       trips: sheet().trips.map((t) => (t.trip_id === "t1" ? { ...t, entry: { count_status: "counted", boardings: 0 } } : t.trip_id === "t2" ? { ...t, entry: { count_status: "not_counted", boardings: null } } : t)),
     });
     expect(draftFromSheet(saved)).toMatchObject({ operator_name: "Test Operator Relief", reconstructed: true, cells: { t1: "0", t2: "N", t3: "" } });
+    expect(draftFromSheet(saved).change).toEqual({ from_trip_id: "t2", operator_name: "", operator_id: "", bus: "4403" });
+    expect(draftFromSheet(sheet()).change).toBeNull();
+  });
+
+  it("starts a relief line from Avail's next run, and saves it once it names its trip", () => {
+    const relieved = sheet({ pullout: { prefill: sheet().pullout.prefill, other_runs: [{ run: 2, operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" }] } });
+    const change = newChange(relieved);
+    expect(change).toEqual({ from_trip_id: "", operator_name: "Test Operator Relief", operator_id: "9002", bus: "4402" });
+    expect(newChange(sheet())).toEqual({ from_trip_id: "", operator_name: "", operator_id: "", bus: "" });
+
+    const draft = { ...draftFromSheet(relieved), cells: { t1: "3", t2: "4", t3: "" }, change };
+    expect(saveFromDraft(relieved, draft).problems).toEqual([{ target: "change", message: expect.stringContaining("From trip #") }]);
+    const busOnly = saveFromDraft(relieved, { ...draft, change: { from_trip_id: "t2", operator_name: " ", operator_id: "", bus: "4410" } });
+    expect(busOnly.save?.change).toEqual({ from_trip_id: "t2", operator_name: null, operator_id: null, bus: "4410" });
+    expect(saveFromDraft(relieved, { ...draft, change: { from_trip_id: "t2", operator_name: "", operator_id: "", bus: "" } }).problems.map((p) => p.target)).toEqual(["change"]);
+    expect(saveFromDraft(relieved, { ...draft, change: null }).save?.change).toBeNull();
   });
 
   it("will not save while a required trip is blank, and points at the first", () => {
@@ -186,6 +206,17 @@ describe("printing", () => {
     expect(blocksToPrint([row("024", "printed"), row("105", "changed"), row("212", "not_printed")])).toEqual(["105", "212"]);
   });
 
+  it("counts what the morning desk reprints: changed, new since its garage printed, and no longer running", () => {
+    const row = (block: string, garage: string | null, state: "not_printed" | "printed" | "changed") => ({ block, garage, order: 1, first_start_seconds: 0, trips: 1, pages: 1, state, printed_at: null, printed_by: null });
+    const status = {
+      service_date: "20261202", garages: ["Burnsville", "Eagan"], last_print: null, prints: [], not_printed: 0, changed: 0,
+      sheets: [row("024", "Burnsville", "printed"), row("105", "Burnsville", "changed"), row("106", "Burnsville", "not_printed"), row("212", "Eagan", "not_printed")],
+      dropped: [{ block: "330", printed_at: "2026-12-02T03:05:00Z", printed_by: "desk@example.test" }],
+    };
+    // Eagan never printed, so its 212 is a first print, not a reprint.
+    expect(reprintsAfterPrinting(status)).toEqual({ changed: ["105"], added: ["106"], dropped: ["330"], total: 3 });
+  });
+
   it("points the QR link at this console until the operator app has an address", () => {
     expect(sheetLinkBase("https://ops.example.test", "/console/")).toBe("https://ops.example.test/console");
     expect(sheetLinkBase("http://localhost:5173", "/")).toBe("http://localhost:5173");
@@ -203,5 +234,21 @@ describe("printing", () => {
   it("gives Unassigned a select value of its own", () => {
     expect(garageFromValue(garageValue(null))).toBeNull();
     expect(garageFromValue(garageValue("Eagan"))).toBe("Eagan");
+  });
+});
+
+describe("block → garage selection", () => {
+  it("reads numbers and ranges as three-digit blocks, low to high", () => {
+    expect(parseBlockSelection("3-1, 306 309")).toEqual(["001", "002", "003", "306", "309"]);
+    expect(parseBlockSelection("69\u201367")).toEqual(["067", "068", "069"]);
+  });
+  it("refuses anything that is not a block or a range", () => {
+    expect(parseBlockSelection("")).toBeNull();
+    expect(parseBlockSelection("1-69, abc")).toBeNull();
+    expect(parseBlockSelection("1000")).toBeNull();
+  });
+  it("offers MVTA's garages first and keeps any other name already saved", () => {
+    expect(garageOptions([])).toEqual(["Burnsville", "Eagan"]);
+    expect(garageOptions(["Eagan", "Old garage"])).toEqual(["Burnsville", "Eagan", "Old garage"]);
   });
 });
