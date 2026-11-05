@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.31] - 2026-11-04
+## [1.7.33] - 2026-11-04
 
 - **Avail's reason for refusing a request is readable again.** Since 17:00 UTC on 2026-11-04 the Pullout Reports API has answered `success=false` on every call, on dev and on prod, while AVL, detours and the other Avail feeds kept working. The log and the feed ledger said only `success=false: [object Object]`: `fetchAvail` joined Avail's `errors` as strings, and these errors are objects. `describeAvailErrors` now prints each object as JSON (strings as before), accepts a lone non-array value, and when Avail sends no detail at all quotes the start of the body instead.
 - **Nothing else changes.** The poll still fails the invocation and records the failure exactly as before; only the message carries more. Once deployed, the next failed Pullout run shows Avail's actual reason in App Insights and on Integrations & Data Health.
