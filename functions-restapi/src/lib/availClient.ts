@@ -118,6 +118,18 @@ function agencyDateTime(date: Date): string {
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
+// Avail's `errors` is documented as strings, but the Pullout endpoint began
+// answering success=false on 2026-11-04 with errors that printed as
+// "[object Object]". Read whatever shape arrives so the reason reaches the log
+// and the feed ledger instead of being lost.
+export function describeAvailErrors(errors: unknown): string {
+  const list = Array.isArray(errors) ? errors : errors == null ? [] : [errors];
+  return list
+    .filter((error) => error != null && error !== "")
+    .map((error) => (typeof error === "string" ? error : JSON.stringify(error).slice(0, 500)))
+    .join(", ");
+}
+
 function trimmed(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "");
 }
@@ -239,14 +251,15 @@ export async function fetchAvail<E extends AvailEndpoint>(
     throw new Error(`${label} request failed: ${response.status} - ${body.slice(0, 500)}`);
   }
 
-  let payload: { success?: boolean; errors?: string[]; result?: Record<string, unknown> };
+  let payload: { success?: boolean; errors?: unknown; result?: Record<string, unknown> };
   try {
     payload = JSON.parse(body);
   } catch {
     throw new Error(`${label} returned unparseable JSON (status ${response.status}): ${body.slice(0, 500)}`);
   }
   if (!payload.success) {
-    throw new Error(`${label} API returned success=false: ${payload.errors?.join(", ") || "no error detail"}`);
+    const detail = describeAvailErrors(payload.errors) || `no error detail - body: ${body.slice(0, 500)}`;
+    throw new Error(`${label} API returned success=false: ${detail}`);
   }
 
   for (const key of definition.resultKeys) {
