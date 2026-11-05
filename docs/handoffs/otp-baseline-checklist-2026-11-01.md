@@ -9,11 +9,10 @@ got next to the figure expected, and date the row. Every item names an owner, th
 query or page that proves it, and what "done" looks like, so it can be picked up by
 somebody who was not in the conversation.
 
-> **Where the closeout document lives.** `otp-system-of-record-closeout-2026-10-31.md` is
-> on branch `avail-march-duplicates` (PR #460) and not yet on `main`. This checklist does
-> not restate it; read both. Nothing here edits the validation plan either — its T2.4 stamp
-> still reads "NOT PROVEN", and item 1a below is the result that supersedes it. Stamp the
-> plan when #460 lands, so the two do not conflict.
+> **Read all three together.** `otp-system-of-record-closeout-2026-10-31.md` holds the
+> steps and who owns them; `otp-compliance-validation-plan-2026-09-22.md` holds the test
+> cases; this holds the running order and the evidence. All three are on `main`. The plan's
+> T2.4 case is stamped from item 1a below.
 
 **Status at open:** step 1 of the closeout is complete. Four items below are ticked with
 their evidence. Everything still open needs Rob, OCC, or a decision — nothing left on this
