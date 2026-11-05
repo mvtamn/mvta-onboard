@@ -54,6 +54,7 @@ export async function sendEmail(
   plainText: string,
   html: string,
   context?: InvocationContext,
+  headers?: Record<string, string>,
 ): Promise<SendResult> {
   const client = getEmailClient();
   const from = process.env.ACS_EMAIL_FROM;
@@ -65,6 +66,7 @@ export async function sendEmail(
     senderAddress: from,
     content: { subject, plainText, html },
     recipients: { to: [{ address: to }] },
+    ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
   });
   const result = await poller.pollUntilDone();
   return { sent: result.status === "Succeeded", providerId: result.id };

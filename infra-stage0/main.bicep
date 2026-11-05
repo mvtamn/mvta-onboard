@@ -27,6 +27,10 @@ param sqlFirewallAllowedIps array = []
 param sqlEntraAdminLogin string = ''
 param sqlEntraAdminObjectId string = ''
 
+@description('Standard-tier DTUs for the database: 20 (S1), 50 (S2) or 100 (S3).')
+@allowed([20, 50, 100])
+param sqlDtu int = 100
+
 module network 'modules/network.bicep' = {
   name: 'network-deployment'
   params: {
@@ -69,6 +73,7 @@ module sql 'modules/sql.bicep' = {
     sqlFirewallAllowedIps: sqlFirewallAllowedIps
     sqlEntraAdminLogin: sqlEntraAdminLogin
     sqlEntraAdminObjectId: sqlEntraAdminObjectId
+    sqlDtu: sqlDtu
   }
 }
 

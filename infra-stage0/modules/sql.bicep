@@ -22,6 +22,10 @@ param sqlFirewallAllowedIps array = []
 param sqlEntraAdminLogin string = ''
 param sqlEntraAdminObjectId string = ''
 
+@description('Standard-tier DTUs: 20 is S1, 50 is S2, 100 is S3. Prod runs S1 until it cuts over and carries dev\'s load; set it back to 100 then.')
+@allowed([20, 50, 100])
+param sqlDtu int = 100
+
 var sqlServerName = 'sql-mvta-${environment}-${uniqueSuffix}'
 var sqlDatabaseName = 'sqldb-mvta-onboard-${environment}'
 
@@ -64,13 +68,13 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
-  // Standard S3 (100 DTU) rather than serverless: the timers query the
-  // database every few minutes, so serverless never auto-paused and billed
-  // ~$254/mo of compute. 250 GB is S3's included storage.
+  // Standard (DTU) rather than serverless: the timers query the database
+  // every few minutes, so serverless never auto-paused and billed ~$254/mo
+  // of compute. 250 GB is S1-S3's included storage.
   sku: {
     name: 'Standard'
     tier: 'Standard'
-    capacity: 100
+    capacity: sqlDtu
   }
   properties: {
     maxSizeBytes: 268435456000

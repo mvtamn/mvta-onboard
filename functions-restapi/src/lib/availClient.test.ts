@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { availConfig, availUrl, fetchAvail, formatDateMmDdYyyy, probeAvail, type AvailTransport } from "./availClient";
+import { availConfig, availUrl, describeAvailErrors, fetchAvail, formatDateMmDdYyyy, probeAvail, type AvailTransport } from "./availClient";
 
 type Call = { url: string; headers: Record<string, string>; signal?: AbortSignal };
 
@@ -168,6 +168,29 @@ test("success=false throws with Avail's own error detail", async () => {
     fetchAvail("avl", { start: new Date(), end: new Date() }, CONFIG, a.transport),
     /Avail AVL API returned success=false: invalid date range/,
   );
+});
+
+// CONFIRMED live 2026-11-04: Pullout answered success=false with error objects,
+// and the log read "success=false: [object Object]".
+test("success=false with error objects throws with their content, not [object Object]", async () => {
+  const a = avail({ success: false, errors: [{ code: 500, message: "Pullout report unavailable" }], result: {} });
+  await assert.rejects(
+    fetchAvail("pullout", {}, CONFIG, a.transport),
+    (err: Error) => /Avail Pullout API returned success=false: \{"code":500,"message":"Pullout report unavailable"\}/.test(err.message) && !err.message.includes("[object Object]"),
+  );
+});
+
+test("success=false with no error detail carries the start of the body", async () => {
+  const a = avail({ success: false, errors: [], result: {}, note: "maintenance" });
+  await assert.rejects(fetchAvail("pullout", {}, CONFIG, a.transport), /no error detail - body: .*maintenance/);
+});
+
+test("describeAvailErrors reads strings, objects and a lone non-array value", () => {
+  assert.equal(describeAvailErrors(["a", "b"]), "a, b");
+  assert.equal(describeAvailErrors([{ Message: "x" }]), '{"Message":"x"}');
+  assert.equal(describeAvailErrors({ message: "y" }), '{"message":"y"}');
+  assert.equal(describeAvailErrors(null), "");
+  assert.equal(describeAvailErrors([]), "");
 });
 
 test("an HTTP failure throws with the status and the start of the body", async () => {
