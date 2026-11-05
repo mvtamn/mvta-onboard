@@ -5,11 +5,16 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.34] - 2026-11-04
+## [1.7.35] - 2026-11-04
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.33] - 2026-11-04
+
+- **Avail's reason for refusing a request is readable again.** Since 17:00 UTC on 2026-11-04 the Pullout Reports API has answered `success=false` on every call, on dev and on prod, while AVL, detours and the other Avail feeds kept working. The log and the feed ledger said only `success=false: [object Object]`: `fetchAvail` joined Avail's `errors` as strings, and these errors are objects. `describeAvailErrors` now prints each object as JSON (strings as before), accepts a lone non-array value, and when Avail sends no detail at all quotes the start of the body instead.
+- **Nothing else changes.** The poll still fails the invocation and records the failure exactly as before; only the message carries more. Once deployed, the next failed Pullout run shows Avail's actual reason in App Insights and on Integrations & Data Health.
+
 ## [1.7.29] - 2026-11-04
 
 Follows the email delivery evaluation (2026-11-01): the rider email path was built end to end but had no delivery reports, no one-click unsubscribe, and logged an unconfigured sender as a failure. **Migration 160** widens the delivery-log statuses; the code runs without it (the new statuses are refused and logged, as today). Both Function Apps redeploy on merge, and the REST app restarts.
