@@ -24,3 +24,15 @@ export function teamsTargets(channels: string[] | null): string[] {
     .map((value) => value.trim().slice(prefix.length).trim())
     .filter(Boolean);
 }
+
+/**
+ * What a send attempt is logged as.
+ *
+ * "skipped" is not a failure: it is ACS not being configured, which the
+ * sender reports without trying. Logging it as "failed" made an environment
+ * with no email set up look like one where every email bounced.
+ */
+export function deliveryLogStatus(res: { sent: boolean; skipped?: string }): "sent" | "skipped" | "failed" {
+  if (res.sent) return "sent";
+  return res.skipped ? "skipped" : "failed";
+}
