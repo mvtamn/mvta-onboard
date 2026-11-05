@@ -17,7 +17,7 @@ gate everything else, and neither is code.
 | --- | --- |
 | **Months measured consistently** | **Yes.** All ten 2026 months re-pulled, every row stamped `2/5/10/60/0/1/1` |
 | **Tier 1 — OnBoard holds what Avail published** | **Passed** for 2026-08 and 2026-09 against Avail's own BI pull; 2026-03 failed and was **repaired 2026-10-30** (90.46% → 90.50%) |
-| **Tier 2 — rule correctness** | **Passed** 2026-09-22, except **T2.4**, which has no live evidence |
+| **Tier 2 — rule correctness** | **Passed in full.** T2.4 proven on live data 2026-11-01 |
 | **Tier 3 — workflow controls** | **Not run.** Needs an hour with OCC |
 | **Tier 4 — process fit** | **Open.** Ten questions, all Rob's |
 | **A0 — the two manual artifacts agree with each other** | **Not started. This is the gate.** |
@@ -31,12 +31,14 @@ Raw agency OTP, all measured on `2/5/10/60/0/1/1` as of 2026-10-31:
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-01 | 90.63 | 61,203 | | 2026-06 | **85.92** | 65,284 |
 | 2026-02 | 90.96 | 58,328 | | 2026-07 | 84.86 | 64,411 |
-| 2026-03 | 90.50 | 67,330 | | 2026-08 | **85.30** | 62,748 |
-| 2026-04 | 89.13 | 68,582 | | 2026-09 | 81.20 | 62,538 |
+| 2026-03 | 90.50 | 67,330 | | 2026-08 | **85.30** | 62,746 |
+| 2026-04 | 89.13 | 68,582 | | 2026-09 | 81.20 | 62,521 |
 | 2026-05 | **87.56** | 67,532 | | 2026-10 | 83.78 | 63,443 (accruing) |
 
-Bold are the three decision months. 2026-09's *assessable* figure is not usable — see
-step 1b.
+Bold are the three decision months. **Departure counts for 2026-05, 2026-08 and 2026-09
+are as of 2026-11-02**, after migration 152 retired the eleven keys Avail had stopped
+returning (Q12, now decided); 2026-05 is 67,465 and reads 87.57. 2026-09's *assessable*
+figure is usable again — step 1b is done and it equals raw.
 
 ---
 
@@ -162,25 +164,31 @@ only inferred the answer. *Same draft.*
 The order matters more than the content. Steps 2 and 3 are the only ones that cannot start
 today, and everything after step 4 is wasted effort if step 2 fails.
 
-### Step 1 — Clear the ground (us, this week)
+### Step 1 — Clear the ground (us, this week) — **DONE 2026-11-01, except 1d**
 
-**1a. Prove the classification filter on live data (T2.4).** All thirteen classified routes
+Worked item by item in `otp-baseline-checklist-2026-11-01.md`, which also carries the
+running order for steps 2–7 and five findings this step turned up.
+
+**1a. ✅ DONE 2026-11-01. Prove the classification filter on live data (T2.4).** All thirteen classified routes
 carry zero OTP rows, so the fixed-route filter has never removed anything. Classify one
 live route temporarily, confirm it drops out of the official figure, then remove the
 classification. Twenty minutes, and it closes the last open Tier 2 case.
 
-**1b. Clear September's exclusion decisions.** 178 approved and 183 rejected, all by one
+**1b. ✅ DONE 2026-11-01, via the Review Queue's own reset. Clear September's exclusion decisions.** 178 approved and 183 rejected, all by one
 reviewer between 15:23 and 17:01 on 2026-10-15, removing 14,813 of 62,538 departures. That
 is test data and it makes September's assessable figure meaningless. September is not a
 decision month, so this does not block Tier A — but it has to go before anyone reads a
 September assessable figure, and it is itself the evidence for Q6.
 
-**1c. Run T1.1–T1.3 formally on 2026-08.** The method is proven and the result is not in
+**1c. ✅ T1.1 DONE and passing 2026-11-01; T1.2/T1.3 await Avail's August export. Run T1.1–T1.3 formally on 2026-08.** The method is proven and the result is not in
 doubt — Avail's own BI pull settled it for September — but 2026-08 is the designated control
-month and the plan asks for it on the record. Expect 62,748 departures, 53,527 on time,
-85.30%.
+month and the plan asks for it on the record. It returned 62,748 departures, 53,527 on
+time, 85.30% — the expected figure to the digit, with 912 rows over 912 distinct keys and a
+uniform parameter stamp. **The month now reads 62,746 / 53,525 / 85.30%**, two departures
+lighter since migration 152 retired two keys Avail had stopped returning; quote that to
+Rob. T1.2 and T1.3 are recorded on OnBoard's side and still need his export.
 
-**1d. Send the Avail reply.** Drafted, and includes Q13 and Q14. Nothing waits on the answer.
+**1d. ⬜ Send the Avail reply.** Drafted, and includes Q13 and Q14. Nothing waits on the answer.
 
 ### Step 2 — Answer Q3, then Q1 (Rob) — THE GATE
 

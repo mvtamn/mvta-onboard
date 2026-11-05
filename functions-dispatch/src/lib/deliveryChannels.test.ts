@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { channelRequested, teamsTargets } from "./deliveryChannels";
+import { channelRequested, deliveryLogStatus, teamsTargets } from "./deliveryChannels";
 
 test("legacy null channels enable subscriber delivery", () => {
   assert.strictEqual(channelRequested(null, "SMS"), true);
@@ -23,4 +23,10 @@ test("Teams targets are extracted for the future connector", () => {
     teamsTargets(["Website", "Teams: Operations", "teams: Customer Service"]),
     ["Operations", "Customer Service"],
   );
+});
+
+test("an unconfigured sender is logged as skipped, not failed", () => {
+  assert.strictEqual(deliveryLogStatus({ sent: true }), "sent");
+  assert.strictEqual(deliveryLogStatus({ sent: false, skipped: "acs_not_configured" }), "skipped");
+  assert.strictEqual(deliveryLogStatus({ sent: false }), "failed");
 });

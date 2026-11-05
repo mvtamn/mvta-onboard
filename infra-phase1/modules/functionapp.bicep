@@ -58,6 +58,9 @@ param acsEmailFrom string = ''
 @description('ACS SMS sender number in E.164, e.g. +18005550100. Must be toll-free verified before carriers will deliver. Empty leaves SMS sending unconfigured.')
 param acsSmsFrom string = ''
 
+@description('Name of the Communication Services resource (same resource group) this app sends through. With manageRoleAssignments, the app identity is granted Contributor on it - the identity-based EmailClient/SmsClient get 403 without a role there. Empty grants nothing.')
+param acsResourceName string = ''
+
 @description('Public base URL of the rider app, used to build confirmation links. No trailing slash. Empty leaves confirmation emails with a relative link.')
 param riderAppBaseUrl string = ''
 
@@ -362,6 +365,29 @@ resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   scope: keyVault
   properties: {
     roleDefinitionId: keyVaultSecretsUserRole.id
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// The ACS senders sign in as this identity (lib/acs.ts, DefaultAzureCredential),
+// so the identity needs a role on the Communication Services resource. Dev's
+// was granted by hand; prod's was missing (found 2026-11-01), which would have
+// failed every send. Contributor, matching dev.
+resource contributorRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: 'b24988ac-6180-42a0-ab88-20f7382dd24c' // Contributor
+}
+
+resource communicationServices 'Microsoft.Communication/communicationServices@2023-04-01' existing = if (!empty(acsResourceName)) {
+  name: empty(acsResourceName) ? 'unused' : acsResourceName
+}
+
+resource acsRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments && !empty(acsResourceName)) {
+  name: guid(functionApp.id, contributorRole.id, acsResourceName)
+  scope: communicationServices
+  properties: {
+    roleDefinitionId: contributorRole.id
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
