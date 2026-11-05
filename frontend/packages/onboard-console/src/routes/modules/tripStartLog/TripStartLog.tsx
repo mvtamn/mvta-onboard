@@ -115,7 +115,7 @@ export function TripStartLog() {
           !response.diagnostics.table_ready
             ? "The Dispatch Log is not connected: its tables are missing, so no day has been built yet. Apply migration 094."
             : !response.diagnostics.materialized
-              ? `No log exists for ${serviceDateLabel(response.service_date)}. The nightly build runs at 09:30 UTC for today and tomorrow; a day with no scheduled service, or one before the log started, has no rows.`
+              ? `No log exists for ${serviceDateLabel(response.service_date)}. The nightly build runs at 09:30 UTC for today and the next three days; a day with no scheduled service, or one before the log started, has no rows.`
               : null,
         );
       })

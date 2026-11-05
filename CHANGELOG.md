@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.41] - 2026-11-04
+
+- **The Dispatch Log is built three days ahead.** `tripStartLogMaterialize` now writes today and the next three service days (`MATERIALIZE_DAYS_AHEAD = 3`, `materializedServiceDates`) instead of today and tomorrow. Count Sheets are printed from the log, so a garage desk can now print a weekend on Friday evening (Saturday through Monday), as the Ridership SOP allows. Each 09:30 UTC run still refreshes the days ahead from that morning's schedule, and the print page compares what it printed with the log by fingerprint, so a sheet printed early still shows as changed if a trip moves.
+- **Days not yet started drop trips the schedule no longer runs.** The materializer only ever inserted and refreshed. Built days ahead, a date can be written from the outgoing schedule just before a service change lands (7 December 2026 is the first one with OnBoard sheets), and the stale trips would stay on the log and on the printed sheet. For a date after today, a run now deletes the date's rows whose trip is not in the schedule read, unless the trip has a desk verification. Today and earlier are never pruned, and an empty schedule read never prunes. Nothing references `TripStartLog` by foreign key, and a count cannot be saved for a future date.
+- No migration. The console's empty-log message now says the build covers the next three days.
+
 ## [1.7.37] - 2026-11-04
 
 - **Two tables the health page could not see.** The schema drift check (1.5.296) reports a database that is behind the deployed code, but only for what `SCHEMA_REQUIREMENTS` declares. `OtpMonthlyRetiredKeys` (migration 152) and `DecisionMatrixQrgSeedings` (migration 158) were never declared, and on 2026-11-04 both were found absent from dev *and* prod while a note recorded 158 as applied to both. Nothing contradicted the note: retiring an OTP key is written to do nothing without its archive, and seeding a Draft from a QRG answers 503 only to whoever presses the button. Both are now declared, so Integrations & Data Health names them and the migration to run.
