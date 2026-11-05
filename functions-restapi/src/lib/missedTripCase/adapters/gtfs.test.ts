@@ -126,7 +126,24 @@ test("a departure that is the schedule to the second is not a start, even after 
 });
 
 test("a departure that is only the last prediction standing in is not a start", () => {
-  assert.equal(observe([departed({ dispatch_predicted_at: LEFT_AT })]).observations.length, 1);
+  // The poll writes a stood-in prediction only once the first stop has dropped
+  // out of the feed, so it is recorded long after the time it claims.
+  const stoodIn = departed({ dispatch_predicted_at: LEFT_AT, dispatch_recorded_at: new Date(LEFT_AT.getTime() + 20 * 60_000) });
+  assert.equal(observe([stoodIn]).observations.length, 1);
+});
+
+test("a departure equal to the last prediction with no record of when it was written is not a start", () => {
+  assert.equal(observe([departed({ dispatch_predicted_at: LEFT_AT, dispatch_recorded_at: null })]).observations.length, 1);
+});
+
+// Dev, 2026-11-03, t483-b4-sl1C-v65: the bus left at 17:55:21, the producer had
+// predicted 17:55:21, and the poll recorded the realised reading 99 s later.
+// The equality alone rejected it, and the case escalated. 11 of the 19 escalated
+// v4 cases with a realised departure inside the grace were this shape.
+test("a departure the poll saw realised is a start, even when the last prediction was exactly right", () => {
+  const seenLive = departed({ dispatch_predicted_at: LEFT_AT, dispatch_recorded_at: new Date(LEFT_AT.getTime() + 99_000) });
+  assert.deepEqual(observe([seenLive]).observations, []);
+  assert.deepEqual(operatedStartAt(seenLive), LEFT_AT);
 });
 
 test("a departure no vehicle ever reported against is not a start", () => {

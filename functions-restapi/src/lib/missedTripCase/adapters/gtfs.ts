@@ -26,7 +26,8 @@
 //    trips hours before they begin - and a departure counts only when it is a
 //    realised reading on a trip some vehicle reported against: not the
 //    schedule repeated, and not the last prediction standing in for a reading
-//    the poller missed. Measured on dev 2026-10-21, the position proof lands
+//    the poller missed (a prediction recorded after the stop dropped out of
+//    the feed - see predictionStoodIn). Measured on dev 2026-10-21, the position proof lands
 //    4-13 minutes after the departure on average, so on its own it turned buses
 //    that left 15-29 minutes late into missed trips.
 //
@@ -44,6 +45,7 @@ import { sql, getPool } from "../../db";
 import { mapCanceledTrip, type CanceledTrip, type GtfsRtTripUpdateEntity } from "../../gtfsTripUpdates";
 import { agencyServiceDate, serviceDateAndGtfsSecondsToUtc } from "../../missedTripTime";
 import { activeServiceIdsToday } from "../../gtfsScheduleHorizon";
+import { LINGER_WINDOW_SECONDS } from "../../tripStartActuals";
 import { underwayEvidenceCoverage, type KpiFeedHealth } from "../../kpiTrust";
 import { loadKpiFeedHealthRecords } from "../../kpiTrustStore";
 import type { FeedRunLog } from "../../feedRun";
@@ -72,6 +74,8 @@ export interface DispatchLogStart {
   dispatch_start_source?: string | null;
   dispatch_predicted_at?: Date | null;
   dispatch_scheduled_at?: Date | null;
+  /** TripStartLog.actuals_updated_at: when the poll last wrote this reading. */
+  dispatch_recorded_at?: Date | null;
 }
 
 // The two readings operatedStartAt weighs.
@@ -99,15 +103,34 @@ export type DispatchReadingKind =
 
 // TripStartLog records the schedule the producer repeats for an unworked trip,
 // and the last prediction when the poller missed the realised time, under the
-// same source; both are equal to the second to what they stand in for, so
-// equality rejects them. A vehicle having reported against the trip rules out
-// a block nobody drove.
+// same source; both are equal to the second to what they stand in for.
+//
+// Equality to the schedule rejects the first. Equality to the prediction is not
+// enough on its own to reject the second: the producer's last prediction is
+// often exactly the departure it then reports. On dev 2026-10-01..11-04, 144
+// of 155 trip-update readings equal to their prediction were written within
+// three minutes of the departure - seen realised, live - and rejecting them
+// escalated buses that left inside the grace (t483-b4-sl1C-v65, 2026-11-03).
+// What marks a stood-in prediction is when it was written: planCapture writes
+// one only once the first stop has dropped out of the feed, which the producer
+// does about LINGER_WINDOW_SECONDS after the bus passes. So a reading equal to
+// its prediction is a departure only when it was recorded inside that window;
+// with no record of when it was written, it is not.
+//
+// A vehicle having reported against the trip rules out a block nobody drove.
+export function predictionStoodIn(r: DispatchLogStart): boolean {
+  const at = r.dispatch_start_at;
+  if (!at || !sameInstant(at, r.dispatch_predicted_at)) return false;
+  const recorded = r.dispatch_recorded_at;
+  return !recorded || recorded.getTime() >= at.getTime() + LINGER_WINDOW_SECONDS * 1000;
+}
+
 export function dispatchReading(r: StartReadings): { kind: DispatchReadingKind; at: Date | null } {
   const at = r.dispatch_start_at ?? null;
   if (!at) return { kind: "not_recorded", at: null };
   if (r.dispatch_start_source !== "trip_update") return { kind: "position_fallback", at };
   if (sameInstant(at, r.dispatch_scheduled_at)) return { kind: "schedule_repeated", at };
-  if (sameInstant(at, r.dispatch_predicted_at)) return { kind: "prediction_only", at };
+  if (predictionStoodIn(r)) return { kind: "prediction_only", at };
   if (!r.first_vehicle_position_at) return { kind: "no_vehicle", at };
   return { kind: "departed", at };
 }
@@ -126,7 +149,9 @@ export function operatedSql(e: string, dl: string): string {
   return `(${e}.first_underway_at IS NOT NULL OR (
     ${dl}.actual_start_source = N'trip_update' AND ${dl}.actual_start_at IS NOT NULL
     AND ${dl}.actual_start_at <> ${dl}.scheduled_start_at
-    AND (${dl}.predicted_start_at IS NULL OR ${dl}.actual_start_at <> ${dl}.predicted_start_at)
+    AND (${dl}.predicted_start_at IS NULL OR ${dl}.actual_start_at <> ${dl}.predicted_start_at
+         OR (${dl}.actuals_updated_at IS NOT NULL
+             AND ${dl}.actuals_updated_at < DATEADD(SECOND, ${LINGER_WINDOW_SECONDS}, ${dl}.actual_start_at)))
     AND ${e}.first_vehicle_position_at IS NOT NULL))`;
 }
 
@@ -211,13 +236,15 @@ async function dispatchLogColumns(pool: sql.ConnectionPool, evidenceAlias: strin
   if (ready.recordset[0]?.ok !== 1) {
     return {
       select: `CAST(NULL AS DATETIME2) AS dispatch_start_at, CAST(NULL AS NVARCHAR(20)) AS dispatch_start_source,
-               CAST(NULL AS DATETIME2) AS dispatch_predicted_at, CAST(NULL AS DATETIME2) AS dispatch_scheduled_at`,
+               CAST(NULL AS DATETIME2) AS dispatch_predicted_at, CAST(NULL AS DATETIME2) AS dispatch_scheduled_at,
+               CAST(NULL AS DATETIME2) AS dispatch_recorded_at`,
       join: "",
     };
   }
   return {
     select: `dl.actual_start_at AS dispatch_start_at, dl.actual_start_source AS dispatch_start_source,
-             dl.predicted_start_at AS dispatch_predicted_at, dl.scheduled_start_at AS dispatch_scheduled_at`,
+             dl.predicted_start_at AS dispatch_predicted_at, dl.scheduled_start_at AS dispatch_scheduled_at,
+             dl.actuals_updated_at AS dispatch_recorded_at`,
     join: `LEFT JOIN TripStartLog dl
              ON dl.trip_id = ${tripAlias}.trip_id AND CAST(dl.service_date AS NVARCHAR(20)) = ${evidenceAlias}`,
   };
