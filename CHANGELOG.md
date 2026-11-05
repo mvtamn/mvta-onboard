@@ -5,11 +5,20 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.44] - 2026-11-04
+## [1.7.47] - 2026-11-05
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.45] - 2026-11-04
+
+Follows 1.7.41. **Migration 165** repairs the history; apply it after this deploys. Merging redeploys and restarts the REST Function App.
+
+- **AVL clocks still on CDT after daylight saving ended.** `gtfsVehiclePositionsPoll` stored each position's own `Timestamp` as `first_vehicle_position_at` / `first_underway_at`. From 2026-11-01 some units stamped positions an hour ahead: 22 vehicles on 11-01, 54 on 11-02, 3 on 11-03, none on 11-04. On dev that is 436 evidence rows whose position is stamped 40-60 min after the very write that stored it. It looked like vehicle evidence "lagging" 10-45 min. The poller never missed a run; the stamps were wrong.
+- **What it did.** First-underway times ran an hour late, and the silent no-show detector escalated buses that had left on time. It also fed 1.7.41's diagnosis: those buses' Dispatch Log departures had been rejected, and the late underway time was all that remained.
+- **The guard.** `vehicleObservedAt` (`lib/gtfsVehiclePositions.ts`) records a position at the fetch time when its stamp is more than `VEHICLE_CLOCK_TOLERANCE_SECONDS` (120 s) after the fetch. It leaves past stamps alone: a stale position is real, and an hour-behind clock (spring forward) cannot be told apart from one. The poll logs a warning naming the vehicles.
+- **Migration 165** moves back by exactly 3,600 s every evidence row whose `last_vehicle_position_at` is 30-60 min after its own `updated_at`, and each case arrival time taken from one. It copies each row to `GtfsTripOperationalEvidenceClockSkew` first, and it is re-runnable. On dev: 436 rows (2026-11-01..03 only), 18 case arrival times, no Dispatch Log rows. Repaired, the rows show the usual ~9 min from departure to underway, against 45-90 min before. 15 escalated, unreviewed cases then start inside their grace, and the detector's next pass closes them. A contract test covers it.
+
 ## [1.7.42] - 2026-11-04
 
 - **Missed Trips names the selected trip as Avail does.** The detail header read "Ref t3FB-b3E-sl1C-v65", the raw GTFS trip_id, which staff cannot look up in Avail. It now reads "Avail trip 1019-N": the trip number and the direction letter. MVTA's GTFS trip_id carries the trip number in hexadecimal as its first part (`t3FB` is 1019), the same rule the Count Sheets use (`availTripNumber`, 1.7.10, checked against 847 of 847 Dispatch Log trips). The console keeps its own copy as `availTripRef` in `missedTripReview.ts`, because it does not import backend code.

@@ -12,7 +12,7 @@
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchGtfsRtFeed, gtfsRtFeedUrl, gtfsRtUrlSetting } from "../lib/gtfsRtReader";
-import { mapVehiclePositionEntity } from "../lib/gtfsVehiclePositions";
+import { mapVehiclePositionEntity, vehicleObservedAt } from "../lib/gtfsVehiclePositions";
 import { loadEvidenceServiceDates } from "../lib/gtfsEvidenceServiceDate";
 import { runFeedIngestion } from "../lib/feedRun";
 
@@ -27,6 +27,7 @@ app.timer("gtfsVehiclePositionsPoll", {
 
     await runFeedIngestion("gtfs_vehicle_positions", context, async () => {
       const feed = await fetchGtfsRtFeed("vehicle_positions", feedUrl);
+      const fetchedAt = new Date();
       const pool = await getPool();
       const evidenceCheck = await pool.request().query<{ table_exists: number }>(`
         SELECT CASE WHEN OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NULL THEN 0 ELSE 1 END AS table_exists
@@ -40,10 +41,15 @@ app.timer("gtfsVehiclePositionsPoll", {
       let evidenceEligible = 0;
 
       const mappedEntities = [];
+      // A stamp after the fetch is a wrong clock on the bus (vehicleObservedAt).
+      const futureStampedVehicles = new Set<string>();
       for (const entity of feed.Entities) {
         try {
           const mapped = mapVehiclePositionEntity(entity);
-          if (mapped) mappedEntities.push({ mapped, observedAt: mapped.source_timestamp_at ?? new Date() });
+          if (!mapped) continue;
+          const observed = vehicleObservedAt(mapped.source_timestamp_at, fetchedAt);
+          if (observed.futureStamped) futureStampedVehicles.add(mapped.vehicle_id ?? mapped.trip_id);
+          mappedEntities.push({ mapped, observedAt: observed.at });
         } catch (err) {
           context.error(`Failed to map GTFS-RT vehicle position entity ${entity.Id}:`, err);
         }
@@ -142,6 +148,13 @@ app.timer("gtfsVehiclePositionsPoll", {
         } catch (err) {
           context.error(`Failed to update position for trip ${mapped.trip_id}:`, err);
         }
+      }
+
+      if (futureStampedVehicles.size > 0) {
+        context.warn(
+          `GTFS-RT VehiclePosition poll: ${futureStampedVehicles.size} vehicle(s) stamped positions after this fetch; ` +
+            `recorded at the fetch time instead: ${[...futureStampedVehicles].slice(0, 20).join(", ")}`,
+        );
       }
 
       context.log(
