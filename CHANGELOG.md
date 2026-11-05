@@ -5,6 +5,11 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.31] - 2026-11-04
+
+- **Avail's reason for refusing a request is readable again.** Since 17:00 UTC on 2026-11-04 the Pullout Reports API has answered `success=false` on every call, on dev and on prod, while AVL, detours and the other Avail feeds kept working. The log and the feed ledger said only `success=false: [object Object]`: `fetchAvail` joined Avail's `errors` as strings, and these errors are objects. `describeAvailErrors` now prints each object as JSON (strings as before), accepts a lone non-array value, and when Avail sends no detail at all quotes the start of the body instead.
+- **Nothing else changes.** The poll still fails the invocation and records the failure exactly as before; only the message carries more. Once deployed, the next failed Pullout run shows Avail's actual reason in App Insights and on Integrations & Data Health.
+
 ## [1.7.28] - 2026-11-04
 
 - **The console could never renew an access token, so it hung on "Checking your access…".** MSAL renews silently in a hidden iframe: the iframe goes to `login.microsoftonline.com`, and Entra redirects it **back to the console's own origin** carrying the code. `staticwebapp.config.json` forbade that last hop three times over - `frame-src` listed only `login.microsoftonline.com`, `frame-ancestors` was `'none'`, and `X-Frame-Options` was `DENY`. `acquireTokenSilent` therefore could not complete for any reason other than a thrown error, and the console sat on its loading state. Reproduced on deployed dev 2026-11-01: the browser reported `Framing '.../console/#code=...' violates ... frame-src https://login.microsoftonline.com`.
