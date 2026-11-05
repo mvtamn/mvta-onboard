@@ -290,3 +290,31 @@ describe("Missed Trips start evidence", () => {
     expect(screen.queryByRole("heading", { name: "Start evidence" })).not.toBeInTheDocument();
   });
 });
+
+describe("Missed Trips selected-trip reference", () => {
+  it("names the trip as Avail does and keeps the GTFS trip ID under Technical details", async () => {
+    // The reported case: Route 475's 10:19 AM northbound trip on Block 062,
+    // 2026-11-04, whose header read "Ref t3FB-b3E-sl1C-v65".
+    const trip: MissedTrip = {
+      ...candidate("gtfs", "475"),
+      trip_id: "t3FB-b3E-sl1C-v65", service_date: "20261104", direction_label: "NB",
+      scheduled_departure_at: "2026-11-04T16:19:00Z", grace_deadline_at: "2026-11-04T16:49:00Z",
+    };
+    vi.mocked(api.getMissedTrips).mockResolvedValue({ missed_trips: [trip], diagnostics });
+    render(<MissedTripAlerts />);
+
+    const ref = await screen.findByText("Avail trip 1019-N");
+    expect(ref).toHaveAttribute("title", "GTFS trip ID t3FB-b3E-sl1C-v65");
+    expect(screen.queryByText("Ref t3FB-b3E-sl1C-v65")).not.toBeInTheDocument();
+    const technical = screen.getByText("Technical details").closest("details")!;
+    expect(within(technical).getByText("GTFS trip ID")).toBeInTheDocument();
+    expect(within(technical).getByText("t3FB-b3E-sl1C-v65")).toBeInTheDocument();
+  });
+
+  it("falls back to the raw id when no Avail form can be read from it", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({ missed_trips: [candidate("gtfs", "460")], diagnostics });
+    render(<MissedTripAlerts />);
+    expect(await screen.findByText("Ref gtfs-trip")).toBeInTheDocument();
+    expect(screen.queryByText(/^Avail trip/)).not.toBeInTheDocument();
+  });
+});

@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.42] - 2026-11-04
+## [1.7.44] - 2026-11-04
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,12 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.42] - 2026-11-04
+
+- **Missed Trips names the selected trip as Avail does.** The detail header read "Ref t3FB-b3E-sl1C-v65", the raw GTFS trip_id, which staff cannot look up in Avail. It now reads "Avail trip 1019-N": the trip number and the direction letter. MVTA's GTFS trip_id carries the trip number in hexadecimal as its first part (`t3FB` is 1019), the same rule the Count Sheets use (`availTripNumber`, 1.7.10, checked against 847 of 847 Dispatch Log trips). The console keeps its own copy as `availTripRef` in `missedTripReview.ts`, because it does not import backend code.
+- **The GTFS trip ID is not lost.** It is listed under Technical details as "GTFS trip ID" and shown when you point at the header's reference. An id not in MVTA's form (a Spare request, or a feed that changes shape) falls back to "Ref <id>" as before.
+- **Console only.** No API or database change.
 
 ## [1.7.41] - 2026-11-04
 
@@ -49,7 +55,6 @@ Follows the email delivery evaluation (2026-11-01): the rider email path was bui
 - **The fix** is the smallest set of changes that lets the console frame itself and nobody else: `frame-src 'self' https://login.microsoftonline.com`, `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`. Cross-origin framing is still refused, which is the clickjacking threat; an attacker who can serve a page from the console's own origin already has script execution there, so `'self'` gives up nothing real. No application code changes.
 - **Not done here, and it needs an Entra step.** MSAL's redirect URI is `/console/`, so the renewal frame boots the whole console inside itself. A dedicated blank redirect page would be lighter and would let `frame-ancestors` stay `'none'` for the app itself (SWA allows per-route headers), but the new URI has to be registered on the `MVTA OnBoard` app registration's SPA platform first, which is not a code change.
 - **Affects the console only.** The rider app has no MSAL and its config is untouched.
-
 
 ## [1.7.25] - 2026-11-03
 
@@ -153,7 +158,6 @@ Seed a Procedure Draft from a QRG in the Approved Document Library (ADR 0045, mi
 - **PDF can be displayed.** New `isInlinePreviewMime` (PNG/JPEG/PDF) governs display, used by `GET /decision-matrix` and the rendition preview endpoint; `isInlineImageMime` is untouched and still decides what a Visual rendition may be. An author has to be able to read the QRG beside the Draft.
 - **`readContent` on the library module** returns an item's bytes with the same four outcomes as `readItem`; `lib/qrgLibrarySource.ts` is the whole adapter between it and `QrgSource`, so neither side learns the other's vocabulary.
 - **Inert until the site grant.** `Sites.Selected` is consented but no per-site grant has ever been issued, so every library read is still `forbidden` (the dev SOP walk, 2026-11-01T06:30Z). Seeding says so with the picker's own reason.
-
 
 ## [1.6.75] - 2026-11-01
 
@@ -343,7 +347,6 @@ Items 3 and 5 of the ranked list in `docs/reviews/evidence-and-detours-review.md
 - **OTP is measured to MVTA's configured thresholds instead of the example in Avail's API specification.** `OTP_PARAMETERS` in `lib/availClient.ts` sent early 1 / late 5 / early outlier 15 / late outlier 30; Avail confirmed on 2026-10-27 that MVTA's BI configuration is early 2 / late 5 / early outlier 10 / late outlier 60, so only the late threshold matched. The thresholds were believed enum-constrained, which they are not, and the outlier values were taken from the spec's own example to rule out our configuration as a source of error while the feed was being diagnosed, then never aligned once it was ruled out. The early threshold is the one that mattered: at 1 minute a departure 1-2 minutes early counted as early, where MVTA's standard counts it on time, so OnBoard was measuring the agency stricter than its own rule and the correction raises OTP slightly.
 - **`Include Outliers` stays 1**, pending Avail's answer on whether the BI report drops outlying departures from its denominator. It is the likeliest explanation of the one gap that remains between the API and the report: 4,271 departures on route 465 against the report's 4,045, 5.6% more.
 - **Every stored OTP figure was polled under the old parameters.** Nothing is restated automatically. `otpMonthlyFeedPoll`'s trailing window (`TRAILING_MONTHS = 3`, current + prior 2) re-pulls the current month and the two before it on its own; any earlier month behind a comparison needs `POST /otp-historical-backfill` once this deploys.
-
 
 ## [1.6.35] - 2026-10-22
 
