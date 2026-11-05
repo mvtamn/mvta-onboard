@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.32] - 2026-11-04
+
+- **Missed Trips names the selected trip as Avail does.** The detail header read "Ref t3FB-b3E-sl1C-v65", the raw GTFS trip_id, which staff cannot look up in Avail. It now reads "Avail trip 1019-N": the trip number and the direction letter. MVTA's GTFS trip_id carries the trip number in hexadecimal as its first part (`t3FB` is 1019), the same rule the Count Sheets use (`availTripNumber`, 1.7.10, checked against 847 of 847 Dispatch Log trips). The console keeps its own copy as `availTripRef` in `missedTripReview.ts`, because it does not import backend code.
+- **The GTFS trip ID is not lost.** It is listed under Technical details as "GTFS trip ID" and shown when you point at the header's reference. An id not in MVTA's form (a Spare request, or a feed that changes shape) falls back to "Ref <id>" as before.
+- **Console only.** No API or database change.
+
 ## [1.7.28] - 2026-11-04
 
 - **The console could never renew an access token, so it hung on "Checking your access…".** MSAL renews silently in a hidden iframe: the iframe goes to `login.microsoftonline.com`, and Entra redirects it **back to the console's own origin** carrying the code. `staticwebapp.config.json` forbade that last hop three times over - `frame-src` listed only `login.microsoftonline.com`, `frame-ancestors` was `'none'`, and `X-Frame-Options` was `DENY`. `acquireTokenSilent` therefore could not complete for any reason other than a thrown error, and the console sat on its loading state. Reproduced on deployed dev 2026-11-01: the browser reported `Framing '.../console/#code=...' violates ... frame-src https://login.microsoftonline.com`.
