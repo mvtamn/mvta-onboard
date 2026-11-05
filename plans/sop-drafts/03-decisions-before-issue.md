@@ -37,6 +37,7 @@ change its text.
 | 11 | Deadheads and special events (gap C7; briefing O-10) | 2026-11-04 (user), as drafted | Both out of scope; special-event counts covered separately |
 | 12 | Definitions and the MVTA Master Transit Glossary | 2026-11-04 (user) | The claim that each definition aligns with the glossary is removed; the definitions stand on their own and the glossary stays a reference |
 | 16 | Who in MVTA gives the transition notices and APC authorizations | 2026-11-04 (user), as drafted | MVTA Operations |
+| — | Printing ahead | 2026-11-04 (user) | Nightly is the rule; a desk not staffed every evening may print up to three service dates ahead (e.g. Friday for Saturday–Monday), with the morning reprint still daily. Needs PR #505, which builds the Dispatch Log three days ahead |
 | — | Who prints (briefing O-8) | 2026-11-02, Ridership printer role (#483) | Check-in desk staff hold the Ridership printer role |
 | — | When Reporting Failures are assessed (briefing O-1) | 2026-11-02 (user) | From the Cutover Date, subject to Attachment G's Transition (months 1–3, occurrence penalties suspended for non-safety measures) and Ramp-Up (months 4–6, 50%) Periods |
 | — | Cutover before the Parallel Run month closes (briefing O-4) | 2026-11-02 (user) | MVTA may set the Cutover Date on a partial-month comparison; Access stays available until the full month is accepted |

@@ -135,7 +135,10 @@ morning and marks any sheet whose trips changed after it was printed.
 
 1. Each evening, open **Ridership**, then **Print sheets**, choose your garage
    and print the next service date's Count Sheets. OnBoard produces one file
-   per garage, in pull-out order.
+   per garage, in pull-out order. Where the desk is not staffed every evening,
+   it may print up to three service dates ahead, for example Saturday through
+   Monday on Friday evening; keep each date's sheets apart, and step 3 still
+   applies every morning.
 2. Check the print page for blocks shown as Unassigned or dropped. Tell MVTA
    Planning the same evening about any Unassigned block your garage operates,
    and print its sheet with your garage's.
