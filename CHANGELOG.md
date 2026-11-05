@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.26] - 2026-11-04
+## [1.7.29] - 2026-11-04
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
 - **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
@@ -13,6 +13,13 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
 - **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
 - **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
+
+## [1.7.28] - 2026-11-04
+
+- **The console could never renew an access token, so it hung on "Checking your access…".** MSAL renews silently in a hidden iframe: the iframe goes to `login.microsoftonline.com`, and Entra redirects it **back to the console's own origin** carrying the code. `staticwebapp.config.json` forbade that last hop three times over - `frame-src` listed only `login.microsoftonline.com`, `frame-ancestors` was `'none'`, and `X-Frame-Options` was `DENY`. `acquireTokenSilent` therefore could not complete for any reason other than a thrown error, and the console sat on its loading state. Reproduced on deployed dev 2026-11-01: the browser reported `Framing '.../console/#code=...' violates ... frame-src https://login.microsoftonline.com`.
+- **The fix** is the smallest set of changes that lets the console frame itself and nobody else: `frame-src 'self' https://login.microsoftonline.com`, `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`. Cross-origin framing is still refused, which is the clickjacking threat; an attacker who can serve a page from the console's own origin already has script execution there, so `'self'` gives up nothing real. No application code changes.
+- **Not done here, and it needs an Entra step.** MSAL's redirect URI is `/console/`, so the renewal frame boots the whole console inside itself. A dedicated blank redirect page would be lighter and would let `frame-ancestors` stay `'none'` for the app itself (SWA allows per-route headers), but the new URI has to be registered on the `MVTA OnBoard` app registration's SPA platform first, which is not a code change.
+- **Affects the console only.** The rider app has no MSAL and its config is untouched.
 
 ## [1.7.25] - 2026-11-03
 
