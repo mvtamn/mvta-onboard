@@ -139,9 +139,35 @@ Gate dates are from the completion plan (#492, draft).
 - The ops-mobile-features session is idle, waiting on the user's review of a prototype in the shared notes folder.
 - **Next:** none needed before Jan. Phone use needs the OPR-038 amendment first.
 
-### 2.9 Scan upload: 🟢 off the critical path
-- **#488** (scan upload evaluation): OPEN, draft (11-04 19:15).
-- December uses a shared folder instead. The upload page (W5-1) is planned for late January.
+### 2.9 Scan upload: 🟢 off the critical path; 🟡 timing to settle
+- **#488** (scan upload evaluation, `plans/count-sheet-scan-upload.md`): OPEN, draft; head 951de719, last updated 11-03. It has 0 review comments. No code is written (11-04 20:00).
+- **Agreed 11-02** (8 decisions):
+  - an upload page in the console for a batch PDF from the garage MFP;
+  - the desk can upload but not view;
+  - pages identified by their corner marks and QR code;
+  - Document Intelligence Read/Layout only, with no Azure OpenAI;
+  - low-confidence boxes left empty for OCC to type;
+  - lateness stays on OCC's confirmation;
+  - WORM storage, with views logged;
+  - the scan proposed as the record copy.
+- **Already done from it:** decision 8, the printed trip list per sheet (#489, migration 161), applied on dev and prod (11-04 20:00).
+- **Timing conflict:**
+  - #488 planned a capture-only pilot at Burnsville from **mid-December** (S1).
+  - Plan A (11-03) and the completion plan (#492, W5-1) instead put December's scans in a shared folder, with the upload page in **late January**.
+  - Plan A is the later decision. #488's decision 1 still says mid-December, and nobody has updated it.
+- **Steps outside the code before any build** (from #488):
+  - MFP capabilities and who owns them (IT and Ops)
+  - approve the new storage and Document Intelligence resources and their cost (user)
+  - managed-identity role grants (user)
+  - seed `ridership.scan` / `ridership.scans.view`
+  - the retention period (records management)
+  - data-protection sign-off (IT/security)
+  - the SOP/OPR-038 wording (Planning and Ops)
+  - training
+- **Next:**
+  - The user confirms the late-January timing.
+  - #488's decision 1 is then updated.
+  - Start the outside-the-code steps (MFP survey, cost approval, retention) in December, so the late-January build isn't waiting on them.
 
 ### 2.10 Reconciliation review: 🟢 docs
 - **#459:** OPEN, draft (11-04 19:15). Its findings feed Q4 (month complete) and Q15 (acceptance test).
@@ -184,6 +210,7 @@ Gate dates are from the completion plan (#492, draft).
 | SOP 1 | SOP code | Document registry | OPR-RID-00 placeholder | 11-04 19:15 |
 | — | ServiceType source (L/MX/RC/SX/DX) for the totals export | Planning, then the user | Unsettled; the export leaves it blank | 11-04 19:15 |
 | — | Whether to merge spec PR #455 and completion plan #492 | User | — | 11-04 19:15 |
+| — | Scan upload timing: #488's mid-December Burnsville pilot, or plan A's shared folder with the upload page in late January | User | Late January (plan A / #492); then update #488's decision 1 | 11-04 20:00 |
 
 SOP decisions 5, 7, 11, 12 and 16 were moved to Decided on #463's branch on 11-04. The SOP agent asked the user to confirm them.
 
@@ -209,3 +236,4 @@ SOP decisions 5, 7, 11, 12 and 16 were moved to Decided on #463's branch on 11-0
 ## Change log of this board
 
 - **2026-11-04 19:15 CT:** first pass.
+- **2026-11-04 20:00 CT:** added scan upload detail (#488): the agreed design, what is already built, the timing conflict with plan A, and its steps outside the code.
