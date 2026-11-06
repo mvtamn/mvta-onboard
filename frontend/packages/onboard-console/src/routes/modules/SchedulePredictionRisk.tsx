@@ -20,9 +20,6 @@ type Load =
   | { state: "error"; message: string };
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.status === 503) {
-    return "The database is missing migration 143, so no schedule review has been kept. Run sql/migration-143-gtfs-prediction-risk-reviews.sql.";
-  }
   if (error instanceof ApiError && error.status === 401) return "Sign in again to see the schedule review.";
   return "The schedule review could not be loaded. Try again shortly.";
 }

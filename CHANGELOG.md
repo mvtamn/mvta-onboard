@@ -5,11 +5,22 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.63] - 2026-11-06
+## [1.7.66] - 2026-11-06
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.64] - 2026-11-06
+
+Architecture review candidate 1: one module owns the stored schedule review.
+
+- **`lib/scheduleReview/store.ts` owns every read and write of a stored review.** `history.ts` is folded in. The interface is `saveReview`, `latestReview`, `routeDetail`, `latestSegments` and `compareReviews({from?, to?})`. The module reads the check list itself, so handlers no longer pass `PREDICTION_RISK_CHECKS` in. Choosing which two reviews to compare (by default the newest against the one before, put in time order) moved out of the REST handler.
+- **Retired checks are handled the same way on every read.** A stored result for a check that no longer exists is dropped when the row is decoded, and `flag_count` is recounted without it. Previously the route detail and the latest summary kept the stored `flag_count`, and a review snapshot kept the retired result. Route detail now also returns `fixable_flag_count` and `structural_flag_count`.
+- **The module assumes migrations 143 and 145 are applied**, as they are on dev and on the prod copy. The "migration missing" states, the 503s that named the migration files, and the console's matching messages are removed. The health page's schema check (`lib/schemaDrift.ts`) is now the one place that says a migration is missing.
+- **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
+- **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
+- The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
 ## [1.7.62] - 2026-11-06
 
 - **Avail's start time is the departure, not the schedule.** `DepartureTripStartTime` on the Missed Trips By Route/Stop/Day feed is the minute the bus actually left, truncated: on dev, 90% of the records 1-5 minutes off a scheduled start fell within a minute of the Dispatch Log's actual start. ADR-0035 matched it to a case's scheduled start, so a late bus's record matched nothing, and a record could go to a case merely scheduled that minute while another trip was the one that left.
