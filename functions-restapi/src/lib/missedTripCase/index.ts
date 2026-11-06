@@ -16,6 +16,7 @@ import {
   recordOccurrence,
   REVIEW_HANDOFF_EXPLANATIONS,
   type IntakeRefusalCode,
+  type MissedTripStandardCode,
   type OccurrenceReviewStatus,
 } from "../occurrenceIntake";
 import { classifyMissedTripCase } from "./classify";
@@ -83,7 +84,7 @@ export async function observeMissedTrips(pool: sql.ConnectionPool, observations:
 }
 
 export type ReviewHandOff =
-  | { linked: true; occurrence_id: string; service_month: string; review_status: OccurrenceReviewStatus; standard_code: "MISSED_TRIPS_FR" }
+  | { linked: true; occurrence_id: string; service_month: string; review_status: OccurrenceReviewStatus; standard_code: MissedTripStandardCode }
   | { linked: false; reason: IntakeRefusalCode | "shadow_detection" };
 
 export const SHADOW_DETECTION_EXPLANATION =
@@ -180,7 +181,7 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
           : `${OUTCOME_NOTES[act.outcome]} (${act.reasonCode}).`,
       }, actor.name);
       handOff = recorded.ok
-        ? { linked: true, occurrence_id: recorded.occurrence.id, service_month: recorded.occurrence.serviceMonth, review_status: state.review_status, standard_code: "MISSED_TRIPS_FR" }
+        ? { linked: true, occurrence_id: recorded.occurrence.id, service_month: recorded.occurrence.serviceMonth, review_status: state.review_status, standard_code: recorded.occurrence.standardCode ?? "MISSED_TRIPS_FR" }
         : { linked: false, reason: recorded.refusal.code };
     }
     await tx.commit();

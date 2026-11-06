@@ -56,7 +56,7 @@ test("a feed resolver and an OnBoard intake are no longer the same thing", () =>
   // hinted at the difference.
   assert.deepStrictEqual(resolversForSource("api_feed").map((r) => r.key), ["OTP_FIXED_ROUTE"]);
   assert.deepStrictEqual(resolversForSource("onboard_compliance").map((r) => r.key).sort(),
-    ["GARAGE_DEPARTURE", "MISSED_TRIPS_FR"]);
+    ["GARAGE_DEPARTURE", "MISSED_TRIPS_FR", "MISSED_TRIPS_MT"]);
   assert.deepStrictEqual(resolversForSource("manual_entry"), []);
   assert.deepStrictEqual(resolversForSource("structured_import"), []);
 });

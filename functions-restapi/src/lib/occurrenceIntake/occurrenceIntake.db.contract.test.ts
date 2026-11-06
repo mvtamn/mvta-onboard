@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { parseConnectionString, sql } from "../db";
 import { forgetPromotionCache } from "../missedTripCase/promotion";
+import { matchTier } from "../assessment/tiers";
 import {
   fixedRouteDepartureOutcome,
   fixedRouteRule,
@@ -40,7 +41,7 @@ import {
 // missed-trip case contract tests do.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_occurrence_intake_contract";
-const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn"];
+const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn", "166-missed-trips-by-service-mode"];
 
 const SOURCES = `
 -- Migration 134's promotion history, with the silent no-show detector out of
@@ -53,7 +54,8 @@ CREATE TABLE dbo.MissedTripDetectorPromotions (
   decided_by NVARCHAR(200) NOT NULL, decided_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 INSERT dbo.MissedTripDetectorPromotions (detector, effective_service_date, promoted, reason, decided_by)
-  VALUES (N'gtfs_silent_no_show', N'20260101', 1, N'contract test', N'test@example.com');
+  VALUES (N'gtfs_silent_no_show', N'20260101', 1, N'contract test', N'test@example.com'),
+         (N'spare', N'20260101', 1, N'contract test', N'test@example.com');
 CREATE TABLE dbo.MonitoredMissedTrips (
   trip_id NVARCHAR(100) NOT NULL, service_date NVARCHAR(20) NOT NULL, route_id NVARCHAR(50) NOT NULL,
   scheduled_departure_at DATETIME2 NOT NULL, grace_deadline_at DATETIME2 NOT NULL,
@@ -71,6 +73,17 @@ CREATE TABLE dbo.FixedRouteDepartures (
   service_date CHAR(8) NOT NULL, block INT NOT NULL, run INT NOT NULL,
   pullout_scheduled DATETIME2 NULL, pullout_actual DATETIME2 NULL, pullout_status NVARCHAR(30) NULL,
   CONSTRAINT PK_FixedRouteDepartures PRIMARY KEY (service_date, block, run)
+);
+-- Block data for the last-trip qualifier: migration 094's Dispatch Log (one
+-- row per revenue trip scheduled on a date) and migration 027's schedule.
+CREATE TABLE dbo.TripStartLog (
+  service_date CHAR(8) NOT NULL, trip_id NVARCHAR(100) NOT NULL, block_id NVARCHAR(100) NULL,
+  route_id NVARCHAR(50) NOT NULL, scheduled_start_seconds INT NOT NULL,
+  CONSTRAINT PK_TripStartLog PRIMARY KEY (service_date, trip_id)
+);
+CREATE TABLE dbo.GtfsScheduledTrips (
+  trip_id NVARCHAR(100) NOT NULL PRIMARY KEY, route_id NVARCHAR(50) NOT NULL, service_id NVARCHAR(50) NOT NULL,
+  first_departure_seconds INT NOT NULL, block_id NVARCHAR(100) NULL
 );
 CREATE TABLE dbo.OnDemandDepartures (
   duty_id NVARCHAR(64) NOT NULL PRIMARY KEY, service_date CHAR(8) NOT NULL, duty_identifier NVARCHAR(64) NULL,
@@ -161,7 +174,7 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
         ('${AGREEMENT}','${CONTRACTOR}','2026-01-01','2026-12-31',1,'${ACTOR}'),
         ('${OTHER_AGREEMENT}','${OTHER_CONTRACTOR}','2026-10-01','2027-12-31',1,'${ACTOR}');
       INSERT AgreementStandards(agreement_id,standard_id,is_scored,effective_start_date,updated_by)
-        SELECT '${AGREEMENT}',id,1,'20260101','${ACTOR}' FROM ContractorPerformanceStandards WHERE code IN ('MISSED_TRIPS_FR','GARAGE_DEPARTURE');`);
+        SELECT '${AGREEMENT}',id,1,'20260101','${ACTOR}' FROM ContractorPerformanceStandards WHERE code IN ('MISSED_TRIPS_FR','MISSED_TRIPS_MT','GARAGE_DEPARTURE');`);
     const missedTrips = await standardId(pool, "MISSED_TRIPS_FR");
     const garage = await standardId(pool, "GARAGE_DEPARTURE");
     const uniform = await standardId(pool, "UNIFORM_COMPLIANCE");
@@ -357,6 +370,84 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       await pool.request().query(`UPDATE AssessmentPeriods SET status='finalized' WHERE contractor_id='${CONTRACTOR}' AND service_month='202609'`);
       assert.equal(refusalCode(await inTx(pool, tx => recordOccurrence(tx, review("confirmed"), ACTOR))), "period_closed");
       assert.equal(refusalCode(await inTx(pool, tx => recordOccurrence(tx, { ...review("confirmed"), tripId: "missing" }, ACTOR))), "not_found");
+    });
+
+    await t.test("a Spare case raises a microtransit occurrence and a GTFS case a fixed-route one, and a block's last trip is tier 2", async () => {
+      // February 2026, covered by one Agreement and no period yet. Block B7
+      // runs three trips on the 10th; the Dispatch Log is the block source.
+      // The 11th has no Dispatch Log at all, so block B9 is read from the
+      // schedule. Confirmed cases are raised by the nightly pass; blk-early
+      // is unreviewed, so only the review hand-off writes it.
+      await pool.request().batch(`
+        INSERT TripStartLog(service_date,trip_id,block_id,route_id,scheduled_start_seconds) VALUES
+          ('20260210','blk-early','B7','460',21600),('20260210','blk-middle','B7','460',36000),('20260210','blk-last','B7','460',72000),
+          ('20260210','other-block','B8','460',80000),
+          -- The same trip id on another date, later than blk-last: a block is per service date.
+          ('20260212','blk-late-elsewhere','B7','460',85000);
+        INSERT GtfsScheduledTrips(trip_id,route_id,service_id,first_departure_seconds,block_id) VALUES
+          ('sched-early','465','wk',25200,'B9'),('sched-last','465','wk',70000,'B9'),
+          -- A later B9 trip under another service_id runs on other days.
+          ('sched-weekend','465','sat',80000,'B9');
+        INSERT MonitoredMissedTrips(trip_id,service_date,route_id,scheduled_departure_at,grace_deadline_at,status,validation_status,detection_type,detector_version,data_quality_status,source_system,source_record_id) VALUES
+          ('blk-early','20260210','460','2026-02-10T12:00:00','2026-02-10T12:30:00','escalated','unreviewed','silent_no_show','gtfs-silent-v3','source_verified','gtfs',NULL),
+          ('blk-last','20260210','460','2026-02-11T02:00:00','2026-02-11T02:30:00','escalated','confirmed','silent_no_show','gtfs-silent-v3','source_verified','gtfs',NULL),
+          ('sched-last','20260211','465','2026-02-12T01:26:40','2026-02-12T01:56:40','escalated','confirmed','silent_no_show','gtfs-silent-v3','source_verified','gtfs',NULL),
+          ('spare-trip','20260210','OD','2026-02-10T15:00:00','2026-02-10T15:30:00','escalated','confirmed',NULL,NULL,'source_verified','spare','req-1');`);
+
+      const raised = await raiseCandidates(pool, params({ missed_trips: true }));
+      assert.deepEqual(raised.missed_trips, { raised: 3, unassigned: 0, not_scored: 0, period_closed: 0 });
+      const review = (tripId: string, serviceDate: string) => ({ kind: "missed_trip_review" as const, tripId, serviceDate, reviewStatus: "confirmed" as const, attribution: "contractor_error" as const, note: "reviewed" });
+      const early = await inTx(pool, tx => recordOccurrence(tx, review("blk-early", "20260210"), ACTOR));
+      const last = await inTx(pool, tx => recordOccurrence(tx, review("blk-last", "20260210"), ACTOR));
+      const spare = await inTx(pool, tx => recordOccurrence(tx, review("spare-trip", "20260210"), ACTOR));
+      assert.ok(early.ok && last.ok && spare.ok);
+      assert.equal(early.occurrence.standardCode, "MISSED_TRIPS_FR");
+      assert.equal(last.occurrence.standardCode, "MISSED_TRIPS_FR");
+      assert.equal(spare.occurrence.standardCode, "MISSED_TRIPS_MT");
+
+      const rows = (await pool.request().query<{ ref: string; code: string; qualifier_code: string | null; review_status: string; standard_id: string }>(`
+        SELECT o.source_ref ref, s.code, o.qualifier_code, o.review_status, o.standard_id FROM ComplianceOccurrences o
+        JOIN ContractorPerformanceStandards s ON s.id=o.standard_id
+        WHERE o.service_date IN ('20260210','20260211') ORDER BY o.source_ref`)).recordset;
+      assert.deepEqual(rows.map(r => [r.ref, r.code, r.qualifier_code, r.review_status]), [
+        ["MonitoredMissedTrips:gtfs:blk-early|20260210", "MISSED_TRIPS_FR", null, "confirmed"],
+        ["MonitoredMissedTrips:gtfs:blk-last|20260210", "MISSED_TRIPS_FR", "LAST_TRIP_OF_DAY", "confirmed"],
+        ["MonitoredMissedTrips:gtfs:sched-last|20260211", "MISSED_TRIPS_FR", "LAST_TRIP_OF_DAY", "candidate"],
+        // Microtransit has no last trip until question F4 says what one is.
+        ["MonitoredMissedTrips:spare:req-1|20260210", "MISSED_TRIPS_MT", null, "confirmed"],
+      ]);
+
+      // The band each one is charged, read the way the assessment reads it.
+      const tiersFor = async (standardId: string) => (await pool.request().query<{ tier_order: number; tier_label: "tier1" | "tier2"; qualifier_code: string | null; penalty_amount: number }>(
+        `SELECT tier_order,tier_label,qualifier_code,penalty_amount FROM ContractorStandardTiers WHERE standard_id='${standardId}' AND agreement_id IS NULL AND effective_end_date IS NULL ORDER BY tier_order`)).recordset
+        .map(t => ({ tierOrder: t.tier_order, tierLabel: t.tier_label, boundLow: null, boundHigh: null, qualifierCode: t.qualifier_code, penaltyBasis: "per_unit" as const, penaltyAmount: Number(t.penalty_amount) }));
+      const charged = await Promise.all(rows.map(async r => matchTier(await tiersFor(r.standard_id), 1, "lower_is_better", r.qualifier_code)?.penaltyAmount));
+      assert.deepEqual(charged, [1000, 2000, 2000, 1000]);
+    });
+
+    await t.test("migration 166 moves an open month's Spare occurrence to microtransit and dismisses pre-promotion candidates", async () => {
+      const fr = await standardId(pool, "MISSED_TRIPS_FR");
+      await period(pool, "202601", "in_review");
+      await pool.request().batch(`
+        INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,description,source,source_ref,review_status,attribution,created_by) VALUES
+          ('${fr}','${CONTRACTOR}','20260105',1,'Spare case on the combined standard','auto_candidate','MonitoredMissedTrips:spare:req-old|20260105','confirmed','contractor_error','${ACTOR}'),
+          ('${fr}','${CONTRACTOR}','20251215',1,'Raised before promotion','auto_candidate','MonitoredMissedTrips:gtfs:pre-promotion|20251215','candidate','undetermined','${ACTOR}');`);
+      for (const b of batches(readFileSync(join(process.cwd(), "sql", "migration-166-missed-trips-by-service-mode.sql"), "utf8"))) await pool.request().batch(b);
+
+      const after = (await pool.request().query<{ ref: string; code: string; review_status: string }>(`
+        SELECT o.source_ref ref, s.code, o.review_status FROM ComplianceOccurrences o JOIN ContractorPerformanceStandards s ON s.id=o.standard_id
+        WHERE o.source_ref IN ('MonitoredMissedTrips:spare:req-old|20260105','MonitoredMissedTrips:gtfs:pre-promotion|20251215') ORDER BY o.source_ref`)).recordset;
+      assert.deepEqual(after.map(r => [r.ref, r.code, r.review_status]), [
+        ["MonitoredMissedTrips:gtfs:pre-promotion|20251215", "MISSED_TRIPS_FR", "dismissed"],
+        ["MonitoredMissedTrips:spare:req-old|20260105", "MISSED_TRIPS_MT", "confirmed"],
+      ]);
+      assert.deepEqual(await periodState(pool, "202601").then(p => [p.status, p.input_revision]), ["stale", 1]);
+      // Re-running it changes nothing more: one standard, one ladder, one assignment.
+      const counts = (await pool.request().query<{ standards: number; tiers: number; assignments: number }>(`
+        SELECT (SELECT COUNT(*) FROM ContractorPerformanceStandards WHERE code='MISSED_TRIPS_MT') standards,
+          (SELECT COUNT(*) FROM ContractorStandardTiers t JOIN ContractorPerformanceStandards s ON s.id=t.standard_id WHERE s.code='MISSED_TRIPS_MT') tiers,
+          (SELECT COUNT(*) FROM AgreementStandards a JOIN ContractorPerformanceStandards s ON s.id=a.standard_id WHERE s.code='MISSED_TRIPS_MT') assignments`)).recordset[0];
+      assert.deepEqual(counts, { standards: 1, tiers: 2, assignments: 1 });
     });
 
     await t.test("a figure outside the contract's band is refused", async () => {

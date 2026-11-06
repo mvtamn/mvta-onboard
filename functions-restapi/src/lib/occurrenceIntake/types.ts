@@ -1,3 +1,5 @@
+import type { MissedTripStandardCode } from "./sources";
+
 // Vocabulary of the occurrence intake module (CONTEXT.md "Compliance
 // occurrence"). Callers say what was observed or decided; which contractor it
 // belongs to, whether it may be written, and what that does to the month are
@@ -72,6 +74,9 @@ export interface Written {
   id: string;
   contractorId: string;
   serviceMonth: string;
+  // The standard a missed-trip review landed on: MISSED_TRIPS_FR or
+  // MISSED_TRIPS_MT, by the case's service mode. Other paths leave it out.
+  standardCode?: MissedTripStandardCode;
 }
 
 export type IntakeOutcome = { ok: true; occurrence: Written } | { ok: false; refusal: IntakeRefusal };

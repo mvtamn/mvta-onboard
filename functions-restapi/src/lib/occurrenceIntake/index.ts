@@ -18,8 +18,11 @@ import { INTAKE_READY_SQL, occurrenceAssignmentSql } from "./assignment";
 import { decideAmount, decideChange, decideManual, decideNew, refusal } from "./decide";
 import {
   garageDepartureCandidatePredicate,
+  missedTripQualifierSql,
+  missedTripStandardCodeSql,
   occurrenceSourceRefSql,
   onDemandDepartureCandidatePredicate,
+  type MissedTripStandardCode,
 } from "./sources";
 import type {
   AssessedAmount,
@@ -57,17 +60,21 @@ async function markInputChanged(tx: sql.Transaction, contractorId: string, servi
 // raiseCandidates
 
 // Each source's observations, as rows of (standard_id, service_date,
-// description, source_ref). Eligibility lives in sources.ts; gating (feed
-// trust) is the caller's.
+// description, source_ref, qualifier_code). Eligibility lives in sources.ts;
+// gating (feed trust) is the caller's.
 const CANDIDATE_ROWS: Record<CandidateSource, (promoted: readonly PromotionWindow[]) => string> = {
   // Only a detector out of Shadow detection raises a candidate, and only for
-  // the service dates it was promoted for (missedTripCase/promotion.ts).
+  // the service dates it was promoted for (missedTripCase/promotion.ts). A
+  // fixed-route case goes to MISSED_TRIPS_FR and a Spare case to
+  // MISSED_TRIPS_MT, and a block's last trip carries the tier-2 qualifier.
   missed_trips: (promoted) => `
     SELECT standard.id standard_id, LEFT(m.service_date,8) service_date,
       CONCAT(N'Missed trip ',m.trip_id,N' on route ',m.route_id) description,
-      ${occurrenceSourceRefSql("missed_trip", "m")} source_ref
-    FROM MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", promoted)} CROSS JOIN ContractorPerformanceStandards standard
-    WHERE standard.code='MISSED_TRIPS_FR' AND mtc.counts_toward_assessment=1
+      ${occurrenceSourceRefSql("missed_trip", "m")} source_ref,
+      ${missedTripQualifierSql("m")} qualifier_code
+    FROM MonitoredMissedTrips m ${missedTripCaseSql("m", "mtc", promoted)}
+    JOIN ContractorPerformanceStandards standard ON standard.code=${missedTripStandardCodeSql("m")}
+    WHERE mtc.counts_toward_assessment=1
       AND ((ISNULL(m.source_system,N'gtfs')=N'spare' AND @allow_spare_missed_trips=1)
         OR (ISNULL(m.source_system,N'gtfs')<>N'spare' AND @allow_fixed_missed_trips=1))`,
   fixed_route_departures: () => `
@@ -75,7 +82,7 @@ const CANDIDATE_ROWS: Record<CandidateSource, (promoted: readonly PromotionWindo
       CONCAT(N'Garage departure ',d.pullout_status,N' — block ',d.block,N', run ',d.run,N' — ',
         CASE WHEN d.pullout_actual IS NULL THEN N'no departure recorded'
           ELSE CONCAT(N'departed ',DATEDIFF(MINUTE,d.pullout_scheduled,d.pullout_actual),N' min late') END) description,
-      ${occurrenceSourceRefSql("fixed_route_departure", "d")} source_ref
+      ${occurrenceSourceRefSql("fixed_route_departure", "d")} source_ref, CAST(NULL AS NVARCHAR(50)) qualifier_code
     FROM FixedRouteDepartures d CROSS JOIN ContractorPerformanceStandards standard
     WHERE standard.code='GARAGE_DEPARTURE' AND ${garageDepartureCandidatePredicate()}`,
   on_demand_departures: () => `
@@ -86,7 +93,7 @@ const CANDIDATE_ROWS: Record<CandidateSource, (promoted: readonly PromotionWindo
         CASE d.departure_source WHEN N'slots_startLocation' THEN N' (start slot)'
           WHEN N'duties_firstSeenInServiceArea' THEN N' (first seen in service area)' ELSE N'' END,
         CASE d.scheduled_source WHEN N'duties_startRequested' THEN N'; schedule from the duty''s requested start' ELSE N'' END) description,
-      ${occurrenceSourceRefSql("on_demand_departure", "d")} source_ref
+      ${occurrenceSourceRefSql("on_demand_departure", "d")} source_ref, CAST(NULL AS NVARCHAR(50)) qualifier_code
     FROM OnDemandDepartures d CROSS JOIN ContractorPerformanceStandards standard
     WHERE standard.code='GARAGE_DEPARTURE' AND ${onDemandDepartureCandidatePredicate()}`,
 };
@@ -120,15 +127,15 @@ export async function raiseCandidates(pool: sql.ConnectionPool, params: RaisePar
         .input("variance_seconds", sql.Int, params.varianceSeconds)
         .input("settled_before", sql.Char(8), params.settledBefore);
       const written = await raise.query<{ intake: IntakeState; n: number }>(`
-        DECLARE @judged TABLE(standard_id UNIQUEIDENTIFIER, service_date CHAR(8), description NVARCHAR(2000), source_ref NVARCHAR(300), contractor_id UNIQUEIDENTIFIER, intake NVARCHAR(30));
+        DECLARE @judged TABLE(standard_id UNIQUEIDENTIFIER, service_date CHAR(8), description NVARCHAR(2000), source_ref NVARCHAR(300), qualifier_code NVARCHAR(50), contractor_id UNIQUEIDENTIFIER, intake NVARCHAR(30));
         INSERT @judged
-        SELECT o.standard_id, o.service_date, o.description, o.source_ref, x.contractor_id, x.intake
+        SELECT o.standard_id, o.service_date, o.description, o.source_ref, o.qualifier_code, x.contractor_id, x.intake
         FROM (${CANDIDATE_ROWS[source](promoted)}) o
         ${occurrenceAssignmentSql("o.service_date", "o.standard_id", "x")}
         WHERE NOT EXISTS(SELECT 1 FROM ComplianceOccurrences existing WITH (UPDLOCK, HOLDLOCK) WHERE existing.source_ref=o.source_ref);
 
-        INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,description,source,source_ref,review_status,attribution,created_by)
-        SELECT standard_id,contractor_id,service_date,1,description,'auto_candidate',source_ref,'candidate','undetermined','complianceCandidatesPoll'
+        INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,qualifier_code,description,source,source_ref,review_status,attribution,created_by)
+        SELECT standard_id,contractor_id,service_date,1,qualifier_code,description,'auto_candidate',source_ref,'candidate','undetermined','complianceCandidatesPoll'
         FROM @judged WHERE intake='accepted';
 
         SELECT intake, COUNT(*) n FROM @judged GROUP BY intake;
@@ -190,29 +197,37 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
     .input("trip_id", sql.NVarChar(200), o.tripId)
     .input("date", sql.Char(8), o.serviceDate)
     .query<{
-      source_ref: string; description: string; service_date: string; standard_id: string;
+      source_ref: string; description: string; service_date: string; qualifier_code: string | null;
+      standard_id: string; standard_code: MissedTripStandardCode;
       intake: IntakeState; contractor_id: string | null;
       existing_id: string | null; existing_contractor_id: string | null; existing_month: string | null; existing_period_status: string | null;
+      existing_standard_code: MissedTripStandardCode | null;
     }>(`
-      SELECT src.source_ref, src.description, src.service_date, s.id standard_id, x.intake, x.contractor_id,
-        occ.id existing_id, occ.contractor_id existing_contractor_id, occ.service_month existing_month, ep.status existing_period_status
+      SELECT src.source_ref, src.description, src.service_date, src.qualifier_code, s.id standard_id, s.code standard_code, x.intake, x.contractor_id,
+        occ.id existing_id, occ.contractor_id existing_contractor_id, occ.service_month existing_month, ep.status existing_period_status,
+        existing_standard.code existing_standard_code
       FROM (
         SELECT ${occurrenceSourceRefSql("missed_trip", "m")} source_ref,
           CONCAT(N'Missed trip ',m.trip_id,N' on route ',m.route_id) description,
-          CAST(LEFT(m.service_date,8) AS CHAR(8)) service_date
+          CAST(LEFT(m.service_date,8) AS CHAR(8)) service_date,
+          ${missedTripStandardCodeSql("m")} standard_code,
+          ${missedTripQualifierSql("m")} qualifier_code
         FROM MonitoredMissedTrips m WHERE m.trip_id=@trip_id AND m.service_date=@date
       ) src
-      CROSS JOIN ContractorPerformanceStandards s
+      JOIN ContractorPerformanceStandards s ON s.code=src.standard_code
       ${occurrenceAssignmentSql("src.service_date", "s.id", "x")}
       LEFT JOIN ComplianceOccurrences occ WITH (UPDLOCK, HOLDLOCK) ON occ.source_ref=src.source_ref
-      LEFT JOIN AssessmentPeriods ep ON ep.contractor_id=occ.contractor_id AND ep.service_month=occ.service_month
-      WHERE s.code='MISSED_TRIPS_FR'`)).recordset[0];
-  if (!facts) return { ok: false, refusal: refusal("not_found", "The missed trip or the Missed Trips standard was not found.") };
+      LEFT JOIN ContractorPerformanceStandards existing_standard ON existing_standard.id=occ.standard_id
+      LEFT JOIN AssessmentPeriods ep ON ep.contractor_id=occ.contractor_id AND ep.service_month=occ.service_month`)).recordset[0];
+  if (!facts) return { ok: false, refusal: refusal("not_found", "The missed trip or its Missed Trips standard was not found.") };
 
   const dismissReason = o.reviewStatus === "dismissed" ? o.note : null;
   if (facts.existing_id) {
-    // An earlier review or the poll raised it. It keeps its contractor; only
-    // its own month's state can stop the restatement.
+    // An earlier review or the poll raised it. It keeps its contractor and
+    // its standard (migration 166 moved open-month Spare cases to
+    // MISSED_TRIPS_MT); only its own month's state can stop the restatement.
+    // The last-trip qualifier is read again, so a restatement charges the band
+    // today's block data says.
     const refused = decideChange({ periodStatus: facts.existing_period_status });
     if (refused) return { ok: false, refusal: refused };
     await new sql.Request(tx)
@@ -220,10 +235,11 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
       .input("status", sql.NVarChar(20), o.reviewStatus)
       .input("attribution", sql.NVarChar(30), o.attribution)
       .input("reason", sql.NVarChar(1000), dismissReason)
+      .input("qualifier", sql.NVarChar(50), facts.qualifier_code)
       .input("actor", sql.NVarChar(200), actor)
-      .query(`UPDATE ComplianceOccurrences SET review_status=@status,attribution=@attribution,dismiss_reason=@reason,reviewed_by=@actor,reviewed_at=SYSUTCDATETIME() WHERE id=@id`);
+      .query(`UPDATE ComplianceOccurrences SET review_status=@status,attribution=@attribution,dismiss_reason=@reason,qualifier_code=@qualifier,reviewed_by=@actor,reviewed_at=SYSUTCDATETIME() WHERE id=@id`);
     await markInputChanged(tx, facts.existing_contractor_id!, facts.existing_month!, actor);
-    return { ok: true, occurrence: { id: facts.existing_id, contractorId: facts.existing_contractor_id!, serviceMonth: facts.existing_month! } };
+    return { ok: true, occurrence: { id: facts.existing_id, contractorId: facts.existing_contractor_id!, serviceMonth: facts.existing_month!, standardCode: facts.existing_standard_code ?? facts.standard_code } };
   }
 
   const refused = decideNew(facts.intake);
@@ -234,16 +250,17 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
     .input("date", sql.Char(8), facts.service_date)
     .input("description", sql.NVarChar(2000), facts.description)
     .input("ref", sql.NVarChar(300), facts.source_ref)
+    .input("qualifier", sql.NVarChar(50), facts.qualifier_code)
     .input("status", sql.NVarChar(20), o.reviewStatus)
     .input("attribution", sql.NVarChar(30), o.attribution)
     .input("reason", sql.NVarChar(1000), dismissReason)
     .input("actor", sql.NVarChar(200), actor)
     .query<{ id: string; service_month: string }>(`
-      INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,description,source,source_ref,review_status,attribution,dismiss_reason,reviewed_by,reviewed_at,created_by)
+      INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,qualifier_code,description,source,source_ref,review_status,attribution,dismiss_reason,reviewed_by,reviewed_at,created_by)
       OUTPUT inserted.id, inserted.service_month
-      VALUES(@standard,@contractor,@date,1,@description,'auto_candidate',@ref,@status,@attribution,@reason,@actor,SYSUTCDATETIME(),@actor)`)).recordset[0];
+      VALUES(@standard,@contractor,@date,1,@qualifier,@description,'auto_candidate',@ref,@status,@attribution,@reason,@actor,SYSUTCDATETIME(),@actor)`)).recordset[0];
   await markInputChanged(tx, facts.contractor_id!, written.service_month, actor);
-  return { ok: true, occurrence: { id: written.id, contractorId: facts.contractor_id!, serviceMonth: written.service_month } };
+  return { ok: true, occurrence: { id: written.id, contractorId: facts.contractor_id!, serviceMonth: written.service_month, standardCode: facts.standard_code } };
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +342,7 @@ export async function setAssessedAmount(tx: sql.Transaction, id: string, amount:
 // a fact about service, not about how the assessment is set up.
 export const REVIEW_HANDOFF_EXPLANATIONS: Record<string, string> = {
   unassigned: "The review was saved, but no single active Performance Agreement covers this service date, so it was not added to a performance assessment.",
-  standard_not_scored: "The review was saved, but Missed Trips is not a scored standard on the Agreement for this date.",
+  standard_not_scored: "The review was saved, but this service mode's Missed Trips standard is not scored on the Agreement for this date.",
   period_closed: "The review was saved. That month's assessment is already finalized or issued, so it was not changed - reopen the period to restate it.",
   not_found: "The review was saved, but the Missed Trips standard is not configured, so it was not added to a performance assessment.",
   schema_not_ready: "The review was saved, but the performance assessment tables are not available in this environment.",
