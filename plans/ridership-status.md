@@ -143,8 +143,8 @@ Gate dates are from the completion plan (#492, draft).
 - The ops-mobile-features session is idle, waiting on the user's review of a prototype in the shared notes folder.
 - **Next:** none needed before Jan. Phone use needs the OPR-038 amendment first.
 
-### 2.9 Scan upload: 🟢 off the critical path; 🟡 timing to settle
-- **#488** (scan upload evaluation, `plans/count-sheet-scan-upload.md`): OPEN, draft; head 951de719, last updated 11-03. It has 0 review comments. No code is written (11-04 20:00).
+### 2.9 Scan upload: 🟡 Burnsville pilot (S1) built on #498, not merged
+- **#488** (scan upload evaluation, `plans/count-sheet-scan-upload.md`): OPEN, draft; head 951de719, last updated 11-03. It has 0 review comments. This is the design; the code is on #498 (11-05).
 - **Agreed 11-02** (8 decisions):
   - an upload page in the console for a batch PDF from the garage MFP;
   - the desk can upload but not view;
@@ -165,9 +165,13 @@ Gate dates are from the completion plan (#492, draft).
   - Both documents need a line saying Burnsville uploads from mid-December.
 - **S1 build:**
   - **Scope:** storage, the upload page, the queue worker (split, straighten, identify), Scanned / Not scanned on the worklist, and the scan beside OCC's form.
-  - **Status:** 🟡 built on **PR #498** (1.7.51, migrations 163 and 164).
-    - OPEN, mergeable, head 4d55c0f5. CI was still running on the new head: 3 passed, 3 pending (11-05 23:35 CT).
-    - Not merged. Still waiting on you: the Azure cost approval, migrations 163 and 164, and the Storage Blob role grant.
+  - **Status:** 🟡 built on **PR #498**, "Capture Count Sheet scans: upload, straighten, identify, show beside the form" (1.7.51).
+    - Rebased onto main at 9f454192; head 4d55c0f5; MERGEABLE.
+    - CI on the new head was still running: 3 passed, 3 pending.
+    - **Not merged, and not deployed anywhere** (11-05 23:35 CT).
+  - **Migrations on that branch:** 163 (scan tables) and 164 (the `ridership.scan` and `ridership.scans.view` actions). Neither is applied anywhere.
+  - **Storage:** one account per environment (`stmvtasheetscan<env>…`), plus a Service Bus queue on the existing namespace.
+  - **Retention:** the period and the policy lock stay with records management. The container stays unlocked until then.
   - **Timing:** it lands in the same weeks as G2–G6.
   - **Merging:** it must not touch the print path during the 12-02 to 12-08 freeze. Backend merges go outside 4am to midnight CT.
 - **Steps outside the code before any build** (from #488):
@@ -179,17 +183,12 @@ Gate dates are from the completion plan (#492, draft).
   - data-protection sign-off (IT/security)
   - the SOP/OPR-038 wording (Planning and Ops)
   - training
-- **Before mid-December:**
-  - The Burnsville MFP survey (IT and Ops).
-  - Your approval of the Azure resources and their cost.
-  - The storage account and the managed-identity grants (you run the grants).
-  - Seeding `ridership.scan` into the ridership roles.
-  - Ridership Printer for the Burnsville desk.
+- **Before the pilot goes live:** §3 steps 14–20 (from #498's PR body).
+- **Also needed:**
   - A short SOP note for the Burnsville desk, plus about 30 minutes of desk training.
-  - The retention period can follow: the container stays unlocked until it is set.
-  - Data-protection sign-off is needed only before the reading trial (S2), not for capture.
+  - Data-protection sign-off, but only before the reading trial (S2), not for capture.
 - **Next:**
-  - Start the S1 build.
+  - Steps 14–16, then step 19 (the merge), then step 20 (proof on dev).
   - Update #492 W5-1 and the #463 briefing.
 
 ### 2.10 Reconciliation review: 🟢 docs
@@ -210,10 +209,24 @@ Gate dates are from the completion plan (#492, draft).
 | 7 | `FixedTotals` history export from Access, for W3-6 and the control totals | Planning | 🟡 not received | 11-04 19:15 |
 | 8 | OPR-038 issuance (ridership amendments), with the SOP code from the document registry | MVTA Operations / document owner | 🟡 drafts merged (#486); not issued | 11-04 19:15 |
 | 9 | Contractor notices: the incumbent's by **11-23** (14 days); Keolis's conditional cutover notice on 12-18 | User / MVTA Operations | 🟡 drafted in #463; not sent | 11-04 19:15 |
-| 10 | MFP scan-to-folder route and a restricted shared folder at each garage | MVTA IT | 🟡 needed by 12-04 (G2 uses it 11-29) | 11-04 19:15 |
+| 10 | MFP scan-to-folder route and a restricted shared folder at each garage. Eagan uses it all December, and Burnsville until #498 is live. The MFP facts come from step 17's survey | MVTA IT | 🟡 needed by 12-04 (G2 uses it 11-29) | 11-05 23:35 |
 | 11 | Check that the 7 Dec GTFS is loaded and in the Dispatch Log by 03:30 on 12-06 | Planning / engineering | 🟡 due 12-05 | 11-04 19:15 |
 | 12 | Apply each new migration to dev, then prod, before its gate, and confirm the drift check is clean | User | 🟢 nothing pending today | 11-04 19:15 |
 | 13 | Named engineering on-call for print nights (12-06 to 12-09, 01-01 to 01-02) | User | 🟡 decision Q5 | 11-04 19:15 |
+
+**Scan pilot S1 (#498).** Steps 14–20 are taken from #498's PR body. They replace the scan items that were listed under §2.9 before.
+
+| # | Step | Owner | Status | Verified |
+|---|---|---|---|---|
+| 14 | Approve the Azure cost: one storage account per environment (under $1/month at about 3,500 pages/month), plus one Service Bus queue on the existing namespace | User | 🟡 not approved | 11-05 23:35 |
+| 15 | Apply migrations 163 and 164 on dev, then on prod (see step 12) | User | 🟡 unapplied everywhere | 11-05 23:35 |
+| 16 | Grant the REST app's managed identity **Storage Blob Data Contributor** on `stmvtasheetscan<env>…`, in dev and prod | User | 🟡 not done; the storage account is created by the merge's infra deploy | 11-05 23:35 |
+| 17 | Survey each garage's MFP: make and model, scan to PDF at 300 dpi, destinations, and who supports it. This also covers step 10's folder route | MVTA IT + Operations | 🟡 not started | 11-05 23:35 |
+| 18 | Grant **Ridership Printer** (which now carries `ridership.scan`, once 164 is applied) to the Burnsville desk staff, as part of step 1. Migration 159 is already on prod *(last known)*. Keolis staff need B2B guest accounts first (step 3) | Access administrator | 🟡 0 grants on dev | 11-05 23:35 |
+| 19 | Merge #498 outside 4am to midnight Central, because it restarts the REST app. It must not fall in the 12-02 to 12-08 print freeze | User | 🟡 CI still running | 11-05 23:35 |
+| 20 | Prove it end to end on dev with synthetic sheets: print, upload, check the outcomes, the image beside the form, and the view log | Engineering, after 14–16 and 19 | 🟡 waiting on those steps | 11-05 23:35 |
+
+The retention period and the policy lock stay with records management. No date is set for them, and the pilot does not need one.
 
 ---
 
