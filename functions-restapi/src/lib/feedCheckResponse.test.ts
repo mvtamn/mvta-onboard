@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ledgerFeedChecks, summarizeFeedResponse } from "./feedCheckResponse";
-import { resolveKpiTrust, type KpiFeedHealth } from "./kpiTrust";
+import { feedDependency, resolveKpiTrust, type KpiFeedHealth } from "./kpiTrust";
 
 test("uses Spare's total instead of treating its data envelope as empty", () => {
   assert.deepEqual(
@@ -64,7 +64,7 @@ test("a feed no KPI depends on is judged by the freshness table: the prediction 
     feed_name: "prediction_capture",
     last_success_at: new Date(now.getTime() - minutesAgo * 60_000),
     last_entity_count: 412,
-    source_timestamp_at: null,
+    source_timestamp_at: new Date(now.getTime() - minutesAgo * 60_000),
     last_failure_at: reason ? now : null,
     last_failure_reason: reason,
   });
@@ -77,4 +77,62 @@ test("a feed no KPI depends on is judged by the freshness table: the prediction 
   assert.equal(stale.freshness, "stale");
   assert.equal(stale.error, "Both feeds failed");
   assert.equal(ledgerFeedChecks(feeds, [], now)[0].freshness, "stale");
+});
+
+test("the prediction capture ages by its source time: writing every run of a frozen feed is stale", () => {
+  // It used to be judged by last success alone, so a capture that kept writing
+  // the same frozen GTFS-RT snapshot read Current. The KPI trust rule takes the
+  // older of the source time and the last success, and now so does this row.
+  const now = new Date("2026-10-16T17:00:00Z");
+  const feeds = [{ name: "Prediction capture", feedName: "prediction_capture" as const }];
+  const frozen: KpiFeedHealth = {
+    feed_name: "prediction_capture",
+    last_success_at: new Date(now.getTime() - 30_000),
+    last_entity_count: 412,
+    source_timestamp_at: new Date(now.getTime() - 20 * 60_000),
+  };
+  assert.equal(ledgerFeedChecks(feeds, [frozen], now)[0].freshness, "stale");
+  assert.equal(feedDependency("prediction_capture", frozen, now).state, "stale");
+
+  // Records written with no source time have unproven coverage: unavailable,
+  // which the row shows as stale.
+  const unknownVintage = { ...frozen, source_timestamp_at: null };
+  assert.equal(feedDependency("prediction_capture", unknownVintage, now).state, "unavailable");
+  assert.equal(ledgerFeedChecks(feeds, [unknownVintage], now)[0].freshness, "stale");
+});
+
+test("a ledger row gets the same verdict from KPI trust and from its feed check row", () => {
+  // One rule judges every feed. For each ledger feed on the page, in each
+  // shape a row can take, the check row must agree with every KPI trust
+  // dependency on that feed - and a feed no KPI declares with feedDependency.
+  const now = new Date("2026-10-16T17:00:00Z");
+  const ago = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+  const feeds = [
+    { name: "Spare missed-trip Requests ingestion", feedName: "spare_requests" },
+    { name: "Spare missed-trip Slots ingestion", feedName: "spare_slots" },
+    { name: "Prediction capture", feedName: "prediction_capture" },
+  ] as const;
+  const shapes: { label: string; row: Omit<KpiFeedHealth, "feed_name"> | null }[] = [
+    { label: "fresh", row: { last_success_at: ago(1), last_entity_count: 9, source_timestamp_at: ago(1) } },
+    { label: "old success", row: { last_success_at: ago(60), last_entity_count: 9, source_timestamp_at: ago(60) } },
+    { label: "frozen source", row: { last_success_at: ago(1), last_entity_count: 9, source_timestamp_at: ago(60) } },
+    { label: "no source time", row: { last_success_at: ago(1), last_entity_count: 9, source_timestamp_at: null } },
+    { label: "empty success", row: { last_success_at: ago(1), last_entity_count: 0, source_timestamp_at: null } },
+    { label: "never succeeded", row: { last_success_at: null, last_entity_count: null, source_timestamp_at: null } },
+    { label: "no row", row: null },
+  ];
+  for (const { label, row } of shapes) {
+    const records = row ? feeds.map(({ feedName }) => ({ feed_name: feedName, ...row })) : [];
+    const checks = ledgerFeedChecks(feeds, records, now);
+    const trustDependencies = Object.values(resolveKpiTrust(records, now)).flatMap((stream) => stream.dependencies);
+    for (const [index, { feedName }] of feeds.entries()) {
+      const declared = trustDependencies.filter((item) => item.feed_name === feedName);
+      const verdicts = declared.length > 0
+        ? declared.map((item) => item.state)
+        : [feedDependency(feedName, records.find((record) => record.feed_name === feedName), now).state];
+      for (const state of verdicts) {
+        assert.equal(checks[index].freshness, state === "current" ? "current" : "stale", `${feedName}, ${label}`);
+      }
+    }
+  }
 });
