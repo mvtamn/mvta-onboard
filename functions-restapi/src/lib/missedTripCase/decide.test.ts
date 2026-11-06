@@ -256,3 +256,69 @@ test("a Legacy missed-trip record is not touched by Avail either", () => {
     null,
   );
 });
+
+// Avail OTP Daily at the trip's origin (the 2026-11-04 assessment's option d).
+// Hour-level evidence that every trip scheduled from that origin in that local
+// hour departed. It contradicts a case that says the run never started; it
+// opens, closes and rewrites nothing.
+function departed(departures = 1, scheduled = 1, runId = "T1"): RunObservation {
+  return {
+    run: { source: "avail", runId, serviceDate: "20260917", routeId: "460", scheduledStartAt: SCHEDULED, deadlineAt: SCHEDULED },
+    detectorVersion: "avail-otp-origin-v1",
+    fact: { kind: "origin_departures_observed", departures, scheduled, originStopName: "Apple Valley Transit Station NB", localHour: 9 },
+    evidence: { source: "avail_otp_daily", departures, scheduled },
+  };
+}
+
+test("origin departures never open a case", () => {
+  assert.equal(decideRun(null, [departed()], NOW), null);
+});
+
+test("origin departures contradict a suspected no-show awaiting review", () => {
+  const decision = decideRun(stored(), [departed(2, 2)], NOW);
+  const set = setOf(decision);
+  assert.deepEqual(set.evidence_conflict_at, NOW);
+  assert.equal(
+    set.evidence_conflict_reason,
+    "Avail OTP Daily saw 2 departures and none missed from Apple Valley Transit Station NB on route 460 in the 9:00 hour, where 2 trips were scheduled to start; the case says this run never started.",
+  );
+  assert.match(String(set.evidence_json), /"avail_otp_origin"/);
+  assert.equal(set.status, undefined, "the case is not closed by hour-level evidence");
+  assert.equal(decision?.kind === "update" ? decision.outcome : null, "evidence_recorded");
+});
+
+test("origin departures contradict a Confirmed missed trip with no start", () => {
+  const set = setOf(decideRun(stored({ validation_status: "confirmed" }), [departed()], NOW));
+  assert.deepEqual(set.evidence_conflict_at, NOW);
+  assert.equal(set.validation_status, undefined, "no review is rewritten");
+});
+
+test("origin departures agree with, or say nothing against, every other case", () => {
+  const rows: [string, Partial<CaseState>][] = [
+    ["closed by evidence", { status: "resolved" }],
+    ["reviewed Timely service", { validation_status: "timely_service" }],
+    ["reviewed Partial-service failure", { validation_status: "partial_service_failure" }],
+    ["reviewed indeterminate", { validation_status: "indeterminate" }],
+    ["still watching", { status: "watching", undecided_reason: AWAITING_CONFIRMATION }],
+    // It ran past its deadline: a departure in the hour is what the case says.
+    ["late trip start", { detected_late_arrival_at: new Date("2026-09-17T14:45:00Z") }],
+  ];
+  for (const [label, overrides] of rows) {
+    const set = setOf(decideRun(stored(overrides), [departed()], NOW));
+    assert.equal(set.evidence_conflict_at, undefined, label);
+    assert.match(String(set.evidence_json), /"avail_otp_origin"/, `${label}: the evidence is still kept`);
+    assert.equal(set.status, undefined, label);
+  }
+});
+
+test("origin departures raise a conflict only when they first arrive", () => {
+  // A reviewer who settled the conflict had this evidence in front of them; the
+  // nightly restatement must not raise it again.
+  const seen = stored({ validation_status: "confirmed", evidence_json: JSON.stringify({ avail_otp_origin: { departures: 1, scheduled: 1 } }) });
+  const decision = decideRun(seen, [departed()], NOW);
+  assert.equal(setOf(decision).evidence_conflict_at, undefined);
+});
+
+test("origin departures say nothing about a Spare case", () => {
+  assert.equal(decideRun(stored({ source_system: "spare", trip_id: "spare:R1" }), [departed()], NOW), null);
+});
