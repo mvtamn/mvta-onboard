@@ -507,5 +507,42 @@ export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: strin
     });
   }
 
+  const otp = evidence.avail_otp;
+  if (otp) {
+    const hour = hourRange(otp.hour);
+    const trips = `${otp.trips_starting} ${otp.trips_starting === 1 ? "trip" : "trips"} scheduled to start here`;
+    const departures = `${otp.departed} ${otp.departed === 1 ? "departure" : "departures"}`;
+    facts.push(otp.all_left
+      ? {
+        label: "Avail on-time data",
+        value: otp.trips_starting === 1 ? `${hour}: the 1 trip scheduled to start here left` : `${hour}: all ${trips} left`,
+        tone: "good",
+        note: `Avail saw ${departures} and called none missed. It counts the hour, not the trip.`,
+      }
+      : {
+        label: "Avail on-time data",
+        value: `${hour}: Avail saw ${departures} for ${trips}${otp.missed > 0 ? `, and called ${otp.missed} missed` : ""}`,
+        tone: "warn",
+        note: "An hour-level count can't say which trip didn't leave.",
+      });
+  } else if (evidence.avail_otp === null) {
+    facts.push({
+      label: "Avail on-time data",
+      value: "Nothing recorded for this stop and hour",
+      note: "Avail misses departures at some stations, and its data arrives the next day.",
+    });
+  }
+
   return facts;
+}
+
+// "10–11 AM", "11 AM–12 PM": the local hour Avail counted.
+function hourRange(hour: number): string {
+  const label = (h: number) => {
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return { h12, ampm: h % 24 < 12 ? "AM" : "PM" };
+  };
+  const from = label(hour);
+  const to = label(hour + 1);
+  return from.ampm === to.ampm ? `${from.h12}–${to.h12} ${to.ampm}` : `${from.h12} ${from.ampm}–${to.h12} ${to.ampm}`;
 }
