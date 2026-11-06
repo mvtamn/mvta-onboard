@@ -249,10 +249,13 @@ April onward only the new, which is what fixes the direction.
 **Do not reintroduce the service-pattern reading.** The weekday arithmetic dates
 *a* change; only the names say *what* changed.
 
-`functions-restapi/src/lib/otpMonthlyFeed.ts` still carries the old reading in
-the "Two records, one key" comment block — it says the split "is what a
-mid-month schedule change looks like" and dates it to "about 18 March". That
-comment needs correcting, but not here: this change is documentation only.
+`functions-restapi/src/lib/otpMonthlyFeed.ts` carried the old reading in its
+"Two records, one key" comment block — the split was "what a mid-month schedule
+change looks like", dated to "about 18 March". **Corrected in 1.7.49**, which
+also drops the claim that the published record shape has nothing to key on: it
+has `StopInternetName`, which is why the collision could be read at all. What it
+lacks is a stable stop-record identifier and an effective date — the question put
+to Avail above, and the reason summing is still the right answer.
 
 ## The sweep: what else was considered for this message
 
