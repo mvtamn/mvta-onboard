@@ -89,7 +89,11 @@ Gate dates are from the completion plan (#492, draft).
 ### 2.3 Operator and bus pre-fill on prod (#493): 🟡
 - **#493:** MERGED 61c053ee (11-04 19:50 UTC). Prod infra deploy run 41900876109 succeeded. A prod API and console deploy at cbf200a9 also succeeded at 11-05 00:59 UTC (11-04 19:15).
 - **Not yet confirmed:** that prod's `FixedRouteDepartures` is filling. Two ways to check: prod Integrations & Data Health shows an Avail pull-out run, or a prod sheet opens with the operator and bus filled in.
-- **Dev for comparison:** 161 departures per day; 11-04 last updated 16:55 UTC (11-04 19:15).
+- 🔴 **The Avail pull-out feed is down on dev, and on prod too** *(prod from the session that found it)*.
+  - Dev's `FixedRouteDepartures` was last updated 2026-11-04 16:55 UTC. Nothing has arrived since, about 37 hours (11-05 23:35 CT).
+  - The cause is on Avail's side: their SQL login fails ("Login failed" for Avail's service account) since 11-04 17:00 UTC. #497 (1.7.33) surfaced the error.
+  - Until Avail fixes it, no sheet on either environment pre-fills its operator or bus.
+  - **Owner:** the user, with Avail support.
 - **Next:** the user confirms on prod (§3 step 4).
 
 ### 2.4 December comparison and the Jan 1 features (completion plan): 🟡 not started
@@ -161,7 +165,9 @@ Gate dates are from the completion plan (#492, draft).
   - Both documents need a line saying Burnsville uploads from mid-December.
 - **S1 build:**
   - **Scope:** storage, the upload page, the queue worker (split, straighten, identify), Scanned / Not scanned on the worklist, and the scan beside OCC's form.
-  - **Status:** 🟡 not started, and no session is building it.
+  - **Status:** 🟡 built on **PR #498** (1.7.51, migrations 163 and 164).
+    - OPEN, mergeable, head 4d55c0f5. CI was still running on the new head: 3 passed, 3 pending (11-05 23:35 CT).
+    - Not merged. Still waiting on you: the Azure cost approval, migrations 163 and 164, and the Storage Blob role grant.
   - **Timing:** it lands in the same weeks as G2–G6.
   - **Merging:** it must not touch the print path during the 12-02 to 12-08 freeze. Backend merges go outside 4am to midnight CT.
 - **Steps outside the code before any build** (from #488):
@@ -198,7 +204,7 @@ Gate dates are from the completion plan (#492, draft).
 | 1 | Grant **Ridership Printer** to each garage check-in desk person, on dev and prod | Access administrator (Access & Identity) | 🟡 Dev: **0 grants** of any ridership role. Prod: not verifiable from here. Needed for G1 (wk of 11-16) | 11-04 19:15 |
 | 2 | Grant `ridership-recorder` to each Keolis OCC person, and `ridership-manager` to named Planning staff | Access administrator | 🟡 Dev: 0 grants. Recorder is needed by 12-09 (G5) | 11-04 19:15 |
 | 3 | Entra B2B guest accounts: the incumbent's desk staff by 11-16; Keolis OCC and desks by 12-11 | MVTA IT | 🟡 not started, as far as known | 11-04 19:15 |
-| 4 | Confirm the prod pull-out poll has filled prod's departures table (#493) | User (prod database or Data Health page) | 🟡 deployed, not confirmed | 11-04 19:15 |
+| 4 | Confirm the prod pull-out poll has filled prod's departures table (#493) | User, with Avail support | 🔴 It can't fill: Avail's SQL login has been failing since 11-04 17:00 UTC (dev and prod). Ask Avail to fix their login, then check prod | 11-05 23:35 |
 | 5 | Block-to-garage list: the current schedule by 11-16 and the 7 Dec schedule by 12-04, on prod | Planning | 🔴 Dev: **0 of 144** blocks assigned. Prod: 180 blocks were Unassigned *(last known)*. An inferred split exists (Eagan 160 / Burnsville 20, from overnight parking) but has not been entered | 11-04 19:15 |
 | 6 | Planning's questions: the Access Flag column; the day-type digits (1/3/2 found, to be confirmed against the Access table); and Vehtypgrp / MaxOfVariation / FirstOfTerm as a possible ServiceType source (Q15) | Planning | 🟡 open | 11-04 19:15 |
 | 7 | `FixedTotals` history export from Access, for W3-6 and the control totals | Planning | 🟡 not received | 11-04 19:15 |
@@ -255,4 +261,5 @@ SOP decisions 5, 7, 11, 12 and 16 were moved to Decided on #463's branch on 11-0
 
 - **2026-11-04 19:15 CT:** first pass.
 - **2026-11-04 20:00 CT:** added scan upload detail (#488): the agreed design, what is already built, the timing conflict with plan A, and its steps outside the code.
+- **2026-11-05 23:35 CT:** the S1 scan pilot is built on #498 (open, not merged). The Avail pull-out feed has been down since 11-04 17:00 UTC (Avail's SQL login), so step 4 is now red.
 - **2026-11-04 20:15 CT:** the user decided to keep the mid-December Burnsville scan pilot. Recorded what it needs and the documents to bring into line.
