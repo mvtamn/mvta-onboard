@@ -44,7 +44,7 @@ These four tracks are independent and run in parallel.
 | 0.5 | **Freeze the evidence at review.** When a reviewer decides a case, write the readings they saw (Dispatch Log, vehicle, block, origin stop, OTP Daily departures) into the case's `evidence_json`. Today GTFS evidence is read live, and OTP Daily is purged after 90 days. Also show when the evidence read failed (review item 8, #471) | Code | Engineering | A reviewed case still shows its evidence after the source rows are gone |
 | 0.7 | **Split the standard** (Q3): `MISSED_TRIPS_FR` becomes fixed route only, and a new microtransit standard takes the Spare cases with its own tiers. Intake routes by `source_system`, and the resolver registry, assessment and Performance Standards admin all learn the new code. The 4 stale August candidates are re-pointed or dismissed. Needs a migration | Code | Engineering | A confirmed Spare case raises a microtransit occurrence, and a GTFS case a fixed-route one |
 | 0.8 | **Split the three authorities** (Q8): the specialist records the outcome (`compliance-review.review`); a manager records attribution (new action, for example `compliance-review.attribute`); the COO decides excusable (new action, or `performance-assessment.decide`). A confirmed case's occurrence stays `undetermined`, so it doesn't count, until a manager attributes it. **Numbered steps in the PR: register the new action(s), then grant them to the named people (F7)** | Code | Engineering, then Ty for the grants | The reviewer can't set attribution, and a manager can't decide excusable |
-| 0.6 | **A promotion form** on Admin → Missed-trip Detectors. It records the family, effective service date, promote or demote, reason, and precision and sample filled in from the scorecard, with the signed-in person as the decider. This replaces a hand-typed SQL insert, which nobody but the owner can run anyway | Code | Engineering | A promotion row can be recorded from the console, and the audit shows who recorded it |
+| 0.6 | **Enforce the new promotion bar.** The form already exists: Admin → Missed-trip Detectors, `POST /missed-trip-detector-promotions` under `service-configuration.edit`, with the scorecard prefilling a week. It still enforces one week at 95% (`decidePromotion`, `PRECISION_BAR`). Change it to two weeks, every escalation reviewed, at most 2 false alarms against runs watched, and 95% when there are 20+ cases. Add "runs watched" and "false alarms" to the scorecard and the form. Let `gtfs_cancellation` be promoted with no sample when the silent family is promoted on the same date (Q6) | Code | Engineering | A two-week window that meets the bar can be recorded, and one that doesn't is refused with the numbers |
 
 ## Phase 1: backlog and measurement (16 November to 6 December)
 
@@ -59,7 +59,7 @@ These four tracks are independent and run in parallel.
 
 | # | Step | Kind | Owner | Done when |
 | --- | --- | --- | --- | --- |
-| 2.1 | Record the promotion of `gtfs_silent_no_show`, effective the **first of the next month**, with the scorecard's precision and sample and the decider named | Decision | Rob signs, Ty records (0.6) | Row in `MissedTripDetectorPromotions` |
+| 2.1 | Record the promotion of `gtfs_silent_no_show`, effective the **first of the next month**, with the scorecard's false alarms, runs watched, precision and sample, and the decider named | Decision | Signer per F6; recorded on the promotion form | Row in `MissedTripDetectorPromotions` |
 | 2.2 | Promote `gtfs_cancellation` on the same date, with the reason "promoted with the silent no-show family; no cancellation has appeared in MVTA's feed" (decided by Q6) | Data | Same as 2.1 | Its own row |
 | 2.3 | Turn on the assessment month: `ASSESSMENT_MONTH_BOUNDARY_ENABLED=true` and `assessmentPeriodOpen`, and catch up the stale periods | Data (ops) | Ty | The promoted month's period exists and is current |
 
@@ -115,12 +115,12 @@ Ty answered all eight questions, taking Q4–Q7 from the context given with each
 | 2 Last trip | **The last trip of the block** (the assigned work) at the end of the day, before the operator and vehicle return to the garage. The point is that a rider isn't stranded. **It includes microtransit** | Per block per service date, not per route or agency. The review path must set `LAST_TRIP_OF_DAY` (new step 1.4). For microtransit the equivalent unit of work has to be agreed (F4) |
 | 3 One standard or two | **Two standards, one per service mode** | `MISSED_TRIPS_FR` today is "Fixed Route / Microtransit" and takes both. **It has to be split** (new step 0.7) |
 | 4 Manual count | **MVTA staff count from Avail** | The parallel month compares against an Avail-based count. Avail's entire-trip misses are at least 78% contradicted by a recorded start (2026-11-04 research), so if the count uses that report unfiltered, the two counts **will** differ, and the difference is Avail's stop detection, not OnBoard. See F5 |
-| 5 Minimum sample | **"We would rarely see 20 cases of missed trips"** | The case-count bar doesn't fit. A proposed replacement, measured against the trips the detector watched, is below and needs a yes |
+| 5 Minimum sample | **"We would rarely see 20 cases of missed trips"** | The case-count bar doesn't fit. It's replaced by a false-alarm bar measured against the trips the detector watched (below), **adopted 2026-11-06** |
 | 6 Explicit cancellations | **Promote them with the no-show detector** | Step 2.2 is decided: `gtfs_cancellation` is promoted on the same date as `gtfs_silent_no_show` |
 | 7 Parallel-run standard | **Every difference explained** | Totals may differ, but every trip on one list and not the other needs a written reason. Any unexplained trip holds the switch (4.1) |
 | 8 Who decides what | **A transportation specialist reviews, managers decide attribution, and the COO decides whether it is excusable. All are MVTA staff** | Today one action, `compliance-review.review`, covers review, attribution and occurrence edits, and the reviewer sets attribution in the same act as the outcome. **The three authorities have to be split** (new step 0.8). Who signs a promotion is still unstated (F6) |
 
-### Proposed promotion bar, replacing a case count (needs a yes)
+### The promotion bar, replacing a case count (adopted 2026-11-06)
 
 Real missed trips are rare, so a week will rarely hold 20 genuine cases. The bar should
 measure **false alarms against the trips the detector watched**, not precision on a handful
@@ -133,9 +133,9 @@ of cases:
 On today's numbers that is demanding. The week of 2 November had 13 escalations and
 **nothing suggests more than 2 of them were real**, so the detector has to get much
 quieter before it passes. That is the intent. CONTEXT's Shadow detection entry and ADR-0036
-say "one complete service week at 95%", so accepting this means **amending both**. That's a
-docs change in the promotion form's PR (0.6). The scorecard needs a "false alarms per
-1,000 trips watched" column to show it.
+said "one complete service week at 95%". **Both are amended** on this PR (CONTEXT's Shadow
+detection entry, and an amendment to ADR-0036). The code still enforces the old bar until
+step 0.6 lands.
 
 ### Follow-up questions the answers raise
 

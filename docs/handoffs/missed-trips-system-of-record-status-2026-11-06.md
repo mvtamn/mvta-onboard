@@ -37,7 +37,7 @@ reviewer working the queue, plus Rob's answers on the definition.
 | # | Gate | State | One-line evidence (dev, read 2026-11-06 06:07 UTC) |
 | --- | --- | --- | --- |
 | 1 | Detection quality | **Fail** | 47 open v4 escalations: 29 contradicted, 16 unknown, 2 probable real. Post-fix there is one service day (5 Nov) with 0 cases. `gtfs-cancel-v1` has never opened a case. No Spare case has a ground truth |
-| 2 | Promotion | **Fail** | `MissedTripDetectorPromotions` has 0 rows. Migrations 134 and 137 are **applied**: the table exists and `vw_MissedTrip` reads it. There's no admin surface, so a promotion is a hand-inserted row |
+| 2 | Promotion | **Fail** | `MissedTripDetectorPromotions` has 0 rows. Migrations 134 and 137 are **applied**: the table exists and `vw_MissedTrip` reads it. A promotion form exists on Admin → Missed-trip Detectors *(corrected 2026-11-06: an earlier version of this document said there was none)* |
 | 3 | Review workflow | **Fail** | 8 reviews ever, last 2026-08-08. 12 people hold `compliance-review.review` (7 compliance-analyst, 5 compliance-manager) and none has used it in 90 days. The queue is not being worked |
 | 4 | Hand-off to assessment | **Pass in code, unproven live** | `actOnMissedTripCase` → `recordOccurrence` runs in one transaction, gated on promotion and evidence conflict. There are 0 occurrences from reviews, 4 stale August candidates, and only 2 assessment periods (both `stale`). The last-trip $2,000 qualifier is never set by the review path |
 | 5 | Evidence retention and audit | **Partial** | The review history is append-only. Avail is linked per record (11,307 links). GTFS evidence is read live at review time rather than snapshotted, and OTP Daily (#510's evidence) is purged after 90 days. Evidence conflicts ever recorded: 0 |
@@ -110,13 +110,14 @@ reproduced from the stored times. That question is open with the Spare data owne
 - **Migration 134** is applied (the table exists). **Migration 137** is applied:
   `vw_MissedTrip`'s definition reads the promotion table. Migrations 135 (evidence conflict)
   and 136 (`AvailEvidenceLinks`) are applied too, because their objects exist.
-- **No admin surface.** ADR-0036 itself says a promotion is a row inserted by hand until a
-  surface ships. A hand insert is acceptable, but the measured precision, the sample, the
-  reason and the decider all have to be typed correctly. The scorecard (#428) supplies the
-  numbers.
+- **The promotion form exists** *(corrected 2026-11-06)*. Admin → Missed-trip Detectors
+  posts to `POST /missed-trip-detector-promotions` under `service-configuration.edit`.
+  `decidePromotion` refuses anything below the bar, and the scorecard (#428) prefills a
+  week. An earlier version of this document said there was no surface: that was wrong.
 - **Sample size is a decision nobody has made.** At about 13 escalations a week, 95%
   precision means zero false positives (12/13 is 92.3%). A quiet week with 3 cases, all
-  confirmed, would "pass" at 100%. CONTEXT sets no minimum sample, and it should.
+  confirmed, would "pass" at 100%. *Resolved 2026-11-06*: the bar is now two weeks with at
+  most two false alarms against runs watched (CONTEXT and the ADR-0036 amendment).
 
 ## 3. Review workflow: fail
 
@@ -267,7 +268,7 @@ session.
 | 5 | Merge #510, then make the contradiction count: raise an Evidence conflict (or a recorded "departure observed") from the Dispatch Log and OTP Daily, and freeze the cited evidence onto the case at review | Code | Engineering | Contradicted cases show it on the case. Evidence survives OTP Daily's 90-day purge |
 | 6 | Set `qualifier_code = LAST_TRIP_OF_DAY` when the case is the last scheduled trip of the service day, once step 1 says how it applies | Code | Engineering | A confirmed last trip raises a tier-2 occurrence |
 | 7 | Measurement week: one complete Monday–Sunday service week after steps 4 and 5, with every case decided within the week | Data (human) | Named reviewer | Scorecard week shows precision ≥ 95% on the agreed minimum sample |
-| 8 | Record the promotion for `gtfs_silent_no_show` (and decide `gtfs_cancellation`) with an effective service date. The first of a month is the natural choice | Decision | Rob signs, engineering inserts the row (or builds the surface) | Row in `MissedTripDetectorPromotions` on dev and prod |
+| 8 | Record the promotion for `gtfs_silent_no_show` (and decide `gtfs_cancellation`) with an effective service date. The first of a month is the natural choice | Decision | Rob signs, recorded on the existing promotion form | Row in `MissedTripDetectorPromotions` on dev and prod |
 | 9 | Turn on the assessment month: `ASSESSMENT_MONTH_BOUNDARY_ENABLED`, and have assessment periods actually computed for the month the promotion starts | Data and decision | Ty | That month's period exists and isn't `stale` |
 | 10 | Prod cutover for missed trips: enable `availMissedTripsPoll`, `otpDailyFeedPoll`, `complianceCandidatesPoll`, `assessmentPeriodOpen` (and Spare when step 12 is ready), and read prod's schema drift for 134–137 | Data (ops) | Ty | Prod health page shows those feeds current and no drift |
 | 11 | Parallel run: one month of OnBoard's confirmed count beside the manual count, with differences explained | Data and decision | Reviewer, then Rob | Rob accepts and the manual count stops |

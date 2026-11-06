@@ -83,3 +83,31 @@ the warehouse agrees with the app by construction rather than by discipline.
   change rules decide what happens to a month it touches.
 - A detector name the history mentions that the build does not know promotes
   nothing, and is reported rather than ignored, so a typo cannot look applied.
+
+## Amendment — 2026-11-06
+
+The bar this ADR records promotions against changes. CONTEXT's original bar was
+one complete service week at 95 percent precision. MVTA answered that real
+missed trips are rare ("we would rarely see 20 cases"), so a week's precision
+rests on a handful of cases: a quiet week of three confirmed cases passes at
+100 percent and proves nothing, while at about thirteen escalations a week the
+same bar demands zero false alarms.
+
+A detector is now promoted on **two complete service weeks** in which **every
+escalation was reviewed** and **no more than two were false alarms** - about one
+in 4,000 runs at roughly 4,200 fixed-route runs a week - measured against the
+runs the detector watched. When those weeks hold twenty or more cases, precision
+must also be at least 95 percent. On-demand keeps its extra conditions
+(dispatcher agreement, no unresolved feed-health issue); its two weeks are now
+everyone's.
+
+A promotion entry therefore records what it was decided on in those terms: the
+false alarms and the runs watched alongside precision and sample size. Until the
+history table carries them, they go in the entry's reason. `decidePromotion`,
+the scorecard and the promotion form enforce the new bar; the decision record
+itself - dated, append-only, by service date - is unchanged.
+
+Explicit cancellations (`gtfs_cancellation`) have never appeared in MVTA's feed,
+so they cannot be measured. MVTA decided (2026-11-06) to promote them on the same
+service date as the silent no-show family, with that stated as the reason.
+
