@@ -113,3 +113,19 @@ export function publishEventGeofenceNotification(crossingId: number, context?: I
 export function publishDetourCommunicationRequested(event: DetourCommunicationRequestedEvent, context?: InvocationContext): Promise<boolean> {
   return publish(process.env.SERVICE_BUS_DETOUR_COMMUNICATION_QUEUE || "detour-communication-requested", "detour-communication-requested", event, event.communication_id, context);
 }
+
+/**
+ * Count Sheet scan work (plans/count-sheet-scan-upload.md §4): one message to
+ * split an upload, then one per page. The worker does one page at a time, so
+ * a long batch cannot starve the API on the REST app's single B1 worker.
+ * The message id is the work item, so a retried send does not double it once
+ * duplicate detection is on.
+ */
+export type ScanWork = { kind: "upload"; upload_id: string } | { kind: "page"; page_id: string };
+
+export const RIDERSHIP_SCAN_QUEUE = "ridership-scan-pages";
+
+export function publishScanWork(work: ScanWork, context?: InvocationContext): Promise<boolean> {
+  const id = work.kind === "upload" ? `scan-upload:${work.upload_id}` : `scan-page:${work.page_id}`;
+  return publish(process.env.SERVICE_BUS_RIDERSHIP_SCAN_QUEUE || RIDERSHIP_SCAN_QUEUE, `ridership-scan-${work.kind}`, work, id, context);
+}

@@ -76,7 +76,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # 22.13+: pdfjs-dist, which reads Count Sheet scans, needs it. The
+          # Function Apps themselves run Node 24 (functionapp.bicep).
+          node-version: 22
           cache: npm
           cache-dependency-path: ${{ matrix.app }}/package-lock.json
       - name: Install
@@ -107,7 +109,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # 22.13+: pdfjs-dist, which reads Count Sheet scans, needs it. The
+          # Function Apps themselves run Node 24 (functionapp.bicep).
+          node-version: 22
           cache: npm
           cache-dependency-path: functions-restapi/package-lock.json
       - name: Wait for SQL Server
@@ -157,7 +161,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # 22.13+: pdfjs-dist, which reads Count Sheet scans, needs it. The
+          # Function Apps themselves run Node 24 (functionapp.bicep).
+          node-version: 22
           cache: npm
           cache-dependency-path: ${{ matrix.app }}/package-lock.json
 
