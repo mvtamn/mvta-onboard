@@ -49,6 +49,18 @@ describe("detoursToCsv", () => {
     expect(csv).toContain('"Bridge ""A"", closed"');
   });
 
+  it("neutralises cells that would run as a formula in Excel, in the file only", () => {
+    const d = detour({ closure: '=HYPERLINK("https://example.test")', resolution_notes: "@SUM(A1)", location: "-3rd St" });
+    const [header, row] = detoursToCsv([d]).split("\r\n").map(cells);
+    const byHeader = Object.fromEntries(header.map((h, i) => [h, row[i]]));
+    expect(byHeader["Closure"]).toBe(`'=HYPERLINK("https://example.test")`);
+    expect(byHeader["Resolution notes"]).toBe("'@SUM(A1)");
+    expect(byHeader["Location"]).toBe("'-3rd St");
+    expect(byHeader["Routes"]).toBe("460 SB");
+    // The preview table shows what was typed.
+    expect(detourExportTable([d]).rows[0]![2]).toBe('=HYPERLINK("https://example.test")');
+  });
+
   it("carries closure reason and Avail linkage when present", () => {
     const d = detour({ lifecycle_state: "closed", readiness: "closed", closure_reason: "Work finished early", avail_entry_result: "entered", external_detour_id: "AV-77", avail_last_seen_at: "2026-09-02T10:00:00.000Z" });
     const [header, row] = detoursToCsv([d]).split("\r\n").map(cells);

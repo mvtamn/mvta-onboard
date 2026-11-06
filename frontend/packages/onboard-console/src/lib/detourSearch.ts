@@ -17,6 +17,7 @@ import {
 } from "@mvta/shared";
 import { toDateOnly } from "./detourDates.js";
 import { availEntryLabel, communicationStatusLabel, conflictLabel, createdByLabel, fulfillmentPathLabel, readinessLabel, sourceLabel, workflowLabel } from "./detourLabels.js";
+import { spreadsheetSafeText } from "./spreadsheetSafeText.js";
 
 export interface DetourFilters {
   search: string;
@@ -129,11 +130,12 @@ export function filterDetours(
 }
 
 // Excel is the destination for these exports (it is what this module
-// replaced), so: CRLF line endings, and every field quoted with embedded
-// quotes doubled - the closure text routinely contains commas.
+// replaced), so: CRLF line endings, every field quoted with embedded quotes
+// doubled - the closure text routinely contains commas - and a cell that
+// would run as a formula neutralised. Only the file is guarded; the preview
+// table shows the text as typed.
 function csvCell(value: unknown): string {
-  const s = value === null || value === undefined ? "" : String(value);
-  return `"${s.replace(/"/g, '""')}"`;
+  return `"${spreadsheetSafeText(value).replace(/"/g, '""')}"`;
 }
 
 // Column order follows the Detour Register table, then the expanded-row

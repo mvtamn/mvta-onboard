@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.53] - 2026-11-05
+## [1.7.55] - 2026-11-05
 
 Architecture review candidate 1: one module owns the stored schedule review.
 
@@ -15,6 +15,13 @@ Architecture review candidate 1: one module owns the stored schedule review.
 - **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
 - **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
 - The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
+
+## [1.7.53] - 2026-11-05
+
+- **The Detour Register's CSV could carry a live formula.** `lib/detourSearch.ts`'s `csvCell` quoted every field but did nothing about a leading `=`, `+`, `-` or `@`, so a closure, note or location typed as `=HYPERLINK(...)` ran as a formula in the Excel workbook the export is pasted into. The Access inventory export already guarded against this with `spreadsheetSafeText`; the detour export did not.
+- **One rule for both.** `spreadsheetSafeText` moves from `routes/access/accessData.tsx` to `lib/spreadsheetSafeText.ts` (accessData re-exports it, so its callers are unchanged), and the detour `csvCell` runs every cell through it. Only the file is guarded: the export preview table shows the text as typed.
+- **Trade-off, same as the Access export:** a cell that legitimately starts with `-` (a location like "-3rd St") gets a leading apostrophe in the file. Excel hides the apostrophe in the cell.
+- Found by the reporting module review (`plans/reporting-module-review.md` §3.4).
 
 ## [1.7.50] - 2026-11-05
 
