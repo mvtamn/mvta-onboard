@@ -94,7 +94,7 @@ one. Step A0 of our validation plan - reconciling the weekly-CSV spreadsheet
 against the canned monthly report before either is treated as a baseline -
 appears not to have been completed.
 
-## 4. For Avail — all closed as of 29 Oct
+## 4. For Avail — one open question as of 1 Nov
 
 Avail confirmed MVTA's BI parameters and fixed the month-boundary defect. The
 three questions we were holding are all answered:
@@ -110,12 +110,28 @@ Avail's own testing reports a sub-1% rounding difference between the API and BI
 when parameters match. Ours is 0.10 points agency-wide and 0.11 at worst per
 route, which needs no action.
 
-One confirmation outstanding, not a suspected fault: our calls send
-`09-01-2026` (MM-DD-YYYY) where Avail's examples show `2026-09-01`. Both parse
-correctly, but every monthly call uses day `01`, which is ambiguous between
-MM-DD and DD-MM, so it is worth having stated rather than inferred.
+One question is open, about the monthly operation, and it is not blocking.
 
-**Nothing with Avail is blocking.** Draft reply:
+**A stable stop-record identifier, or an effective date.**
+`OtpByRouteStopDayAgg` does not return one record per (service month, route,
+stop, day of week): a stop renamed mid-month comes back as two records per key,
+differing in exactly one non-measurement field, `StopInternetName`. March 2026
+sent 1,108 records on 1,081 keys; four stops were renamed effective Monday
+16 March. We sum the pair (1.6.48), which is correct for a pair that partitions
+a month and wrong for one that repeats it — and without a discriminator the
+record alone cannot tell those apart. `StopID` is identical on both, so it
+cannot separate them.
+
+**Date format — closed 1 Nov, not asked.** Our calls send `09-01-2026`
+(MM-DD-YYYY) where Avail's examples show `2026-09-01`. The reconciliation
+settles it: a 9 January reading of our September request would have stored
+January's aggregate (61,203 departures, 90.63%) under the September label, and
+it would not have matched Avail's BI September report route by route. The daily
+operation is confirmed more directly still — range ends above day 12, and each
+record's `CalendarDate` matches the window. Nothing left to ask.
+
+**Nothing with Avail is blocking.** Draft reply, with the one question and the
+notes on what was swept and dropped:
 `docs/handoffs/avail-reply-2026-10-29.md`.
 
 ## 5. Consequence for MVTA
