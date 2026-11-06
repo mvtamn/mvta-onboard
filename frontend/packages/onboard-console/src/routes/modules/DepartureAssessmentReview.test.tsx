@@ -5,7 +5,11 @@ import type { FixedRouteDeparture } from "@mvta/shared";
 import { api } from "../../config.js";
 import { FixedRouteDepartures } from "./FixedRouteDepartures.js";
 
-let actions: string[] = ["compliance-review.view", "compliance-review.review"];
+// Plan step 0.8: a manager attributes (charge, MVTA-directed); the COO alone
+// decides excusable; a reviewer does neither.
+const MANAGER = ["compliance-review.view", "compliance-review.review", "compliance-review.attribute"];
+const COO = ["compliance-review.view", "compliance-review.excuse"];
+let actions: string[] = MANAGER;
 vi.mock("../../auth/AccessContext.js", async () => {
   const actual = await vi.importActual<typeof import("../../auth/AccessContext.js")>("../../auth/AccessContext.js");
   return { ...actual, useAccess: () => actual.accessStateWith(actions) };
@@ -14,7 +18,7 @@ vi.mock("../../config.js", () => ({
   api: {
     getFixedRouteDepartures: vi.fn(),
     getKpiTrust: vi.fn().mockResolvedValue({ streams: {} }),
-    reviewComplianceOccurrence: vi.fn().mockResolvedValue({ id: "occ-1" }),
+    attributeComplianceOccurrence: vi.fn().mockResolvedValue({ id: "occ-1", attribution: "contractor_error" }),
   },
 }));
 
@@ -40,7 +44,7 @@ const diagnostics = {
 
 describe("settling a garage departure from the departure view", () => {
   beforeEach(() => {
-    actions = ["compliance-review.view", "compliance-review.review"];
+    actions = MANAGER;
     vi.mocked(api.getFixedRouteDepartures).mockResolvedValue({ departures: [lateRun()], diagnostics });
   });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -49,23 +53,34 @@ describe("settling a garage departure from the departure view", () => {
     render(<FixedRouteDepartures />);
     // The outcome column has always said "No departure". Only this column says
     // whether anyone turned that into money.
-    expect(await screen.findByText("Awaiting review")).toBeInTheDocument();
+    expect(await screen.findByText("Awaiting attribution")).toBeInTheDocument();
   });
 
   it("charges the contractor without leaving the departure view", async () => {
     const user = userEvent.setup();
     render(<FixedRouteDepartures />);
     await user.click(await screen.findByText("Charge"));
-    // The same PATCH the Performance Assessment occurrence queue makes.
-    expect(api.reviewComplianceOccurrence).toHaveBeenCalledWith("occ-1", "confirmed", "contractor_error", undefined);
+    // The same attribution write the Performance Assessment occurrence log makes.
+    expect(api.attributeComplianceOccurrence).toHaveBeenCalledWith("occ-1", "contractor_error");
+    // A manager is never offered excusable.
+    expect(screen.queryByText("Excusable")).not.toBeInTheDocument();
   });
 
-  it("records relief without charging it, and says why", async () => {
+  it("offers the COO excusable, and only that", async () => {
+    actions = COO;
     const user = userEvent.setup();
     render(<FixedRouteDepartures />);
     await user.click(await screen.findByText("Excusable"));
-    expect(api.reviewComplianceOccurrence).toHaveBeenCalledWith(
-      "occ-1", "dismissed", "excusable", expect.stringContaining("excusable"));
+    expect(api.attributeComplianceOccurrence).toHaveBeenCalledWith("occ-1", "excusable");
+    expect(screen.queryByText("Charge")).not.toBeInTheDocument();
+  });
+
+  it("offers a reviewer no attribution", async () => {
+    actions = ["compliance-review.view", "compliance-review.review"];
+    render(<FixedRouteDepartures />);
+    await screen.findByText("Awaiting attribution");
+    expect(screen.queryByText("Charge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Excusable")).not.toBeInTheDocument();
   });
 
   it("offers no decision once the occurrence is settled", async () => {
@@ -86,14 +101,14 @@ describe("settling a garage departure from the departure view", () => {
       diagnostics,
     });
     render(<FixedRouteDepartures />);
-    await screen.findByText("Awaiting review");
+    await screen.findByText("Awaiting attribution");
     expect(screen.queryByText("Charge")).not.toBeInTheDocument();
   });
 
   it("shows a read-only reader where it went but offers no buttons", async () => {
     actions = ["compliance-review.view"];
     render(<FixedRouteDepartures />);
-    expect(await screen.findByText("Awaiting review")).toBeInTheDocument();
+    expect(await screen.findByText("Awaiting attribution")).toBeInTheDocument();
     expect(screen.queryByText("Charge")).not.toBeInTheDocument();
   });
 

@@ -1,7 +1,7 @@
 // The intake rules as pure decisions over facts the store loads. The SQL in
 // assignment.ts computes the IntakeState; these decide what a single write
 // does with it.
-import type { IntakeRefusal, IntakeRefusalCode, IntakeState, OccurrenceAttribution, OccurrenceReviewStatus } from "./types";
+import type { AttributionAuthority, IntakeRefusal, IntakeRefusalCode, IntakeState, OccurrenceAttribution, OccurrenceReviewStatus } from "./types";
 
 export const REFUSAL_SENTENCES: Record<IntakeRefusalCode, string> = {
   unassigned: "No single active Performance Agreement covers this service date, so the occurrence has no Assessment Contractor.",
@@ -12,6 +12,8 @@ export const REFUSAL_SENTENCES: Record<IntakeRefusalCode, string> = {
   amount_outside_band: "The amount is outside the range the contract sets for this penalty.",
   not_found: "The occurrence was not found.",
   schema_not_ready: "The performance assessment tables are not available in this environment.",
+  attribution_authority: "Recording this attribution needs an authority you do not hold.",
+  not_attributable: "This occurrence was reviewed as not having happened, so there is nothing to attribute. Reopen it first.",
 };
 
 export function refusal(code: IntakeRefusalCode, sentence = REFUSAL_SENTENCES[code]): IntakeRefusal {
@@ -66,17 +68,67 @@ export function decideAmount(
   return null;
 }
 
-// How a missed-trip review answer becomes an occurrence's state.
+// Service attribution (plan step 0.8, ADR 0048).
 //
-// `undetermined` is not a refusal to decide - it is the reviewer saying the
-// attribution needs a separate look, which is exactly what the Assessment
-// module's occurrence queue is for. It stays a candidate there.
-export function occurrenceStateFor(
-  validationStatus: "confirmed" | "false_positive",
-  attribution: OccurrenceAttribution,
+// MVTA, 2026-11-06: "A transportation specialist reviews, managers decide
+// attribution, the COO decides if it is excusable." So the outcome, the
+// attribution and the excusable decision are three acts by three authorities.
+// The review states what happened and never sets attribution; a confirmed
+// trip's occurrence waits as an `undetermined` candidate, which counts for
+// nothing, until a manager attributes it.
+
+// What an occurrence's status is once it carries an attribution. Only
+// contractor error is charged; excusable and MVTA-directed are recorded
+// against the month without a penalty, which is what `dismissed` with an
+// attribution has always meant here.
+export function reviewStatusFor(attribution: OccurrenceAttribution): OccurrenceReviewStatus {
+  if (attribution === "contractor_error") return "confirmed";
+  if (attribution === "undetermined") return "candidate";
+  return "dismissed";
+}
+
+// The authority a change of attribution needs. Excusable on either side is the
+// COO's: deciding it, and undoing it. Everything else is a manager's.
+export function attributionAuthorityNeeded(from: OccurrenceAttribution, to: OccurrenceAttribution): "attribute" | "excuse" {
+  return from === "excusable" || to === "excusable" ? "excuse" : "attribute";
+}
+
+export interface AttributionFacts {
+  periodStatus: string | null;
+  reviewStatus: OccurrenceReviewStatus;
+  attribution: OccurrenceAttribution;
+}
+
+export function decideAttribution(
+  existing: AttributionFacts | null,
+  to: OccurrenceAttribution,
+  held: AttributionAuthority,
+): IntakeRefusal | null {
+  const refused = decideChange(existing);
+  if (refused || !existing) return refused;
+  // Dismissed with no attribution is a reviewer saying it did not happen.
+  if (existing.reviewStatus === "dismissed" && existing.attribution === "undetermined") return refusal("not_attributable");
+  const needed = attributionAuthorityNeeded(existing.attribution, to);
+  if (!held[needed]) {
+    return refusal("attribution_authority", needed === "excuse"
+      ? "Only the Excusability Authority (the COO) can decide that an occurrence was excusable, or change one that was."
+      : "Recording contractor error or MVTA-directed needs the attribution authority a manager holds.");
+  }
+  return null;
+}
+
+// What a missed-trip review does to the occurrence it raises or restates. A
+// review that is not a confirmation dismisses it and clears any attribution:
+// there is nothing to attribute. A confirmation leaves an attribution already
+// decided where it stands - a reviewer restating the outcome does not undo a
+// manager's or the COO's decision - and otherwise raises a candidate.
+export function reviewHandOffState(
+  confirmed: boolean,
+  existing: { reviewStatus: OccurrenceReviewStatus; attribution: OccurrenceAttribution } | null,
 ): { review_status: OccurrenceReviewStatus; attribution: OccurrenceAttribution } {
-  if (validationStatus === "false_positive") return { review_status: "dismissed", attribution: "undetermined" };
-  if (attribution === "contractor_error") return { review_status: "confirmed", attribution };
-  if (attribution === "undetermined") return { review_status: "candidate", attribution };
-  return { review_status: "dismissed", attribution };
+  if (!confirmed) return { review_status: "dismissed", attribution: "undetermined" };
+  if (existing && existing.attribution !== "undetermined") {
+    return { review_status: reviewStatusFor(existing.attribution), attribution: existing.attribution };
+  }
+  return { review_status: "candidate", attribution: "undetermined" };
 }

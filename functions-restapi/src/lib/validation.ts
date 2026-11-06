@@ -192,16 +192,15 @@ export function validateMissedTripValidation(body: UnknownBody): string[] {
   ) {
     errors.push(`reason_code is required and must be at most ${MAX_REASON_CODE_LENGTH} characters`);
   }
-  // Attribution decides whether a confirmed trip is charged to the contractor,
-  // relieved, or left for the assessment queue to settle. Optional so callers
-  // predating it keep working - absent means "undetermined", which is the
-  // candidate state the poll used to produce.
+  // A review records the outcome only (plan step 0.8): whose fault a confirmed
+  // trip was is a manager's separate decision, and excusable the COO's. An
+  // older console sends `undetermined`, which says nothing and is accepted;
+  // anything else is refused rather than silently dropped, so nobody believes
+  // they charged a trip they did not.
   if (body.attribution !== undefined && !includes(VALID_OCCURRENCE_ATTRIBUTIONS, body.attribution)) {
     errors.push(`attribution must be one of: ${VALID_OCCURRENCE_ATTRIBUTIONS.join(", ")}`);
-  }
-  // Only a Confirmed missed trip has anything to attribute.
-  if (body.validation_status !== "confirmed" && body.attribution !== undefined && body.attribution !== "undetermined") {
-    errors.push("attribution can only be set on a confirmed missed trip - there is no occurrence to attribute");
+  } else if (body.attribution !== undefined && body.attribution !== "undetermined") {
+    errors.push("attribution is recorded separately, by a manager (or the COO for excusable), not at review");
   }
 
   // A superseding review and a legacy rereview each say why; at most one applies.

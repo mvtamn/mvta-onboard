@@ -61,6 +61,11 @@ export interface CaseListRow {
   validation_status: string;
   occurrence_review_status?: string | null;
   occurrence_attribution?: string | null;
+  // Migration 167a: the occurrence to attribute, and who decided its
+  // attribution. Absent before the migration.
+  occurrence_id?: string | null;
+  occurrence_attributed_by?: string | null;
+  occurrence_attributed_at?: Date | null;
   occurrence_service_month?: string | null;
   occurrence_period_status?: string | null;
   reason_code: string | null;
@@ -165,17 +170,23 @@ export interface CaseTablesReady {
    * actual times. Absent, spare_times is null rather than the read failing.
    */
   spareSource: boolean;
+  /** Migration 167a: ComplianceOccurrences says who decided its attribution. */
+  attributedBy: boolean;
 }
 
 // Both probes in one round trip. Each handler used to ask separately.
 export async function caseTablesReady(pool: sql.ConnectionPool): Promise<CaseTablesReady> {
-  const result = await pool.request().query<{ cases: number; occurrences: number; spare_source: number }>(`
+  const result = await pool.request().query<{ cases: number; occurrences: number; spare_source: number; attributed_by: number }>(`
     SELECT CASE WHEN OBJECT_ID('dbo.MonitoredMissedTrips', 'U') IS NULL THEN 0 ELSE 1 END AS cases,
            CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences', 'U') IS NULL THEN 0 ELSE 1 END AS occurrences,
-           CASE WHEN OBJECT_ID('dbo.SpareMissedTripSource', 'U') IS NULL THEN 0 ELSE 1 END AS spare_source
+           CASE WHEN OBJECT_ID('dbo.SpareMissedTripSource', 'U') IS NULL THEN 0 ELSE 1 END AS spare_source,
+           CASE WHEN COL_LENGTH('dbo.ComplianceOccurrences', 'attributed_by') IS NULL THEN 0 ELSE 1 END AS attributed_by
   `);
   const row = result.recordset[0];
-  return { cases: row?.cases === 1, occurrences: row?.occurrences === 1, spareSource: row?.spare_source === 1 };
+  return {
+    cases: row?.cases === 1, occurrences: row?.occurrences === 1, spareSource: row?.spare_source === 1,
+    attributedBy: row?.attributed_by === 1,
+  };
 }
 
 export type CaseReadResult =
@@ -205,7 +216,10 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
            occ.review_status AS occurrence_review_status,
            occ.attribution AS occurrence_attribution,
            occ.service_month AS occurrence_service_month,
-           period.status AS occurrence_period_status`
+           period.status AS occurrence_period_status,
+           occ.id AS occurrence_id${ready.attributedBy ? `,
+           occ.attributed_by AS occurrence_attributed_by,
+           occ.attributed_at AS occurrence_attributed_at` : ""}`
     : "";
   const occurrenceJoin = ready.occurrences
     ? `

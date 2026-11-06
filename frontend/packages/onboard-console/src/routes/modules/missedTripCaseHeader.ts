@@ -57,7 +57,7 @@ export function countingLine(alert: Pick<MissedTripAlert, "sourceSystem" | "dete
   if (alert.detectorPromoted === undefined) return null;
   const name = DETECTOR_NAME[detectorOf(alert)];
   return alert.detectorPromoted
-    ? `The ${name} detector counts toward assessments: a confirmation is charged unless you attribute it otherwise.`
+    ? `The ${name} detector counts toward assessments: a confirmation is charged once a manager attributes it to the contractor.`
     : `The ${name} detector is in Shadow detection: a confirmation is recorded, not charged.`;
 }
 

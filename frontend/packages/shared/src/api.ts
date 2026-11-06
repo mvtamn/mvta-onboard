@@ -2357,8 +2357,8 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
     endSystemOutage(id: string, ended_at: string) {
       return request<{ id: string }>(`/api/system-outages/${id}`, { method: "PATCH", body: JSON.stringify({ ended_at }) }, true);
     },
-    linkOccurrenceRelief(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, relief_id: string | null) {
-      return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, relief_id }) }, true);
+    linkOccurrenceRelief(id: string, relief_id: string | null) {
+      return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ relief_id }) }, true);
     },
     createAssessmentCap(input: { period_id: string; standard_id?: string | null; trigger_reason: "discretionary" | "contractor_initiated"; note: string }) {
       return request<{ id: string; due_at: string }>("/api/assessment-caps", { method: "POST", body: JSON.stringify(input) }, true);
@@ -2388,12 +2388,19 @@ export function createApiClient({ baseUrl, getToken, privilegedAuthenticationCon
       const qs = new URLSearchParams(); for (const [k, v] of Object.entries(filter)) if (v !== undefined && v !== "") qs.set(k, String(v));
       return request<{ occurrences: ComplianceOccurrence[]; diagnostics: { table_ready: boolean } }>(`/api/compliance-occurrences${qs.size ? `?${qs}` : ""}`, {}, true);
     },
-    // Settle one occurrence: whether it counts, and whose error it was. Backs
-    // both the Performance Assessment module's occurrence queue and the inline
-    // review on the garage-departure views, so a duty reviewed in Compliance
-    // and one reviewed in Assessment take the same path.
-    reviewComplianceOccurrence(id: string, review_status: OccurrenceReviewStatus, attribution: OccurrenceAttribution, dismiss_reason?: string) {
-      return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, attribution, dismiss_reason }) }, true);
+    // A reviewer's act on one occurrence: dismiss it as not having happened,
+    // or reopen it. Needs compliance-review.review. Whose error it was is
+    // attributeComplianceOccurrence, a separate authority (plan step 0.8).
+    reviewComplianceOccurrence(id: string, review_status: "candidate" | "dismissed", dismiss_reason?: string) {
+      return request<{ id: string }>(`/api/compliance-occurrences/${id}`, { method: "PATCH", body: JSON.stringify({ review_status, dismiss_reason }) }, true);
+    },
+    // Service attribution on one occurrence. Contractor error and MVTA-directed
+    // need compliance-review.attribute (managers); excusable, either way,
+    // needs compliance-review.excuse (the COO). Backs the Performance
+    // Assessment occurrence log, the garage-departure views and the missed-trip
+    // case, so all three take the same path.
+    attributeComplianceOccurrence(id: string, attribution: OccurrenceAttribution) {
+      return request<{ id: string; attribution: OccurrenceAttribution }>(`/api/compliance-occurrences/${id}/attribution`, { method: "PUT", body: JSON.stringify({ attribution }) }, true);
     },
     // The reviewer's figure for one occurrence on a ranged band. Pass null to
     // clear it. The note is required because the figure is a judgement.

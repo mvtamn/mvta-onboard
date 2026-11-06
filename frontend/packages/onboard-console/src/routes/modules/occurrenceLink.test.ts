@@ -17,9 +17,9 @@ describe("where a departure landed in the performance assessment", () => {
     // The distinction the departure views could not previously draw: both of
     // these show as a late pullout, and only one of them costs money.
     const pending = occurrenceSummary({ ...base, occurrence_id: "o1", occurrence_review_status: "candidate", occurrence_service_month: "202609" }, "20260904");
-    expect(pending.label).toBe("Awaiting review");
+    expect(pending.label).toBe("Awaiting attribution");
     expect(pending.tone).toBe("pending");
-    expect(pending.detail).toMatch(/not charged until someone says whose error/);
+    expect(pending.detail).toMatch(/not charged until a manager says whose error/);
 
     const charged = occurrenceSummary({ ...base, occurrence_id: "o1", occurrence_review_status: "confirmed", occurrence_attribution: "contractor_error", occurrence_service_month: "202609" }, "20260904");
     expect(charged.label).toBe("Counted in September 2026");

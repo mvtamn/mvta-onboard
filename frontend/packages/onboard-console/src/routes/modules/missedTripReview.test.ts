@@ -7,14 +7,14 @@ import {
 } from "./missedTripReview.js";
 
 const base = { tripId: "T1", serviceDate: "20260917", lifecycle: "ready_for_review" as const, validationStatus: "unreviewed" as const, heldReason: null };
-const drafts = { reasonCode: "RAN", notes: "", attribution: "contractor_error" as const, changeReason: "" };
+const drafts = { reasonCode: "RAN", notes: "", changeReason: "" };
 
 describe("missed-trip review requests", () => {
-  it("a first review needs only a reason, and only a confirmation carries attribution", () => {
+  it("a first review needs only a reason, and never carries attribution (plan step 0.8)", () => {
     const confirmed = buildReviewRequest(base, "confirmed", drafts);
-    expect(confirmed).toEqual({ input: { trip_id: "T1", service_date: "20260917", validation_status: "confirmed", reason_code: "RAN", notes: undefined, attribution: "contractor_error" } });
+    expect(confirmed).toEqual({ input: { trip_id: "T1", service_date: "20260917", validation_status: "confirmed", reason_code: "RAN", notes: undefined } });
     const timely = buildReviewRequest(base, "timely_service", drafts);
-    expect("input" in timely && timely.input.attribution).toBe(undefined);
+    expect("input" in timely && "attribution" in timely.input).toBe(false);
     expect(buildReviewRequest(base, "indeterminate", { ...drafts, reasonCode: "" })).toEqual({ error: "Select a reason before saving the review." });
   });
 

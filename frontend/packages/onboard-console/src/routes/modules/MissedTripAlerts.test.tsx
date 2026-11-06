@@ -242,7 +242,8 @@ describe("Missed Trips review outcomes", () => {
     }
     await userEvent.selectOptions(await screen.findByLabelText("Reason"), "RAN");
     await userEvent.click(within(group).getByRole("button", { name: "Partial-service failure" }));
-    expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({ validation_status: "partial_service_failure", reason_code: "RAN", attribution: undefined }));
+    expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({ validation_status: "partial_service_failure", reason_code: "RAN" }));
+    expect(vi.mocked(api.validateMissedTrip).mock.calls[0][0]).not.toHaveProperty("attribution");
     expect(vi.mocked(api.validateMissedTrip).mock.calls[0][0]).not.toHaveProperty("supersede_reason");
   });
 

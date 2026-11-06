@@ -86,6 +86,17 @@ test("the seeded roles", async (t) => {
     assert.ok(manager.actions.includes("compliance-review.review"));
   });
 
+  // Plan step 0.8, MVTA 2026-11-06: a specialist reviews, managers decide
+  // attribution, the COO decides excusable. Three authorities, three holders.
+  await t.test("the reviewer cannot attribute, and only the Excusability Authority can decide excusable", () => {
+    const holders = (action: string) => SEEDED_ROLES.filter((r) => r.actions.includes(action)).map((r) => r.key);
+    assert.deepEqual(holders("compliance-review.review"), ["compliance-analyst", "compliance-manager"]);
+    assert.deepEqual(holders("compliance-review.attribute"), ["compliance-manager"]);
+    assert.deepEqual(holders("compliance-review.excuse"), ["excusability-authority"]);
+    const coo = seededRole("excusability-authority")!;
+    assert.deepEqual([...coo.actions].sort(), ["compliance-review.excuse", "compliance-review.view", "performance-assessment.view"]);
+  });
+
   await t.test("Access Administrator can open its own pages", () => {
     const role = seededRole("access-administrator")!;
     assert.ok(role.actions.includes("subscribers.view"));

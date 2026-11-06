@@ -662,6 +662,10 @@ export interface MissedTrip {
   occurrence_attribution: OccurrenceAttribution | null;
   occurrence_service_month: string | null;
   occurrence_period_status: AssessmentPeriodStatus | null;
+  /** The occurrence to attribute, and who decided its attribution (migration 167a). Absent on an older API. */
+  occurrence_id?: string | null;
+  occurrence_attributed_by?: string | null;
+  occurrence_attributed_at?: string | null;
   lifecycle: MissedTripLifecycle;
   evidence_finding: MissedTripEvidenceFinding;
   review_outcome: MissedTripReviewOutcome | null;
@@ -757,13 +761,9 @@ export interface ValidateMissedTripInput {
   supersede_reason?: string;
   /** Required to record an outcome on a Legacy missed-trip record. */
   rereview_reason?: string;
-  /**
-   * Whose error this was, decided at the moment of review. Omitted means
-   * "undetermined": the occurrence is raised but waits in the Performance
-   * Assessment module's queue for the attribution decision. Must be omitted or
-   * "undetermined" on a false positive - there is no occurrence to attribute.
-   */
-  attribution?: OccurrenceAttribution;
+  // No attribution: the review records the outcome only. A confirmed trip's
+  // occurrence waits as an undetermined candidate until a manager attributes
+  // it with attributeComplianceOccurrence (plan step 0.8).
 }
 
 export interface MissedTripReview {
@@ -2452,6 +2452,9 @@ export interface ComplianceOccurrence {
   id: string; standard_id: string; standard_code: string; standard_name: string;
   contractor_id: string; contractor_name: string; service_date: string; quantity: number;
   description: string; source: string; review_status: string; attribution: string;
+  /** Who recorded the outcome (the reviewer), and who decided the attribution - a manager, or the COO for excusable. */
+  reviewed_by?: string | null; reviewed_at?: string | null;
+  attributed_by?: string | null; attributed_at?: string | null;
   // The machine key of the observation this was raised from. The server reads
   // it for us: use `observation`, never this string.
   source_ref?: string | null;

@@ -21,10 +21,13 @@ export type IntakeState =
   | "period_closed";
 
 export type RecordObservation =
-  // Entered by hand in the Assessment module: confirmed and charged. The
-  // contractor comes from the Agreement; a caller that names one must name that one.
+  // Entered by hand in the Assessment module. The contractor comes from the
+  // Agreement; a caller that names one must name that one. Someone holding
+  // attribution authority enters it confirmed as contractor error; anyone else
+  // enters a candidate that waits for a manager's attribution (plan step 0.8).
   | {
       kind: "manual";
+      attributed: boolean;
       standardId: string;
       serviceDate: string;
       quantity: number;
@@ -33,23 +36,34 @@ export type RecordObservation =
       description: string;
       contractorId?: string | null;
     }
-  // A missed-trip review answered at the Compliance review. Creates the
-  // occurrence or restates the one an earlier review or the poll raised.
+  // A missed-trip review outcome. Creates the occurrence or restates the one an
+  // earlier review or the poll raised. It carries the outcome only: Service
+  // attribution is a manager's separate decision (attributeOccurrence), so a
+  // confirmed trip waits as a candidate until one is made.
   | {
       kind: "missed_trip_review";
       tripId: string;
       serviceDate: string;
-      reviewStatus: OccurrenceReviewStatus;
-      attribution: OccurrenceAttribution;
+      confirmed: boolean;
       note: string | null;
     };
 
+// A reviewer's act on an occurrence: whether it happened, and its relief link.
+// Dismissing (it did not happen) or reopening clears any attribution, since
+// there is nothing left to attribute; whose fault it was is attributeOccurrence.
 export interface Resolution {
-  reviewStatus: OccurrenceReviewStatus;
-  attribution: OccurrenceAttribution;
+  // undefined leaves the status alone.
+  reviewStatus?: "candidate" | "dismissed";
   dismissReason: string | null;
   // undefined leaves the link alone; null removes it.
   reliefId?: string | null;
+}
+
+// Which attribution authorities the person acting holds. The endpoint reads
+// them from the caller's access; the module decides which one a change needs.
+export interface AttributionAuthority {
+  attribute: boolean;
+  excuse: boolean;
 }
 
 // null clears the figure.
@@ -61,7 +75,12 @@ export type IntakeRefusalCode =
   | "relief_mismatch"
   | "amount_outside_band"
   | "not_found"
-  | "schema_not_ready";
+  | "schema_not_ready"
+  // The attribution change needs an authority the person does not hold:
+  // excusable is the COO's alone, everything else a manager's.
+  | "attribution_authority"
+  // Reviewed as not having happened: there is nothing to attribute.
+  | "not_attributable";
 
 export interface IntakeRefusal {
   code: IntakeRefusalCode;
@@ -72,6 +91,8 @@ export interface Written {
   id: string;
   contractorId: string;
   serviceMonth: string;
+  // Set by the missed-trip review hand-off, which decides it.
+  reviewStatus?: OccurrenceReviewStatus;
 }
 
 export type IntakeOutcome = { ok: true; occurrence: Written } | { ok: false; refusal: IntakeRefusal };

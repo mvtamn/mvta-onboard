@@ -49,4 +49,7 @@ export const INTAKE_READY_SQL = `
   SELECT CASE WHEN OBJECT_ID('dbo.ComplianceOccurrences','U') IS NULL
     OR OBJECT_ID('dbo.PerformanceAgreements','U') IS NULL
     OR OBJECT_ID('dbo.AgreementStandards','U') IS NULL
-    OR OBJECT_ID('dbo.AssessmentPeriods','U') IS NULL THEN 0 ELSE 1 END ready`;
+    OR OBJECT_ID('dbo.AssessmentPeriods','U') IS NULL
+    -- Migration 167a: who decided an occurrence's attribution. Every write
+    -- stamps or clears it.
+    OR COL_LENGTH('dbo.ComplianceOccurrences','attributed_by') IS NULL THEN 0 ELSE 1 END ready`;

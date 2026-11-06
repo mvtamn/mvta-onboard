@@ -97,7 +97,6 @@ export function confirmBlockedReason(alert: Pick<MissedTripAlert, "lifecycle" | 
 export interface ReviewDrafts {
   reasonCode: string;
   notes: string;
-  attribution: OccurrenceAttribution;
   changeReason: string;
 }
 
@@ -123,31 +122,62 @@ export function buildReviewRequest(
       validation_status: decision,
       reason_code: drafts.reasonCode,
       notes: drafts.notes || undefined,
-      attribution: decision === "confirmed" ? drafts.attribution : undefined,
       ...(mode === "supersede" ? { supersede_reason: changeReason } : {}),
       ...(mode === "rereview" ? { rereview_reason: changeReason } : {}),
     },
   };
 }
 
-// What confirming with this attribution does, stated as the fact it is: a
-// detector still in Shadow detection charges nothing, whatever is chosen. An
-// API older than 1.6.66 does not say, so the condition is named instead.
-export function attributionHelp(
-  alert: Pick<MissedTripAlert, "serviceDate" | "detectorPromoted">,
-  attribution: OccurrenceAttribution,
-): string {
+// What confirming does, stated as the fact it is. The review records the
+// outcome only: a confirmed trip is raised against the month as awaiting
+// attribution, and nothing is charged until a manager says whose error it was
+// (plan step 0.8). A detector still in Shadow detection charges nothing at
+// all. An API older than 1.6.66 does not say, so the condition is named.
+export function confirmHelp(alert: Pick<MissedTripAlert, "serviceDate" | "detectorPromoted">): string {
   if (alert.detectorPromoted === false) {
     return "This detector is in Shadow detection: confirming records the outcome, and nothing is charged.";
   }
   const pending = alert.detectorPromoted === undefined ? ", once its detector is out of Shadow detection" : "";
-  if (attribution === "contractor_error") {
-    return `Confirming adds this to the ${formatServiceMonth(alert.serviceDate.slice(0, 6))} performance assessment as a charged occurrence${pending}.`;
-  }
-  if (attribution === "undetermined") {
-    return `Confirming raises the occurrence but leaves whose error it was to the Performance Assessment module${pending}.`;
-  }
-  return `Confirming records the occurrence against the month without charging a penalty${pending}.`;
+  return `Confirming raises this against the ${formatServiceMonth(alert.serviceDate.slice(0, 6))} performance assessment as awaiting attribution${pending}. A manager then records whose error it was; nothing is charged until they do.`;
+}
+
+export const ATTRIBUTION_LABELS: Record<OccurrenceAttribution, string> = {
+  contractor_error: "Contractor error",
+  mvta_directed: "MVTA-directed",
+  excusable: "Excusable",
+  undetermined: "Undetermined",
+};
+
+// Who decided the attribution on a confirmed case's occurrence, in one line.
+export function attributionLine(
+  alert: Pick<MissedTripAlert, "occurrenceAttribution" | "occurrenceAttributedBy" | "occurrenceAttributedAt" | "occurrenceReviewStatus">,
+  time: (iso: string) => string,
+): string | null {
+  if (!alert.occurrenceReviewStatus) return null;
+  const attribution = alert.occurrenceAttribution ?? "undetermined";
+  if (attribution === "undetermined") return "Awaiting a manager's attribution.";
+  const who = alert.occurrenceAttributedBy ? ` by ${alert.occurrenceAttributedBy}` : "";
+  const when = alert.occurrenceAttributedAt ? ` at ${time(alert.occurrenceAttributedAt)}` : "";
+  return `${ATTRIBUTION_LABELS[attribution]}, decided${who}${when}.`;
+}
+
+// The attribution choices this person may take on the case's occurrence, in
+// the order offered. Contractor error and MVTA-directed are a manager's;
+// excusable is the COO's alone, and so is moving off it. None while the
+// occurrence is missing, its month is closed, or it was not confirmed.
+export function attributionChoices(
+  alert: Pick<MissedTripAlert, "validationStatus" | "occurrenceId" | "occurrenceReviewStatus" | "occurrenceAttribution" | "occurrencePeriodStatus">,
+  held: { canAttribute: boolean; canExcuse: boolean },
+): OccurrenceAttribution[] {
+  if (alert.validationStatus !== "confirmed" || !alert.occurrenceId || !alert.occurrenceReviewStatus) return [];
+  if (alert.occurrencePeriodStatus === "finalized" || alert.occurrencePeriodStatus === "issued") return [];
+  const current = alert.occurrenceAttribution ?? "undetermined";
+  // The server's rule (attributionAuthorityNeeded): excusable on either side
+  // is the COO's; every other change is a manager's.
+  const allowed = (to: OccurrenceAttribution) =>
+    current === "excusable" || to === "excusable" ? held.canExcuse : held.canAttribute;
+  return (["contractor_error", "mvta_directed", "excusable", "undetermined"] as const)
+    .filter((to) => to !== current && allowed(to));
 }
 
 // The monthly table's rows, summed from what the server classified.
@@ -359,7 +389,7 @@ export function assessmentOutcome(alert: MissedTripAlert): { label: string; deta
     };
   }
   if (alert.occurrenceReviewStatus === "candidate") {
-    return { label: "Awaiting attribution", detail: `Raised against the ${month} assessment, waiting on whose error it was before it can be charged.`, tone: "pending" };
+    return { label: "Awaiting attribution", detail: `Raised against the ${month} assessment, waiting on a manager to say whose error it was before it can be charged.`, tone: "pending" };
   }
   if (alert.occurrenceReviewStatus === "dismissed") {
     const because = alert.occurrenceAttribution === "excusable" ? "an excusable delay"

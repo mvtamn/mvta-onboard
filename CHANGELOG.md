@@ -5,6 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.71] - 2026-11-06
+
+Plan step 0.8 (`plans/missed-trips-production-plan.md`, PR #513): three authorities, not one. MVTA, 2026-11-06: "A transportation specialist reviews, managers decide attribution, the COO decides if it is excusable." ADR 0048.
+
+- **`compliance-review.review` now records the outcome only.** `POST /missed-trips/validate` refuses an `attribution` other than `undetermined` (400), and `CaseAct` no longer carries one. A Confirmed missed trip's occurrence is raised or restated as a `candidate` with `attribution='undetermined'`. `assess.ts` scores only `confirmed` rows, so it counts for nothing. A superseding confirmation leaves an attribution that was already decided as it is. A review that it did not miss dismisses the occurrence and clears the attribution (`reviewHandOffState`).
+- **New action `compliance-review.attribute`** (Compliance Manager) for contractor error and MVTA-directed. **New action `compliance-review.excuse`** (new role Excusability Authority, for the COO) for excusable, in either direction. `performance-assessment.decide` was not reused, because Compliance Manager holds it, so a manager could have decided excusable. `PUT /compliance-occurrences/{id}/attribution` takes either action, and `attributeOccurrence` decides which one the change needs (`attributionAuthorityNeeded`). A missing authority gets a 403 with code `attribution_authority`. An occurrence dismissed as not having happened gets a 409 `not_attributable`.
+- **`PATCH /compliance-occurrences/{id}` is now the reviewer's act only.** It takes `review_status` (`candidate` or `dismissed`), `dismiss_reason` and `relief_id`. Dismissing or reopening clears the attribution. A body that still carries `attribution` is refused. A hand-entered occurrence (`POST`) is entered as confirmed contractor error only when the caller holds `attribute`. Otherwise it is entered as a candidate.
+- **Who decided each step.** Migration 167a adds `ComplianceOccurrences.attributed_by` / `attributed_at` and stamps existing attributed rows with the person who set them then. The case list returns `occurrence_id`, `occurrence_attributed_by` and `occurrence_attributed_at`, next to `validated_by`. The occurrence list already returns `o.*`. Until 167a is applied, intake reports `schema_not_ready`: reviews still save but do not reach the assessment. The health page's schema check names 167a.
+- **Migration 167b** seeds `compliance-review.attribute` on Compliance Manager and inserts the Excusability Authority role (view Compliance Review and Performance Assessment, plus `excuse`). It grants the role to nobody. System Administrator holds both actions through its all-actions flag.
+- **Console.** The missed-trip review drops its Attribution picker. The case shows who decided the attribution and offers each person only the choices the server accepts from them (`attributionChoices`). The garage-departure cell and the Occurrence Log split Charge and MVTA (`attribute`) from Excusable (`excuse`), and the Occurrence Log's Dismiss and Reopen (`review`). Each row shows the reviewer and the person who decided the attribution.
+- Tests: `intake.test.ts` (the pure rules), `access.test.ts` (who holds what), new `occurrenceIntake.db.contract.test.ts` cases (review, then a refused reviewer or manager, then a manager charges, then the COO excuses, then a non-confirmation clears), the 167b seeds in `access.db.contract.test.ts`, and console tests for the missed-trip panel and the departure cell.
+
 ## [1.7.69] - 2026-11-06
 
 ### Added
