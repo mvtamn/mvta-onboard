@@ -1,6 +1,6 @@
-// The Avail matching rule (ADR-0035). Avail names no trip, so everything here
-// turns on route + service date + Published Trip start, and on refusing to
-// guess when that is not enough.
+// The Avail matching rule (ADR-0035, amended by ADR-0047). Avail names no trip,
+// so everything here turns on route + service date + the minute the bus left,
+// and on refusing to guess when that is not enough.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -10,6 +10,7 @@ import {
   type AvailDetectionDeps,
   type AvailMissedTripRow,
   type MatchableCase,
+  type ScheduledTrip,
 } from "./avail";
 
 const DAY = "20260917";
@@ -86,6 +87,103 @@ test("a run no case ever noticed is unmatched", () => {
   assert.equal(matchAvailReport(report({ calendar_date: "20260916" }), index([aCase()])).confidence, "unmatched");
 });
 
+// --- the departure, not the schedule -------------------------------------------
+//
+// Avail's DepartureTripStartTime is the time the bus actually left, cut to the
+// minute - measured on dev 2026-11-06, 90% of the records 1-5 minutes off a
+// scheduled start sat within a minute of the Dispatch Log's actual start. So a
+// record is first resolved to the one trip that left that minute, among every
+// trip on the route that day, and only then looked for among the cases.
+
+function aTrip(overrides: Partial<ScheduledTrip> = {}): ScheduledTrip {
+  return { trip_id: "T1", service_date: DAY, route_id: "460", scheduled_start_at: AT_1400, actual_start_at: null, ...overrides };
+}
+
+function trips(list: ScheduledTrip[]): Map<string, ScheduledTrip[]> {
+  const map = new Map<string, ScheduledTrip[]>();
+  for (const t of list) {
+    const key = `${t.service_date}|${t.route_id}`;
+    map.set(key, [...(map.get(key) ?? []), t]);
+  }
+  return map;
+}
+
+const at = (hhmmss: string) => new Date(`2026-09-17T${hhmmss}.000Z`);
+
+test("a trip that left three minutes late is found by its departure", () => {
+  const match = matchAvailReport(
+    report({ entire_trip_missed: false, arrival_missed: true, departure_trip_start_time: at("19:03:00") }),
+    index([aCase()]),
+    trips([aTrip({ actual_start_at: at("19:03:20") })]),
+  );
+  assert.equal(match.confidence, "exact");
+  assert.equal(match.matched?.trip_id, "T1");
+  assert.equal(match.trip_id, "T1");
+});
+
+test("a departure names the trip that left, not a case merely scheduled that minute", () => {
+  // T1's case is scheduled 14:00 but its bus left at 14:06; T2 left at 14:00.
+  // Matching on the schedule alone gave T2's record to T1's case.
+  const match = matchAvailReport(
+    report({ entire_trip_missed: false, arrival_missed: true, departure_trip_start_time: AT_1400 }),
+    index([aCase()]),
+    trips([
+      aTrip({ actual_start_at: at("19:06:10") }),
+      aTrip({ trip_id: "T2", scheduled_start_at: at("18:58:00"), actual_start_at: at("19:00:15") }),
+    ]),
+  );
+  assert.equal(match.confidence, "unmatched");
+  assert.equal(match.matched, null);
+  assert.equal(match.trip_id, "T2", "the record is about the trip that left, which has no case");
+});
+
+test("a trip the Dispatch Log has no departure for is found by its schedule", () => {
+  const match = matchAvailReport(report(), index([aCase()]), trips([aTrip()]));
+  assert.equal(match.confidence, "exact");
+  assert.equal(match.matched?.trip_id, "T1");
+});
+
+test("a reading a day away from its schedule is not a departure", () => {
+  // Dev's Dispatch Log stored 2026-09-09 with every reading 24 hours late.
+  const match = matchAvailReport(
+    report({ entire_trip_missed: false, arrival_missed: true }),
+    index([aCase()]),
+    trips([aTrip({ actual_start_at: new Date("2026-09-18T19:00:20.000Z") })]),
+  );
+  assert.equal(match.confidence, "exact", "the trip falls back to its schedule");
+  assert.equal(match.trip_id, "T1");
+});
+
+test("two trips leaving the same minute is probable, not a guess", () => {
+  const match = matchAvailReport(
+    report(),
+    index([aCase()]),
+    trips([aTrip(), aTrip({ trip_id: "T2", scheduled_start_at: at("18:55:00"), actual_start_at: at("19:00:05") })]),
+  );
+  assert.equal(match.confidence, "probable");
+  assert.equal(match.matched, null);
+  assert.equal(match.candidates, 2);
+  assert.equal(match.trip_id, null);
+});
+
+test("a departure no trip on that route made that minute is unmatched", () => {
+  const match = matchAvailReport(report({ departure_trip_start_time: AT_1430 }), index([aCase()]), trips([aTrip()]));
+  assert.equal(match.confidence, "unmatched");
+  assert.equal(match.trip_id, null);
+});
+
+test("a route-day the Dispatch Log does not cover keeps the scheduled-minute rule", () => {
+  // The log starts 2026-08-31; Avail restates three months.
+  const match = matchAvailReport(report(), index([aCase()]), trips([aTrip({ route_id: "999" })]));
+  assert.equal(match.confidence, "exact");
+  assert.equal(match.trip_id, undefined, "resolved against cases, not trips");
+});
+
+test("no start time is still probable when the trips are known", () => {
+  const match = matchAvailReport(report({ departure_trip_start_time: null }), index([aCase()]), trips([aTrip()]));
+  assert.equal(match.confidence, "probable");
+});
+
 // --- what Avail is saying ----------------------------------------------------
 
 test("a trip missed in whole corroborates a missed trip", () => {
@@ -123,7 +221,7 @@ test("the evidence kept with the case names the stops and the match", () => {
 // --- the pass ----------------------------------------------------------------
 
 function deps(reports: AvailMissedTripRow[], cases: MatchableCase[]): AvailDetectionDeps {
-  return { reports: async () => reports, casesInWindow: async () => cases };
+  return { reports: async () => reports, casesInWindow: async () => cases, tripsInWindow: async () => [] };
 }
 
 test("only exact links become observations; the rest are counted", async () => {
@@ -154,6 +252,7 @@ test("no reports means no case is read at all", async () => {
   const { observations, tally } = await availObservations({
     reports: async () => [],
     casesInWindow: async () => { caseReads++; return []; },
+    tripsInWindow: async () => { caseReads++; return []; },
   });
   assert.deepEqual(observations, []);
   assert.equal(tally.reports, 0);
@@ -162,6 +261,16 @@ test("no reports means no case is read at all", async () => {
 
 test("the window asked for is the window Avail can still restate", async () => {
   let asked: number | null = null;
-  await availObservations({ reports: async (days) => { asked = days; return []; }, casesInWindow: async () => [] }, 95);
+  await availObservations({ reports: async (days) => { asked = days; return []; }, casesInWindow: async () => [], tripsInWindow: async () => [] }, 95);
   assert.equal(asked, 95);
+});
+
+test("the pass resolves departures against the day's trips", async () => {
+  const { observations, tally } = await availObservations({
+    reports: async () => [report({ entire_trip_missed: false, arrival_missed: true, departure_trip_start_time: at("19:03:00") })],
+    casesInWindow: async () => [aCase()],
+    tripsInWindow: async () => [aTrip({ actual_start_at: at("19:03:40") })],
+  });
+  assert.equal(tally.exact, 1);
+  assert.equal(observations[0]?.run.runId, "T1");
 });
