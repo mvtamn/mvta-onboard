@@ -1,7 +1,7 @@
 import type { ChangelogEntry } from "../changelogEntry.js";
 
 const entry: ChangelogEntry = {
-  version: "1.7.68",
+  version: "1.7.72",
   date: "2026-11-06",
   sections: [
     {

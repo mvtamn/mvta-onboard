@@ -5,11 +5,30 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.68] - 2026-11-06
+## [1.7.72] - 2026-11-06
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.69] - 2026-11-06
+
+### Added
+
+- **A fixed-route missed trip's Start evidence now shows what Avail's OTP Daily feed counted at the trip's first stop, in the local hour it was due to leave.**
+  - `caseEvidence.ts` reads `OtpDailyRouteStopHour` for the trip's route, origin stop, Central calendar date and hour. It adds `avail_otp: { hour, trips_starting, departed, missed, all_left }` to `GET /missed-trips`.
+  - `trips_starting` counts the Dispatch Log trips on the route scheduled to start at that stop in that hour. A trip after midnight is looked up on the next calendar day, which is where Avail files it.
+- **`all_left` is ADR-0046's "Departure observed at origin" rule:** Avail called none of the hour's departures missed, and saw at least as many as trips start there.
+  - Both halves are needed, because OTP Daily also counts trips that only pass through the stop.
+  - It is the same rule `availOriginDepartures.ts` applies nightly, so the row never says "all left" on a case the nightly check leaves alone, or the reverse.
+- **The console shows it as an "Avail on-time data" row:**
+  - green when `all_left`;
+  - a warning with the counts otherwise;
+  - "Nothing recorded" when Avail has no row.
+- **Evidence for the reviewer only.** The row never opens, closes or decides a case.
+- **Live check:** on dev on 2026-11-06, 24 of the 47 open escalated silent no-shows had a row, and 22 of them met the rule.
+
+No migration. If `OtpDailyRouteStopHour` doesn't exist, the row is simply absent. Merging redeploys and restarts the REST Function App.
+
 ## [1.7.67] - 2026-11-06
 
 - **Integrations & Data Health showed every applied migration as Empty.** A schema row for a migration that is applied reports success and counts no records, and the connection table read "no records" as Empty (amber). Prod's export of 2026-11-05 carried fourteen amber "Database schema · migration N" rows while every one of those migrations was in fact applied. A check that counts nothing now reads **Passed**; a feed that answered with zero records still reads Empty, and a missing migration still reads Failed with the file to run.
