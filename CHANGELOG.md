@@ -10,6 +10,11 @@ badge and footer read this version at build time - see `vite.config.ts`).
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.67] - 2026-11-06
+
+- **Integrations & Data Health showed every applied migration as Empty.** A schema row for a migration that is applied reports success and counts no records, and the connection table read "no records" as Empty (amber). Prod's export of 2026-11-05 carried fourteen amber "Database schema · migration N" rows while every one of those migrations was in fact applied. A check that counts nothing now reads **Passed**; a feed that answered with zero records still reads Empty, and a missing migration still reads Failed with the file to run.
+- **The Avail OTP Daily check asked for a day Avail had not published.** `feedChecks` probed the UTC calendar's yesterday, which all Central evening is the service day still running, so the row read Empty (0) while `otpDailyFeedPoll` was upserting about 2,000 rows a day. The probe now sends the poll's own request, the last three completed Central service days (`otpDailyWindow`), the same fix the poll took when it moved to 12:00 UTC.
+- Found in the prod data-integration review of 2026-11-06. Neither change touches what is ingested; both only change what the page says.
 
 ## [1.7.66] - 2026-11-06
 

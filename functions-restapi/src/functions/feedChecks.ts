@@ -9,6 +9,7 @@ import { feedHealthTableReady } from "../lib/kpiFeedHealth";
 import type { KpiFeedName } from "../lib/kpiTrust";
 import { loadKpiFeedHealthRecords } from "../lib/kpiTrustStore";
 import { missedTripDetectionSettings } from "../lib/missedTripCase";
+import { otpDailyWindow } from "../lib/otpDailyFeed";
 import {
   DEFAULT_OTP_MEASUREMENT_PARAMETERS,
   parameterSegments,
@@ -132,8 +133,12 @@ app.http("feedChecks", {
     if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
 
     const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    // The daily OTP probe asks for the days the poll asks for: the last
+    // completed Central service days. It used to ask for the UTC calendar's
+    // yesterday, which all Central evening is the day still in service, so
+    // Avail had nothing for it and the row read Empty while the poll was
+    // filling thousands of rows (otpDailyFeedPoll made this same fix).
+    const otpDaily = otpDailyWindow(now);
     const weekAgo = new Date(now);
     weekAgo.setUTCDate(weekAgo.getUTCDate() - 7);
     const avlStart = new Date(now.getTime() - 10 * 60_000);
@@ -157,7 +162,7 @@ app.http("feedChecks", {
       probeAvail("avl", { start: avlStart, end: now }),
       probeAvail("pullout", {}),
       probeAvail("otp_monthly", { month: now, parameters: otpParameters }),
-      probeAvail("otp_daily", { start: yesterday, end: yesterday, parameters: otpParameters }),
+      probeAvail("otp_daily", { start: otpDaily.requestStart, end: otpDaily.requestEnd, parameters: otpParameters }),
       probeAvail("missed_trips", { start: weekAgo, end: now }),
       checkSpareRequests(nowSeconds),
       ]),
