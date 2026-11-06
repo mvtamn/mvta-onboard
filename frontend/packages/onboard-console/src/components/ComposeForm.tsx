@@ -221,7 +221,7 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
         expiration_source: source,
       });
       const teamsNote = teamsEnabled
-        ? " Teams routing was recorded; the Teams connector is not active yet."
+        ? " It will be posted to the selected Teams channels."
         : "";
       setOkMsg(
         `Announcement posted. ID ${res.message_id.slice(0, 8)}… Expires ${new Date(res.expires_at).toLocaleString()}.${teamsNote}`,
@@ -397,8 +397,8 @@ export function ComposeForm({ onPosted }: { onPosted?: () => void }) {
               ))}
             </div>
             <p className="teams-connector-note">
-              The Teams audience and affected routes will be saved with this announcement.
-              No Teams post is sent yet.
+              Each selected audience gets a post in its Teams channel with the summary,
+              affected routes and expiry. An audience with no channel set up gets no post.
             </p>
           </div>
         ) : null}
