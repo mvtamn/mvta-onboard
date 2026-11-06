@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { reviewPredictionRisk, PREDICTION_RISK_CHECKS, type PredictionRiskFeed } from "./gtfsPredictionRisk";
+import { reviewPredictionRisk, PREDICTION_RISK_CHECKS, type PredictionRiskFeed } from "./scheduleReview";
 
 // Stops laid out along a meridian: 0.01 degrees of latitude is about 1.1 km,
 // so A-B-C are ordinary local stops and D is about 24 km (15 miles) on.

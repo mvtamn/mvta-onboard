@@ -83,11 +83,11 @@ describe("SchedulePredictionRisk", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  it("names the migration to run when the database does not have it", async () => {
-    getGtfsPredictionRisk.mockRejectedValue(new ApiError(503, "missing"));
+  it("says the review could not be loaded when the request fails", async () => {
+    getGtfsPredictionRisk.mockRejectedValue(new ApiError(500, "Internal server error"));
     render(<SchedulePredictionRisk />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("migration-143-gtfs-prediction-risk-reviews.sql");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The schedule review could not be loaded.");
   });
 });
 
