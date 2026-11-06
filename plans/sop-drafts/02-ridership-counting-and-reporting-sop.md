@@ -187,20 +187,47 @@ Record each trip's total at the end of the trip, when the vehicle is stopped.
 
 ### Lost or Damaged Count Sheets
 
-**Carried out by:** Bus Operators.
+**Carried out by:** Bus Operators, check-in desk staff, the Garage Manager
+and Contractor OCC staff.
 
 1. If your Count Sheet is lost or damaged during service, keep counting.
    Write each remaining trip's total on any paper you have, at the end of the
    trip, and notify the OCC and the Garage Manager at pull-in.
-2. Reconstruct the counts as accurately as you can on a new Count Sheet for
-   the same block and service date, reprinted by the check-in desk, and tick
-   its **Reconstructed** box.
-3. Hand in the Reconstructed Count Sheet, and the damaged original if you
-   still have it, at pull-in.
+2. At pull-in, before you leave, the check-in desk reprints the Count Sheet
+   for the same block and service date. On it:
+   1. copy each trip's total from your paper tally for the trips after the
+      loss;
+   2. write a total for an earlier trip only if you are confident of it;
+   3. for any trip you cannot recall, leave the total blank and write
+      "not recalled" beside it. Do not estimate a total, and do not write 0
+      or tick DNO for a trip that ran but you did not count;
+   4. tick the **Reconstructed** box.
+3. Hand in the Reconstructed Count Sheet, your paper tally, and the damaged
+   original if you still have it.
+4. The check-in desk or the Garage Manager initials the Reconstructed Count
+   Sheet the same day and writes on it, in a few words, how the original was
+   lost or damaged.
+5. Contractor OCC staff enter the Reconstructed Count Sheet as written, with
+   **Reconstructed** ticked. A trip marked "not recalled" is entered as
+   **Not counted**. Whether OCC may instead fill such a trip from the bus's APC
+   Counts, recording APC as the source, is for MVTA to decide. **[Decide]**
+   Until MVTA does so, the trip stays Not counted.
+
+If a Count Sheet is lost **after it is handed in** (at the check-in desk, on
+the way to the OCC, or before it is entered), the Operator cannot
+reconstruct it:
+
+1. The Garage Manager reports the loss to MVTA Planning the same day, by
+   email, giving the block, the service date and how the sheet was lost.
+2. Contractor OCC staff enter every trip on that sheet as **Not counted**,
+   with the loss as the reason.
+3. The Operator is not asked to rewrite it from memory.
 
 NOTE: A Reconstructed Count Sheet entered on time is not a Reporting Failure.
 OnBoard reports how often sheets are reconstructed, by garage and Operator,
-so that repeated losses can be addressed.
+so that repeated losses can be addressed. A sheet lost after hand-in is the
+Contractor's handling failure, not the Operator's. MVTA Planning decides how
+Not counted trips are treated in reporting, as it does for any other gap.
 
 ### Pull-In and Sheet Collection
 
@@ -210,7 +237,8 @@ so that repeated losses can be addressed.
    desk as part of check-out (OPR-038-00, Pull-In and End-of-Shift
    Procedures).
 2. Check the sheet before the Operator leaves: name, Operator ID and bus
-   number are filled in, and every trip row has a total or a ticked DNO box.
+   number are filled in, and every trip row has a total or a ticked DNO box
+   (or, on a Reconstructed Count Sheet, "not recalled").
 3. By the end of the shift, confirm that a sheet has come back for every block
    that operated. Follow up the same day with the Operator of any block whose
    sheet is missing.
@@ -442,6 +470,7 @@ SOP requires in one place.
 | Count Sheets cannot be printed from OnBoard | Contractor management and IT | Contractor Operations Management and IT Service Desk | Phone and Service Desk ticket | Before the first pull-out |
 | Count Sheet lost or damaged during service | OCC and garage | OCC and Garage Manager | In person or MDT | At pull-in |
 | Count Sheet not returned at pull-in | Garage | Garage Manager | In person or phone | Same day |
+| Count Sheet lost after hand-in | Garage and MVTA Planning | Garage Manager, then MVTA Planning | Email | Same day |
 | APC equipment not active at pull-out | IT Service Desk and OCC | IT Service Desk | Ticket; OCC by MDT or radio | Before pull-out |
 | OnBoard unavailable for entry | IT and Contractor management | IT Service Desk and Contractor Operations Management | Service Desk ticket and email | Promptly |
 | Access Database unavailable (before the Cutover Date) | IT and MVTA Planning | IT Service Desk and MVTA Planning | Service Desk ticket and email | Promptly |

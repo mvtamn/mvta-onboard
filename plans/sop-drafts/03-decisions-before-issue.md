@@ -20,6 +20,7 @@ marked **[Decide]** where it appears in the SOP.
 | 13 | Which contract number to cite. OPR-038 cites C-10235; the Keolis contract may carry another | References | MVTA contracts | C-10235 |
 | 15 | What "accepts the result" means for the Parallel Run, e.g. monthly totals agree within an agreed % (R6 in PR #459) | Transition, step 3 | Planning | MVTA decides; no test written |
 | 16 | Who in MVTA gives the transition notices and APC authorizations | Responsibilities, MVTA Operations | COO | MVTA Operations |
+| 20 | Whether OCC may fill a Reconstructed Count Sheet's Not counted trips from the bus's APC Counts, with APC recorded as the source. OnBoard's entry form has no source field today, so a yes needs a build change | Lost or Damaged Count Sheets, step 5 | Planning | No: the trip stays Not counted |
 | 19 | Scan-and-upload entry. The user named it as an entry method (sheets scanned and uploaded to OnBoard up to 3 times a day), but neither the spec nor the build has it | Pull-In and Sheet Collection, NOTE | Planning + Engineering | Mentioned as a method MVTA may enable |
 
 ### Decided
@@ -65,6 +66,14 @@ each one.
 - **The Purpose names NTD reporting** as a use of the counts. Check this.
 - **Keep counting on any paper** if the sheet is lost mid-block (Lost or
   Damaged, step 1).
+- **How a lost sheet is reconstructed** (added 2026-11-05, user). OPR-038
+  says only "as accurately as possible". The SOP now says: reconstruct
+  before leaving at pull-in, on a reprinted sheet; copy the tally for later
+  trips; write earlier trips only when confident, and mark the rest "not
+  recalled" (entered as Not counted), never an estimate or 0; the desk or Garage Manager initials it with
+  how it was lost. A sheet lost after hand-in is reported to Planning the
+  same day and entered as Not counted. It is not rewritten from memory.
+  Filling from APC is decision 20.
 - **Flag thresholds moved to a NOTE "at issue"**, so a change Planning makes
   in OnBoard doesn't make the SOP wrong; the rule itself stays general.
 - **"Missing" means still not entered at Month Close**, so a sheet is missing
