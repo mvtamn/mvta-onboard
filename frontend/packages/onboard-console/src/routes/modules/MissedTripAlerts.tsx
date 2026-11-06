@@ -8,7 +8,7 @@ import {
   REVIEW_DECISIONS, agingBadge, assessmentOutcome, attributionHelp, buildReviewRequest, confirmBlockedReason, conflictNotice,
   formatServiceMonth, heldReasonLabel, inView,
   lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
-  routeLabel, sourceLabel, startEvidenceFacts, tripCode,
+  availTripRef, routeLabel, sourceLabel, startEvidenceFacts, tripCode,
 } from "./missedTripReview.js";
 import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
@@ -59,6 +59,17 @@ function formatServiceDate(yyyymmdd: string): string {
   if (!/^\d{8}$/.test(yyyymmdd)) return yyyymmdd;
   const date = new Date(`${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}T12:00:00`);
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+// The header's reference: the trip as Avail names it ("Avail trip 1019-N"),
+// so staff can look the same trip up in Avail. The GTFS trip_id stays under
+// Technical details, and is shown here only when no Avail form can be read
+// from it (a Spare request, or an id not in MVTA's form).
+function TripRef({ alert }: { alert: Pick<MissedTripAlert, "tripId" | "direction" | "sourceSystem"> }) {
+  const avail = alert.sourceSystem === "spare" ? null : availTripRef(alert.tripId, alert.direction);
+  return avail
+    ? <span className="mono-ref" title={`GTFS trip ID ${alert.tripId}`}>Avail trip {avail}</span>
+    : <span className="mono-ref">Ref {alert.tripId}</span>;
 }
 
 function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
@@ -894,7 +905,7 @@ function MissedTripDetail({
           <span className="risk-eyebrow">Selected trip</span>
           <h3>{alert.sourceSystem === "spare" ? "Request" : "Trip"} {tripCode(alert.scheduledDepartureAt, alert.direction)} · {routeLabel(alert.route, routesById, alert.sourceSystem)}</h3>
           <p>
-            Service date {formatServiceDate(alert.serviceDate)} · <span className="mono-ref">Ref {alert.tripId}</span>
+            Service date {formatServiceDate(alert.serviceDate)} · <TripRef alert={alert} />
           </p>
         </div>
         <span className={`pill-sm ${lifecycleClass(alert)}`}>

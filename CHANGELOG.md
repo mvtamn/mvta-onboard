@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.42] - 2026-11-04
+## [1.7.51] - 2026-11-05
 
 Count Sheet scan capture, increment S1 of `plans/count-sheet-scan-upload.md` (PR #488): the Burnsville capture pilot. Capture only: nothing handwritten is read and no count is written from a scan; `entered_at` stays the time a person saves the sheet (decision 4).
 
@@ -20,6 +20,33 @@ Count Sheet scan capture, increment S1 of `plans/count-sheet-scan-upload.md` (PR
 - Tests: `scan/pipeline.test.ts` on synthetic sheets from `countSheetPdf.ts` turned into image-only MFP-style PDFs (tilted 2.3° and −1.5°, noisy, 150 dpi), a defaced QR code, a cut-off corner; `scan/identify.test.ts`; `scan/scan.db.contract.test.ts` runs the worker against real SQL with printed runs from `printCountSheets`.
 
 **Restarts the REST app on merge**, and the infra workflow creates a new storage account and queue.
+
+## [1.7.49] - 2026-11-05
+
+### Changed
+
+- **The "Two records, one key" comment in `functions-restapi/src/lib/otpMonthlyFeed.ts` now gives the settled reading of March 2026.** It said the per-weekday split "is what a mid-month schedule change looks like" and dated it to "about 18 March". Both were wrong, and 1.6.48 already carries the correction: the record holding the old `StopInternetName` is the *smaller* of the pair, not the larger, which puts the change at **Monday 16 March** - the only date of the 31 consistent with all 27 pairs (the 15th fails one, the 17th five, the 18th ten) - and makes the cause the **rename itself**, not a service pattern change. The weekday counts date *a* change; only the names say *what* changed. This was the last place in the repo still carrying the superseded reading.
+- **The same comment no longer claims the published record shape "carries nothing to key on".** It carries `StopInternetName`, which is precisely how the collision was diagnosed. What it carries is no *stable stop-record identifier* and no *effective date*, which is a different thing and is the one question put to Avail in `docs/handoffs/avail-reply-2026-10-29.md`. The distinction is the argument for summing rather than keying: a key built on a display label would split one stop into two every time its name is edited, which is the failure the sum avoids. Behaviour is unchanged - `collapseOtpMonthlyReports` already sums, and March's 90.50% already reflects both records.
+- `docs/handoffs/avail-reply-2026-10-29.md` closes out its own note that this comment "needs correcting, but not here". Nothing above that file's `END OF MESSAGE` marker changed, so the message to Avail is byte-for-byte what #467 landed.
+
+No migration, no schema change, no API or console behaviour change. Comments and
+documentation only; the version exists because the release record and the
+console's displayed version are checked against each other in CI.
+
+## [1.7.45] - 2026-11-04
+
+Follows 1.7.41. **Migration 165** repairs the history; apply it after this deploys. Merging redeploys and restarts the REST Function App.
+
+- **AVL clocks still on CDT after daylight saving ended.** `gtfsVehiclePositionsPoll` stored each position's own `Timestamp` as `first_vehicle_position_at` / `first_underway_at`. From 2026-11-01 some units stamped positions an hour ahead: 22 vehicles on 11-01, 54 on 11-02, 3 on 11-03, none on 11-04. On dev that is 436 evidence rows whose position is stamped 40-60 min after the very write that stored it. It looked like vehicle evidence "lagging" 10-45 min. The poller never missed a run; the stamps were wrong.
+- **What it did.** First-underway times ran an hour late, and the silent no-show detector escalated buses that had left on time. It also fed 1.7.41's diagnosis: those buses' Dispatch Log departures had been rejected, and the late underway time was all that remained.
+- **The guard.** `vehicleObservedAt` (`lib/gtfsVehiclePositions.ts`) records a position at the fetch time when its stamp is more than `VEHICLE_CLOCK_TOLERANCE_SECONDS` (120 s) after the fetch. It leaves past stamps alone: a stale position is real, and an hour-behind clock (spring forward) cannot be told apart from one. The poll logs a warning naming the vehicles.
+- **Migration 165** moves back by exactly 3,600 s every evidence row whose `last_vehicle_position_at` is 30-60 min after its own `updated_at`, and each case arrival time taken from one. It copies each row to `GtfsTripOperationalEvidenceClockSkew` first, and it is re-runnable. On dev: 436 rows (2026-11-01..03 only), 18 case arrival times, no Dispatch Log rows. Repaired, the rows show the usual ~9 min from departure to underway, against 45-90 min before. 15 escalated, unreviewed cases then start inside their grace, and the detector's next pass closes them. A contract test covers it.
+
+## [1.7.42] - 2026-11-04
+
+- **Missed Trips names the selected trip as Avail does.** The detail header read "Ref t3FB-b3E-sl1C-v65", the raw GTFS trip_id, which staff cannot look up in Avail. It now reads "Avail trip 1019-N": the trip number and the direction letter. MVTA's GTFS trip_id carries the trip number in hexadecimal as its first part (`t3FB` is 1019), the same rule the Count Sheets use (`availTripNumber`, 1.7.10, checked against 847 of 847 Dispatch Log trips). The console keeps its own copy as `availTripRef` in `missedTripReview.ts`, because it does not import backend code.
+- **The GTFS trip ID is not lost.** It is listed under Technical details as "GTFS trip ID" and shown when you point at the header's reference. An id not in MVTA's form (a Spare request, or a feed that changes shape) falls back to "Ref <id>" as before.
+- **Console only.** No API or database change.
 
 ## [1.7.41] - 2026-11-04
 
@@ -56,7 +83,6 @@ Follows the email delivery evaluation (2026-11-01): the rider email path was bui
 - **The fix** is the smallest set of changes that lets the console frame itself and nobody else: `frame-src 'self' https://login.microsoftonline.com`, `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`. Cross-origin framing is still refused, which is the clickjacking threat; an attacker who can serve a page from the console's own origin already has script execution there, so `'self'` gives up nothing real. No application code changes.
 - **Not done here, and it needs an Entra step.** MSAL's redirect URI is `/console/`, so the renewal frame boots the whole console inside itself. A dedicated blank redirect page would be lighter and would let `frame-ancestors` stay `'none'` for the app itself (SWA allows per-route headers), but the new URI has to be registered on the `MVTA OnBoard` app registration's SPA platform first, which is not a code change.
 - **Affects the console only.** The rider app has no MSAL and its config is untouched.
-
 
 ## [1.7.25] - 2026-11-03
 
@@ -160,7 +186,6 @@ Seed a Procedure Draft from a QRG in the Approved Document Library (ADR 0045, mi
 - **PDF can be displayed.** New `isInlinePreviewMime` (PNG/JPEG/PDF) governs display, used by `GET /decision-matrix` and the rendition preview endpoint; `isInlineImageMime` is untouched and still decides what a Visual rendition may be. An author has to be able to read the QRG beside the Draft.
 - **`readContent` on the library module** returns an item's bytes with the same four outcomes as `readItem`; `lib/qrgLibrarySource.ts` is the whole adapter between it and `QrgSource`, so neither side learns the other's vocabulary.
 - **Inert until the site grant.** `Sites.Selected` is consented but no per-site grant has ever been issued, so every library read is still `forbidden` (the dev SOP walk, 2026-11-01T06:30Z). Seeding says so with the picker's own reason.
-
 
 ## [1.6.75] - 2026-11-01
 
@@ -325,7 +350,7 @@ Items 3 and 5 of the ranked list in `docs/reviews/evidence-and-detours-review.md
 ## [1.6.48] - 2026-10-30
 
 - **The OTP monthly feed silently discarded a record whenever Avail sent two for one key.** `upsertOtpMonthlyReport` MERGEs on (service_month, route_id, stop_id, day_of_week), and Avail does not guarantee one record per key: for 2026-03 it sent 1,108 records carrying 1,081 distinct keys. Each of the 27 repeated keys was written twice and whichever write landed second won, so the first record's departures were gone — and the poll still logged "1108 reports seen, 1108 rows upserted", because every overwrite is a successful upsert. Nothing in feed health, the restatement ledger or the console could have said otherwise.
-- **What the pairs are, established on dev 2026-10-30: they partition the month, so the figure is their sum.** Route 425 at stop 30435 came back as 28 and 41 Monday departures, where the same route's other side of that intersection (stop 30451, one record) reports 70; route 497 at stop 31768 came back as 30 and 48, where the terminal every one of those trips passes (31723) reports 78. Across all 27 keys the two values sum to the neighbouring stop's own total, day by day, and the split follows the count of each weekday before and after about 18 March — three Mondays and two, two Wednesdays and two — which is a mid-month schedule change seen through a per-day-of-week aggregate. `collapseOtpMonthlyReports` sums the counts and recomputes each percentage as the mean weighted by Total, which reproduces (c₁+c₂)/(t₁+t₂) exactly without this code having to assert what each numerator is (`PercentNotOntime` is not early + late).
+- **What the pairs are, established on dev 2026-10-30: they partition the month, so the figure is their sum.** Route 425 at stop 30435 came back as 28 and 41 Monday departures, where the same route's other side of that intersection (stop 30451, one record) reports 70; route 497 at stop 31768 came back as 30 and 48, where the terminal every one of those trips passes (31723) reports 78. Across all 27 keys the two values sum to the neighbouring stop's own total, day by day, and the split follows the count of each weekday before and from Monday 16 March — two Mondays and three, two Wednesdays and two — which is a mid-month stop rename seen through a per-day-of-week aggregate. (Corrected 1 Nov 2026: this entry originally read "about 18 March" and "schedule change". The record carrying the old `StopInternetName` is the smaller of the pair, not the larger, which moves the date to the 16th — the only date consistent with all 27 pairs — and makes the cause the rename itself. See `docs/handoffs/avail-reply-2026-10-29.md`.) `collapseOtpMonthlyReports` sums the counts and recomputes each percentage as the mean weighted by Total, which reproduces (c₁+c₂)/(t₁+t₂) exactly without this code having to assert what each numerator is (`PercentNotOntime` is not early + late).
 - **Two records identical in their counts are de-duplicated rather than summed.** Identical records carry no new information, and doubling a figure to describe a delivery artefact would be a worse failure than the one being fixed.
 - **Keying on a discriminator would be better, and there is nothing to key on.** The operation's published record shape (`plans/OTP-Feed-Evaluation-and-Recommendation.md`) carries no direction, pattern or effective date — unlike the daily feed, which migration 123 keyed by `Direction` for exactly this reason. So `describeOtpMonthlyCollision` names the raw fields that actually differ between colliding records, reading them as a bag of fields rather than as `OtpMonthlyReport`: a field nobody mapped is precisely the one a widened key would use. If one ever appears in that log line, widening the key becomes the better fix without another build to go looking.
 - **The collapse is reported, in the log and in the console.** The poll logs "N reports seen, M keys (K keys carried more than one record)" and warns per key; `POST /otp-historical-backfill` returns `duplicate_keys` and `duplicate_key_detail`, which the backfill panel shows with each record's counts behind a Which disclosure. Feed health counts the records a stored row accounts for rather than the rows, so a summed pair is two records stored and `feedHealthOutcome` does not read a collapse as a record that went missing.
@@ -350,7 +375,6 @@ Items 3 and 5 of the ranked list in `docs/reviews/evidence-and-detours-review.md
 - **OTP is measured to MVTA's configured thresholds instead of the example in Avail's API specification.** `OTP_PARAMETERS` in `lib/availClient.ts` sent early 1 / late 5 / early outlier 15 / late outlier 30; Avail confirmed on 2026-10-27 that MVTA's BI configuration is early 2 / late 5 / early outlier 10 / late outlier 60, so only the late threshold matched. The thresholds were believed enum-constrained, which they are not, and the outlier values were taken from the spec's own example to rule out our configuration as a source of error while the feed was being diagnosed, then never aligned once it was ruled out. The early threshold is the one that mattered: at 1 minute a departure 1-2 minutes early counted as early, where MVTA's standard counts it on time, so OnBoard was measuring the agency stricter than its own rule and the correction raises OTP slightly.
 - **`Include Outliers` stays 1**, pending Avail's answer on whether the BI report drops outlying departures from its denominator. It is the likeliest explanation of the one gap that remains between the API and the report: 4,271 departures on route 465 against the report's 4,045, 5.6% more.
 - **Every stored OTP figure was polled under the old parameters.** Nothing is restated automatically. `otpMonthlyFeedPoll`'s trailing window (`TRAILING_MONTHS = 3`, current + prior 2) re-pulls the current month and the two before it on its own; any earlier month behind a comparison needs `POST /otp-historical-backfill` once this deploys.
-
 
 ## [1.6.35] - 2026-10-22
 
