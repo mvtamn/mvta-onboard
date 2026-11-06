@@ -1,11 +1,14 @@
 # OTP as the system of record — ten questions for Rob
 
-**Date:** 2026-11-01. **For:** Rob Cooper. **From:** Ty.
+**Date:** 2026-11-01, **revised 2026-11-05.** **For:** Rob Cooper. **From:** Ty.
 **Purpose:** everything still outstanding before MVTA can decide whether OnBoard replaces
 the manual process as the official system of record for fixed-route OTP.
 
 You can read and answer this without opening the validation plan. Where a question maps to
 a case in that plan the case number is given, so an answer can be filed against it later.
+The running order and the evidence behind every figure here live in
+`otp-baseline-checklist-2026-11-01.md`, which is on `main` alongside the plan and the
+closeout.
 
 **The framing.** The validation plan was written expecting OnBoard to be the uncertain
 party. It isn't any more. Avail's own reporting agrees with OnBoard to a tenth of a point.
@@ -18,20 +21,29 @@ rather than a build.
 ## Where it stands
 
 **Every 2026 month is now measured on MVTA's own parameters** (`2/5/10/60`, outliers
-included, missed counted). Raw agency OTP, verified against dev on 2026-11-01:
+included, missed counted). Raw agency OTP, verified against dev on 2026-11-05:
 
 | Month | Raw % | Departures | | Month | Raw % | Departures |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-01 | 90.63 | 61,203 | | 2026-06 | **85.92** | 65,284 |
 | 2026-02 | 90.96 | 58,328 | | 2026-07 | 84.86 | 64,411 |
-| 2026-03 | 90.50 | 67,330 | | 2026-08 | **85.30** | 62,748 |
-| 2026-04 | 89.13 | 68,582 | | 2026-09 | 81.20 | 62,538 |
-| 2026-05 | **87.56** | 67,532 | | 2026-10 | 83.93 | 65,956 (accruing) |
+| 2026-03 | 90.50 | 67,330 | | 2026-08 | **85.30** | 62,746 |
+| 2026-04 | 89.13 | 68,582 | | 2026-09 | 81.20 | 62,521 |
+| 2026-05 | **87.57** | 67,465 | | 2026-10 | 84.05 | 67,023 |
 
 **Bold are the three decision months** — the ones the comparison will be run on.
+2026-11 is open and accruing; ignore it until December.
 
-*(2026-10 read 83.78% on 63,443 departures in the 2026-10-31 closeout. It has accrued since;
-the figure above is dev as of today. No other month moved.)*
+**Assessable equals raw for every month except 2026-07**, which carries three approved stop
+exclusions worth 0.05 points (84.86 → 84.91). September read 85.27% until its test
+decisions were cleared on 2026-11-01; it now reads 81.20% both ways.
+
+*(Three figures in this table moved after the 2026-10-31 closeout, and anyone holding an
+earlier copy should know why. Migration 152 retired the eleven route/stop/day keys Avail
+had stopped reporting, which subtracted 67 departures from 2026-05, 2 from 2026-08 and 17
+from 2026-09 — so **2026-08 is 62,746, not the 62,748 the validation plan names.** Expect
+the smaller figure when comparing an export against it. 2026-10 also finished accruing,
+65,956 → 67,023. Percentages are unchanged to two places except 2026-05, 87.56 → 87.57.)*
 
 **Tier 1 — does OnBoard hold what Avail published? Effectively discharged, and Avail
 discharged it themselves.** Charlie Flynn at Avail ran *On-time Departure Performance by
@@ -45,24 +57,42 @@ Route* from Avail BI for September 2026. Against OnBoard:
 | 495 | 80.81 | 80.9 | 0.09 |
 | **Agency** | **81.20** | **81.3** | **0.10** |
 
-Route 465 returns **4,045 departures — the BI report's exact count.**
+Route 465 returns **4,045 departures — the BI report's exact count.** Those four per-route
+figures were re-read on 2026-11-05 and are unchanged.
 
-**Tier 2 — rule correctness:** passed 2026-09-22, apart from one case (the fixed-route
-filter, which has never had a live route to remove). Ours to close, not yours.
+**Tier 1 is also now formally recorded on the control month.** T1.1 passed on 2026-08 to the
+digit: 912 rows over 912 distinct keys with no March-style collision, every row stamped
+`2/5/10/60/0/1/1`, `actual departures + missed = total` on all 912. Its external half — the
+same month out of Avail — is still yours.
+
+**Tier 2 — rule correctness: now fully passed.** The last open case was the fixed-route
+filter, which had never had a live route to remove. Route 490 was classified
+`SpecialEvent` temporarily on 2026-11-01: August's assessable figure moved 85.30 → 86.10,
+the subtraction was exactly route 490's own 2,239 departures, raw did not move, and
+removing the classification restored 85.30 exactly. Nothing is outstanding on our side.
 
 **Tier 3 — the controls around the number:** not run. One sitting with OCC, and question 10
-below is the part of it that needs your agreement rather than a test.
+below is the part of it that needs your agreement rather than a test. **Clearing September
+turned up three control gaps** that belong in that sitting rather than in this list: no
+actor is recorded on any compliance decision (every one is attributed to `system`), a route
+classification writes no history at all, and the exclusion audit stream *is* the exclusion
+rows, so resetting a month erases the decisions and their audit trail in one call. All three
+are logged in the checklist.
 
-**One figure deliberately not quoted here.** September's *assessable* figure is not usable.
-It rests on 178 approved and 183 rejected stop exclusions entered by a single reviewer
-between 15:23 and 17:01 on 2026-10-15, removing 14,813 of 62,538 departures. That is test
-data, it will be cleared, and it is itself the evidence for question 6.
+**September's assessable figure has been cleared, and the evidence kept.** It read 85.27%
+on 178 approved and 183 rejected stop exclusions entered by a single reviewer on
+2026-10-15 — rejections in six minutes, approvals in three and a half, **1.2 seconds per
+approval**, one reason code throughout, 42% of the month decided, removing 14,813 of 62,538
+departures. All 361 were cleared on 2026-11-01 through the console's own reset, and
+September now reads 81.20% both ways. The figures above are post-clearance and safe to
+quote. **The episode is captured because it is the evidence for question 6**, and because
+nothing in OnBoard flagged it at the time.
 
 ---
 
 ## Prerequisites — console access
 
-Rob's grants on dev, checked 2026-11-01:
+Rob's grants on dev, re-checked 2026-11-05 and unchanged:
 
 1. **`compliance-review.view` — granted.** Via Compliance Analyst and Compliance Manager.
 2. **`compliance-review.review` — granted.** Via the same two roles. Rob can approve and
@@ -73,6 +103,11 @@ Rob's grants on dev, checked 2026-11-01:
    buttons and the measurement-parameter register live. Ty must either add the action to
    Compliance Manager or run those pages on Rob's behalf. **Decide which before the
    session**, because questions 4 and 5 both point at that page.
+
+*(A fourth prerequisite closed itself. Until 2026-11-04 the console's security headers broke
+MSAL's silent token renewal, so it hung on "Checking your access…" and nothing in the module
+could be reached through a browser at all. Fixed and verified live on dev. If Rob hit that
+wall in the last fortnight, that is what it was.)*
 
 ---
 
@@ -130,7 +165,9 @@ figure, and **no month landing in a different performance tier** (bands 85 / 80 
 the measurement-parameter correction moved **every 2026 month up by 1.6–2.4 points**, and
 **two of the three decision months changed tier as a result** — 2026-06 (84.42 → 85.92) and
 2026-08 (83.62 → 85.30), both Warning → Meets at the 85 boundary. All three decision months
-now read Meets, where only one did before.
+now read Meets, where only one did before. 2026-08 is the tight one — **0.30 above the 85
+boundary** — so a manual figure anywhere in 84.8–85.8 is simultaneously inside the 0.5-point
+tolerance and a tier change.
 
 **Why it changes what happens next.** A standard written to detect a tier change is now
 being applied to figures whose tiers have already changed, for a known and accepted reason.
@@ -193,11 +230,11 @@ whether the contractor sees it first.
 **The question:** does the volume of stop exclusions match how often OCC believes recovery
 and layover stops distort the figure?
 
-**Context.** Setting September's test data aside, dev holds **six stop-exclusion decisions
-in total** — three approved and three rejected, all for 2026-07, all by one reviewer within
-twenty minutes on 2026-08-06 — and **no date exclusions at all**. The approved ones move
-the figure by hundredths of a point. *(The closeout said nine decisions across nine months;
-dev shows six. Trust dev.)*
+**Context.** Now that September's test decisions are cleared, dev holds **six
+stop-exclusion decisions for the whole of 2026** — three approved and three rejected, all
+for 2026-07, all by one reviewer within twenty minutes on 2026-08-06 — and **no date
+exclusion has ever been approved.** The three approved ones move July by 0.05 points.
+*(The closeout said nine decisions across nine months; dev shows six. Trust dev.)*
 
 **Why it changes what happens next.** There are only two readings. Either recovery and
 layover stops distort the official number far less than OCC believes — in which case the
@@ -206,8 +243,15 @@ working the queue**, and the assessable figure is understating a real adjustment
 is a finding. The second is a control gap, and it would have to be closed before OnBoard
 could be the record.
 
-**A usable answer:** roughly how many stops OCC expects to exclude in a typical month, and
-who is supposed to be working the queue.
+**And the other half of the same question: who notices when it is worked wrongly?** The
+October episode put 361 decisions through the queue in under two hours, removed 24% of a
+month's departures, moved the official figure by four points, and **nothing flagged it** —
+no restatement row, no alert, and an audit trail the reset then erased along with the
+decisions. It was our test data this time. The control question stands either way.
+
+**A usable answer:** roughly how many stops OCC expects to exclude in a typical month, who
+is supposed to be working the queue, and whether a volume like October's should be able to
+pass without a second pair of eyes.
 
 ### 7. Who classifies new Avail RouteIDs before a month closes? *(T4.5)*
 
@@ -220,9 +264,12 @@ special-event or shuttle route that Avail starts reporting mid-month enters the 
 figure silently, with nobody notified.
 
 **Why it changes what happens next.** This is the one failure mode in the module that
-produces a wrong official figure with no error, no flag and no audit entry. It needs an
-owner and a checkpoint, or a build that blocks a month from closing while an unclassified
-RouteID carries departures.
+produces a wrong official figure with no error, no flag and no audit entry. We have now
+measured what it is worth: classifying one mid-sized route out of August moved the
+assessable figure **0.79 points**, and the classification change itself wrote **no
+history** — so the same move in the other direction is both material and untraceable. It
+needs an owner and a checkpoint, or a build that blocks a month from closing while an
+unclassified RouteID carries departures.
 
 **A usable answer:** a named role, and where in the month-end cycle the check sits.
 
@@ -274,6 +321,13 @@ agree it is the right behaviour**, and that agreement has to be written down —
 alternative design (restate and record the restatement) is also defensible, and switching
 later is a schema change, not a setting.
 
+**One thing to know before answering.** The freeze protects the *figure*, not the record
+behind it. A closed month's exclusion decisions can still be reset, and because the audit
+stream is built from the exclusion rows themselves, a reset erases the decisions and their
+history together. So "a closed month does not restate" is true of what the contractor was
+shown, and not yet true of the evidence for it. If your answer is yes, that gap is worth
+naming as a condition.
+
 **A usable answer:** yes/no, with a sentence on what the contractor is entitled to see.
 
 ---
@@ -282,7 +336,7 @@ later is a schema change, not a setting.
 
 - **Questions 1–3 answered** → the comparison can be run on 2026-05, 2026-06 and 2026-08.
 - **Questions 4–10 answered** → filed into the validation plan's Tier 4 section as recorded
-  decisions, not pass/fail results.
+  decisions, not pass/fail results, and ticked off in the baseline checklist.
 - **Then** one sitting with OCC for Tier 3, and sign-off: approve, approve with named
   conditions, or not yet with a statement of what would have to change. Conditions go in the
   sign-off table, not in an email.
@@ -292,7 +346,9 @@ critical path, which is a change from where this started.
 
 ---
 
-*Figures in this document were verified against dev on 2026-11-01 —
-`dbo.OtpMonthlyRouteStopDay`, `dbo.OtpStopExclusions`, `dbo.OtpDateExclusions` and
-`dbo.vw_OtpMonthlyRouteStop`. Where a figure disagreed with the 2026-10-31 closeout, dev is
-quoted and the difference is noted inline.*
+*Figures in this document were verified against dev on 2026-11-01 and **re-verified on
+2026-11-05** — `dbo.OtpMonthlyRouteStopDay`, `dbo.OtpStopExclusions`,
+`dbo.OtpDateExclusions`, `dbo.AccessRoleGrants` and `dbo.vw_OtpMonthlyRouteStop`. Where a
+figure disagreed with the 2026-10-31 closeout or the validation plan, dev is quoted and the
+difference noted inline. The query behind the figures table is in
+`otp-baseline-checklist-2026-11-01.md`.*
