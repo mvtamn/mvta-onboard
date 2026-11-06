@@ -62,6 +62,11 @@ export interface MissedTripAlert {
   // until it is reviewed, or when it falls outside the active Agreement.
   occurrenceReviewStatus: OccurrenceReviewStatus | null;
   occurrenceAttribution: OccurrenceAttribution | null;
+  // The occurrence a manager attributes, and who decided its attribution
+  // (migration 167a). Absent from fixtures and older APIs.
+  occurrenceId?: string | null;
+  occurrenceAttributedBy?: string | null;
+  occurrenceAttributedAt?: string | null;
   occurrenceServiceMonth: string | null;
   occurrencePeriodStatus: AssessmentPeriodStatus | null;
   lifecycle: MissedTripLifecycle;

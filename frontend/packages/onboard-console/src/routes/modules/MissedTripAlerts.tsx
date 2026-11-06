@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview, type MissedTripReviewDecision, type MissedTripsDiagnostics, type MissedTripsMonthlySummaryRow, type OccurrenceAttribution, type ReasonCode } from "@mvta/shared";
 import { Link } from "react-router-dom";
 import { api } from "../../config.js";
+import { AccessContext } from "../../auth/AccessContext.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
 import { caseHeader } from "./missedTripCaseHeader.js";
 import {
-  REVIEW_DECISIONS, agingBadge, assessmentOutcome, attributionHelp, buildReviewRequest, confirmBlockedReason, conflictNotice,
+  ATTRIBUTION_LABELS, REVIEW_DECISIONS, agingBadge, assessmentOutcome, attributionChoices, attributionLine, buildReviewRequest, confirmBlockedReason, confirmHelp, conflictNotice,
   formatServiceMonth, heldReasonLabel, inView,
   lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
   availTripRef, routeLabel, sourceLabel, startEvidenceFacts, tripCode,
@@ -103,6 +104,9 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     arrivalDelaySeconds: trip.arrival_delay_seconds,
     occurrenceReviewStatus: trip.occurrence_review_status,
     occurrenceAttribution: trip.occurrence_attribution,
+    occurrenceId: trip.occurrence_id ?? null,
+    occurrenceAttributedBy: trip.occurrence_attributed_by ?? null,
+    occurrenceAttributedAt: trip.occurrence_attributed_at ?? null,
     occurrenceServiceMonth: trip.occurrence_service_month,
     occurrencePeriodStatus: trip.occurrence_period_status,
     lifecycle: trip.lifecycle,
@@ -218,11 +222,16 @@ function MissedTripsInvestigationPage({
   const [reasonDraft, setReasonDraft] = useState("");
   // Why a recorded review is being changed, or a legacy record rereviewed.
   const [changeReasonDraft, setChangeReasonDraft] = useState("");
-  // Attachment G's second question, asked at the same sitting as the first.
-  // "undetermined" is the honest default: it raises the occurrence and leaves
-  // the attribution to the Performance Assessment queue, which is exactly what
-  // the candidate poll used to do on its own.
-  const [attributionDraft, setAttributionDraft] = useState<OccurrenceAttribution>("contractor_error");
+  // Attachment G's second question - whose error it was - is not asked at
+  // review. A manager answers it on the case's occurrence, and excusable is
+  // the COO's alone (plan step 0.8). Read without throwing outside a provider.
+  const accessState = useContext(AccessContext);
+  const attributionHeld = {
+    canAttribute: accessState?.can("compliance-review.attribute") ?? false,
+    canExcuse: accessState?.can("compliance-review.excuse") ?? false,
+  };
+  const [attributing, setAttributing] = useState(false);
+  const [attributeError, setAttributeError] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
   const [validateError, setValidateError] = useState<string | null>(null);
   const [assessmentNotice, setAssessmentNotice] = useState<string | null>(null);
@@ -391,7 +400,7 @@ function MissedTripsInvestigationPage({
   async function validate(alert: MissedTripAlert, decision: MissedTripReviewDecision) {
     setValidateError(null);
     const request = buildReviewRequest(alert, decision, {
-      reasonCode: reasonDraft, notes: notesDraft, attribution: attributionDraft, changeReason: changeReasonDraft,
+      reasonCode: reasonDraft, notes: notesDraft, changeReason: changeReasonDraft,
     });
     if ("error" in request) {
       setValidateError(request.error);
@@ -429,6 +438,20 @@ function MissedTripsInvestigationPage({
       setValidateError(err instanceof ApiError ? err.message : "The review could not be saved.");
     } finally {
       setValidating(false);
+    }
+  }
+
+  async function attribute(alert: MissedTripAlert, attribution: OccurrenceAttribution) {
+    if (!alert.occurrenceId || isPreview) return;
+    setAttributeError(null);
+    setAttributing(true);
+    try {
+      await api.attributeComplianceOccurrence(alert.occurrenceId, attribution);
+      load();
+    } catch (err) {
+      setAttributeError(err instanceof ApiError ? err.message : "The attribution could not be saved.");
+    } finally {
+      setAttributing(false);
     }
   }
 
@@ -476,8 +499,10 @@ function MissedTripsInvestigationPage({
       onNotesChange={setNotesDraft}
       changeReasonDraft={changeReasonDraft}
       onChangeReasonChange={setChangeReasonDraft}
-      attributionDraft={attributionDraft}
-      onAttributionChange={setAttributionDraft}
+      attributionHeld={attributionHeld}
+      attributing={attributing}
+      attributeError={attributeError}
+      onAttribute={(attribution) => void attribute(selected, attribution)}
       validating={validating}
       validateError={validateError}
       assessmentNotice={assessmentNotice}
@@ -864,8 +889,10 @@ function MissedTripDetail({
   onNotesChange,
   changeReasonDraft,
   onChangeReasonChange,
-  attributionDraft,
-  onAttributionChange,
+  attributionHeld,
+  attributing,
+  attributeError,
+  onAttribute,
   validating,
   validateError,
   assessmentNotice,
@@ -882,8 +909,10 @@ function MissedTripDetail({
   onNotesChange: (value: string) => void;
   changeReasonDraft: string;
   onChangeReasonChange: (value: string) => void;
-  attributionDraft: OccurrenceAttribution;
-  onAttributionChange: (value: OccurrenceAttribution) => void;
+  attributionHeld: { canAttribute: boolean; canExcuse: boolean };
+  attributing: boolean;
+  attributeError: string | null;
+  onAttribute: (attribution: OccurrenceAttribution) => void;
   validating: boolean;
   validateError: string | null;
   assessmentNotice: string | null;
@@ -897,6 +926,8 @@ function MissedTripDetail({
   const outcome = assessmentOutcome(alert);
   const conflict = conflictNotice(alert);
   const header = caseHeader(alert, timeLabel, { evidenceUnavailable });
+  const attribution = alert.validationStatus === "confirmed" ? attributionLine(alert, timeLabel) : null;
+  const choices = attributionChoices(alert, attributionHeld);
 
   return (
     <aside className="risk-detail missed-trip-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
@@ -1009,25 +1040,10 @@ function MissedTripDetail({
           placeholder="e.g. Confirmed via dispatch log - vehicle never left the garage."
         />
 
-        {/* Confirming a trip charges it to the contractor unless someone says
-            otherwise, so the "otherwise" is asked here rather than deferred to
-            a second review in another module. Only contractor error carries a
-            penalty; the other three record the event without charging it. */}
-        <label htmlFor="missed-trip-attribution" className="field-label">Attribution</label>
-        <select
-          id="missed-trip-attribution"
-          className="f"
-          value={attributionDraft}
-          onChange={(event) => onAttributionChange(event.target.value as OccurrenceAttribution)}
-        >
-          <option value="contractor_error">Contractor error — charge it to the assessment</option>
-          <option value="excusable">Excusable delay — record it, do not charge</option>
-          <option value="mvta_directed">MVTA-directed — record it, do not charge</option>
-          <option value="undetermined">Undetermined — leave it for the assessment queue</option>
-        </select>
-        <p className="risk-unknown">
-          {attributionHelp(alert, attributionDraft)}
-        </p>
+        {/* The review records the outcome only. Whose error a confirmed trip
+            was is a manager's decision, taken below under Performance
+            assessment once the occurrence exists (plan step 0.8). */}
+        <p className="risk-unknown">{confirmHelp(alert)}</p>
 
         {mode !== "review" ? (
           <>
@@ -1078,6 +1094,22 @@ function MissedTripDetail({
             </span>
           </div>
           <p className="risk-unknown">{outcome.detail}</p>
+          {attribution ? (
+            <p className="risk-unknown">
+              <strong>Attribution:</strong> {attribution}
+            </p>
+          ) : null}
+          {choices.length > 0 ? (
+            <div className="risk-actions" role="group" aria-label="Attribution">
+              {choices.map((choice) => (
+                <button key={choice} className="btn-sm" disabled={attributing} onClick={() => onAttribute(choice)}
+                  title={choice === "excusable" ? "The COO's decision: recorded without a penalty" : undefined}>
+                  {choice === "undetermined" ? "Clear attribution" : ATTRIBUTION_LABELS[choice]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {attributeError ? <p className="risk-action-error">{attributeError}</p> : null}
           <Link className="btn-sm" to="/performance-assessment">Open Performance Assessment</Link>
         </div>
       ) : null}

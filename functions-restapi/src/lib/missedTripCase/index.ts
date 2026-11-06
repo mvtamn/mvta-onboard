@@ -12,7 +12,6 @@
 // rows into observations; the module never reads a source's tables.
 import { sql } from "../db";
 import {
-  occurrenceStateFor,
   recordOccurrence,
   REVIEW_HANDOFF_EXPLANATIONS,
   type IntakeRefusalCode,
@@ -168,19 +167,16 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
     if (act.outcome === "confirmed" && !classification.counts_toward_assessment) {
       handOff = { linked: false, reason: "shadow_detection" };
     } else {
-      const state = occurrenceStateFor(act.outcome === "confirmed" ? "confirmed" : "false_positive", act.attribution);
+      const confirmed = act.outcome === "confirmed";
       const recorded = await recordOccurrence(tx, {
         kind: "missed_trip_review",
         tripId: key.tripId,
         serviceDate: key.serviceDate,
-        reviewStatus: state.review_status,
-        attribution: state.attribution,
-        note: act.outcome === "confirmed"
-          ? act.notes ?? `Attribution recorded at review as ${act.attribution}.`
-          : `${OUTCOME_NOTES[act.outcome]} (${act.reasonCode}).`,
+        confirmed,
+        note: confirmed ? act.notes : `${OUTCOME_NOTES[act.outcome]} (${act.reasonCode}).`,
       }, actor.name);
       handOff = recorded.ok
-        ? { linked: true, occurrence_id: recorded.occurrence.id, service_month: recorded.occurrence.serviceMonth, review_status: state.review_status, standard_code: "MISSED_TRIPS_FR" }
+        ? { linked: true, occurrence_id: recorded.occurrence.id, service_month: recorded.occurrence.serviceMonth, review_status: recorded.occurrence.reviewStatus ?? "candidate", standard_code: "MISSED_TRIPS_FR" }
         : { linked: false, reason: recorded.refusal.code };
     }
     await tx.commit();

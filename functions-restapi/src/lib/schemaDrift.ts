@@ -180,6 +180,15 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     table: "RidershipScanViews",
     breaks: "Ridership: Count Sheet scan images cannot be opened, because each open must be logged",
   },
+  // Every occurrence write stamps who decided its attribution. Without the
+  // column the intake module reports schema_not_ready: reviews still save, but
+  // nothing reaches the assessment and nobody can attribute (plan step 0.8).
+  {
+    migration: "167a",
+    table: "ComplianceOccurrences",
+    column: "attributed_by",
+    breaks: "Missed trips and other occurrences cannot reach the performance assessment, and managers cannot record attribution",
+  },
 ];
 
 /** What the database actually has: lower-cased "table" and "table.column". */

@@ -127,7 +127,7 @@ test("a silent no-show opens with its operating window; other cases have none", 
 
 test("review acts by case state", () => {
   const review = (act: string, extra: Partial<CaseAct> = {}): CaseAct =>
-    ({ act, outcome: "timely_service", reasonCode: "RAN", notes: null, attribution: "undetermined", reason: "Radio log shows it ran", ...extra }) as CaseAct;
+    ({ act, outcome: "timely_service", reasonCode: "RAN", notes: null, reason: "Radio log shows it ran", ...extra }) as CaseAct;
   const unreviewed = stored();
   const reviewed = stored({ validation_status: "confirmed", data_quality_status: "source_verified" });
   const legacy = stored({ data_quality_status: "legacy_unverified" });

@@ -3,7 +3,9 @@
 //   raiseCandidates    - the nightly pass: source observations become
 //                        candidates, each judged by the intake rule.
 //   recordOccurrence   - one observation or review answer, written now.
-//   resolveOccurrence  - a reviewer's status, attribution and relief link.
+//   resolveOccurrence  - a reviewer's status and relief link.
+//   attributeOccurrence - a manager's attribution, or the COO's excusable
+//                        decision (plan step 0.8, ADR 0048).
 //   setAssessedAmount  - a reviewer's figure on a ranged penalty.
 //
 // Every path assigns the contractor from the Agreement covering the service
@@ -15,7 +17,7 @@ import { sql } from "../db";
 import { missedTripCaseSql } from "../missedTripCase/classify";
 import { detectorPromotionWindows, type PromotionWindow } from "../missedTripCase/promotion";
 import { INTAKE_READY_SQL, occurrenceAssignmentSql } from "./assignment";
-import { decideAmount, decideChange, decideManual, decideNew, refusal } from "./decide";
+import { decideAmount, decideAttribution, decideChange, decideManual, decideNew, refusal, reviewHandOffState, reviewStatusFor } from "./decide";
 import {
   garageDepartureCandidatePredicate,
   occurrenceSourceRefSql,
@@ -23,9 +25,12 @@ import {
 } from "./sources";
 import type {
   AssessedAmount,
+  AttributionAuthority,
   CandidateSource,
   IntakeOutcome,
   IntakeState,
+  OccurrenceAttribution,
+  OccurrenceReviewStatus,
   RaiseGates,
   RaiseReport,
   RecordObservation,
@@ -36,7 +41,7 @@ import type {
 export * from "./types";
 export * from "./sources";
 export { occurrenceAssignmentSql } from "./assignment";
-export { occurrenceStateFor, REFUSAL_SENTENCES } from "./decide";
+export { attributionAuthorityNeeded, decideAttribution, REFUSAL_SENTENCES, reviewHandOffState, reviewStatusFor } from "./decide";
 
 type Executor = sql.ConnectionPool | sql.Transaction;
 const request = (executor: Executor) => executor instanceof sql.Transaction ? new sql.Request(executor) : executor.request();
@@ -177,10 +182,14 @@ async function recordManual(tx: sql.Transaction, o: Extract<RecordObservation, {
     .input("qualifier", sql.NVarChar(50), o.qualifierCode)
     .input("description", sql.NVarChar(2000), o.description)
     .input("actor", sql.NVarChar(200), actor)
+    .input("attributed", sql.Bit, o.attributed ? 1 : 0)
     .query<{ id: string; service_month: string }>(`
-      INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,duration_days,qualifier_code,description,source,review_status,attribution,created_by)
+      INSERT ComplianceOccurrences(standard_id,contractor_id,service_date,quantity,duration_days,qualifier_code,description,source,review_status,attribution,attributed_by,attributed_at,created_by)
       OUTPUT inserted.id, inserted.service_month
-      VALUES(@standard,@contractor,@date,@quantity,@duration,@qualifier,@description,'manual','confirmed','contractor_error',@actor)`)).recordset[0];
+      VALUES(@standard,@contractor,@date,@quantity,@duration,@qualifier,@description,'manual',
+        CASE WHEN @attributed=1 THEN 'confirmed' ELSE 'candidate' END,
+        CASE WHEN @attributed=1 THEN 'contractor_error' ELSE 'undetermined' END,
+        CASE WHEN @attributed=1 THEN @actor END, CASE WHEN @attributed=1 THEN SYSUTCDATETIME() END,@actor)`)).recordset[0];
   await markInputChanged(tx, facts!.contractor_id!, written.service_month, actor);
   return { ok: true, occurrence: { id: written.id, contractorId: facts!.contractor_id!, serviceMonth: written.service_month } };
 }
@@ -193,9 +202,11 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
       source_ref: string; description: string; service_date: string; standard_id: string;
       intake: IntakeState; contractor_id: string | null;
       existing_id: string | null; existing_contractor_id: string | null; existing_month: string | null; existing_period_status: string | null;
+      existing_review_status: OccurrenceReviewStatus | null; existing_attribution: OccurrenceAttribution | null;
     }>(`
       SELECT src.source_ref, src.description, src.service_date, s.id standard_id, x.intake, x.contractor_id,
-        occ.id existing_id, occ.contractor_id existing_contractor_id, occ.service_month existing_month, ep.status existing_period_status
+        occ.id existing_id, occ.contractor_id existing_contractor_id, occ.service_month existing_month, ep.status existing_period_status,
+        occ.review_status existing_review_status, occ.attribution existing_attribution
       FROM (
         SELECT ${occurrenceSourceRefSql("missed_trip", "m")} source_ref,
           CONCAT(N'Missed trip ',m.trip_id,N' on route ',m.route_id) description,
@@ -209,21 +220,30 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
       WHERE s.code='MISSED_TRIPS_FR'`)).recordset[0];
   if (!facts) return { ok: false, refusal: refusal("not_found", "The missed trip or the Missed Trips standard was not found.") };
 
-  const dismissReason = o.reviewStatus === "dismissed" ? o.note : null;
+  const state = reviewHandOffState(o.confirmed, facts.existing_id
+    ? { reviewStatus: facts.existing_review_status!, attribution: facts.existing_attribution! }
+    : null);
+  const dismissReason = state.review_status === "dismissed" && state.attribution === "undetermined" ? o.note : null;
   if (facts.existing_id) {
     // An earlier review or the poll raised it. It keeps its contractor; only
     // its own month's state can stop the restatement.
     const refused = decideChange({ periodStatus: facts.existing_period_status });
     if (refused) return { ok: false, refusal: refused };
+    // An attribution the review keeps keeps who decided it; one the review
+    // clears is cleared with its decider.
     await new sql.Request(tx)
       .input("id", sql.UniqueIdentifier, facts.existing_id)
-      .input("status", sql.NVarChar(20), o.reviewStatus)
-      .input("attribution", sql.NVarChar(30), o.attribution)
+      .input("status", sql.NVarChar(20), state.review_status)
+      .input("attribution", sql.NVarChar(30), state.attribution)
       .input("reason", sql.NVarChar(1000), dismissReason)
       .input("actor", sql.NVarChar(200), actor)
-      .query(`UPDATE ComplianceOccurrences SET review_status=@status,attribution=@attribution,dismiss_reason=@reason,reviewed_by=@actor,reviewed_at=SYSUTCDATETIME() WHERE id=@id`);
+      .query(`UPDATE ComplianceOccurrences SET review_status=@status,attribution=@attribution,
+        dismiss_reason=CASE WHEN @attribution='undetermined' THEN @reason ELSE dismiss_reason END,
+        attributed_by=CASE WHEN @attribution='undetermined' THEN NULL ELSE attributed_by END,
+        attributed_at=CASE WHEN @attribution='undetermined' THEN NULL ELSE attributed_at END,
+        reviewed_by=@actor,reviewed_at=SYSUTCDATETIME() WHERE id=@id`);
     await markInputChanged(tx, facts.existing_contractor_id!, facts.existing_month!, actor);
-    return { ok: true, occurrence: { id: facts.existing_id, contractorId: facts.existing_contractor_id!, serviceMonth: facts.existing_month! } };
+    return { ok: true, occurrence: { id: facts.existing_id, contractorId: facts.existing_contractor_id!, serviceMonth: facts.existing_month!, reviewStatus: state.review_status } };
   }
 
   const refused = decideNew(facts.intake);
@@ -234,8 +254,8 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
     .input("date", sql.Char(8), facts.service_date)
     .input("description", sql.NVarChar(2000), facts.description)
     .input("ref", sql.NVarChar(300), facts.source_ref)
-    .input("status", sql.NVarChar(20), o.reviewStatus)
-    .input("attribution", sql.NVarChar(30), o.attribution)
+    .input("status", sql.NVarChar(20), state.review_status)
+    .input("attribution", sql.NVarChar(30), state.attribution)
     .input("reason", sql.NVarChar(1000), dismissReason)
     .input("actor", sql.NVarChar(200), actor)
     .query<{ id: string; service_month: string }>(`
@@ -243,7 +263,7 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
       OUTPUT inserted.id, inserted.service_month
       VALUES(@standard,@contractor,@date,1,@description,'auto_candidate',@ref,@status,@attribution,@reason,@actor,SYSUTCDATETIME(),@actor)`)).recordset[0];
   await markInputChanged(tx, facts.contractor_id!, written.service_month, actor);
-  return { ok: true, occurrence: { id: written.id, contractorId: facts.contractor_id!, serviceMonth: written.service_month } };
+  return { ok: true, occurrence: { id: written.id, contractorId: facts.contractor_id!, serviceMonth: written.service_month, reviewStatus: state.review_status } };
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +271,7 @@ async function recordMissedTripReview(tx: sql.Transaction, o: Extract<RecordObse
 
 interface Existing {
   id: string; contractor_id: string; service_month: string; period_status: string | null;
+  review_status: OccurrenceReviewStatus; attribution: OccurrenceAttribution;
   min_amount: number | null; max_amount: number | null; relief_ok: number | null;
 }
 
@@ -259,7 +280,7 @@ async function loadExisting(tx: sql.Transaction, id: string, reliefId: string | 
     .input("id", sql.UniqueIdentifier, id)
     .input("relief", sql.UniqueIdentifier, reliefId)
     .query<Existing>(`
-      SELECT o.id, o.contractor_id, o.service_month, p.status period_status,
+      SELECT o.id, o.contractor_id, o.service_month, p.status period_status, o.review_status, o.attribution,
         (SELECT TOP 1 t.penalty_amount_min FROM ContractorStandardTiers t
            WHERE t.standard_id=o.standard_id AND t.penalty_amount_min IS NOT NULL AND t.effective_end_date IS NULL ORDER BY t.tier_order) min_amount,
         (SELECT TOP 1 t.penalty_amount_max FROM ContractorStandardTiers t
@@ -273,6 +294,9 @@ async function loadExisting(tx: sql.Transaction, id: string, reliefId: string | 
 
 const writtenFrom = (row: Existing): Written => ({ id: row.id, contractorId: row.contractor_id, serviceMonth: row.service_month });
 
+// A reviewer's act: whether the occurrence happened, and its relief link.
+// Dismissing it or reopening it clears its attribution and who decided it -
+// there is nothing left to attribute until a manager looks again.
 export async function resolveOccurrence(tx: sql.Transaction, id: string, resolution: Resolution, actor: string): Promise<IntakeOutcome> {
   if (!(await schemaReady(tx))) return { ok: false, refusal: refusal("schema_not_ready") };
   const existing = await loadExisting(tx, id, resolution.reliefId ?? null);
@@ -282,15 +306,46 @@ export async function resolveOccurrence(tx: sql.Transaction, id: string, resolut
 
   await new sql.Request(tx)
     .input("id", sql.UniqueIdentifier, id)
-    .input("status", sql.NVarChar(20), resolution.reviewStatus)
-    .input("attribution", sql.NVarChar(30), resolution.attribution)
+    .input("status", sql.NVarChar(20), resolution.reviewStatus ?? null)
     .input("reason", sql.NVarChar(1000), resolution.dismissReason)
     .input("relief", sql.UniqueIdentifier, resolution.reliefId ?? null)
     .input("relief_given", sql.Bit, resolution.reliefId === undefined ? 0 : 1)
     .input("actor", sql.NVarChar(200), actor)
     .query(`
-      UPDATE ComplianceOccurrences SET review_status=@status,attribution=@attribution,dismiss_reason=@reason,
+      UPDATE ComplianceOccurrences SET
+        review_status=ISNULL(@status,review_status),
+        attribution=CASE WHEN @status IS NULL THEN attribution ELSE 'undetermined' END,
+        attributed_by=CASE WHEN @status IS NULL THEN attributed_by END,
+        attributed_at=CASE WHEN @status IS NULL THEN attributed_at END,
+        dismiss_reason=CASE WHEN @status IS NULL THEN dismiss_reason WHEN @status='dismissed' THEN @reason END,
         relief_id=CASE WHEN @relief_given=1 THEN @relief ELSE relief_id END,reviewed_by=@actor,reviewed_at=SYSUTCDATETIME()
+      WHERE id=@id`);
+  await markInputChanged(tx, existing!.contractor_id, existing!.service_month, actor);
+  return { ok: true, occurrence: writtenFrom(existing!) };
+}
+
+// A manager's attribution, or the COO's excusable decision. The status
+// follows from the attribution (reviewStatusFor), and who decided it is
+// stamped beside it; back to undetermined clears both.
+export async function attributeOccurrence(
+  tx: sql.Transaction, id: string, attribution: OccurrenceAttribution, held: AttributionAuthority, actor: string,
+): Promise<IntakeOutcome> {
+  if (!(await schemaReady(tx))) return { ok: false, refusal: refusal("schema_not_ready") };
+  const existing = await loadExisting(tx, id, null);
+  const refused = decideAttribution(existing && {
+    periodStatus: existing.period_status, reviewStatus: existing.review_status, attribution: existing.attribution,
+  }, attribution, held);
+  if (refused) return { ok: false, refusal: refused };
+
+  await new sql.Request(tx)
+    .input("id", sql.UniqueIdentifier, id)
+    .input("status", sql.NVarChar(20), reviewStatusFor(attribution))
+    .input("attribution", sql.NVarChar(30), attribution)
+    .input("actor", sql.NVarChar(200), actor)
+    .query(`
+      UPDATE ComplianceOccurrences SET review_status=@status, attribution=@attribution,
+        attributed_by=CASE WHEN @attribution='undetermined' THEN NULL ELSE @actor END,
+        attributed_at=CASE WHEN @attribution='undetermined' THEN NULL ELSE SYSUTCDATETIME() END
       WHERE id=@id`);
   await markInputChanged(tx, existing!.contractor_id, existing!.service_month, actor);
   return { ok: true, occurrence: writtenFrom(existing!) };

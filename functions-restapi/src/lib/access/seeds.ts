@@ -10,7 +10,9 @@
 // Migration 129 inserts the first nine rows, migration 154 the two ridership
 // roles and migration 159 the Ridership Printer, each only when missing, so an Access Administrator's later edits
 // survive a re-run. Migration 163 adds ridership.scan and ridership.scans.view
-// to the roles below that hold them, only while no role holds the action yet. The contract test fails if the SQL and this file disagree.
+// to the roles below that hold them, only while no role holds the action yet.
+// Migration 167b does the same for compliance-review.attribute and inserts the
+// Excusability Authority role. The contract test fails if the SQL and this file disagree.
 import { ACCESS_MODULE, actionKey, MODULES, VIEW } from "./catalog";
 
 export interface SeededRole {
@@ -108,7 +110,22 @@ export const SEEDED_ROLES: SeededRole[] = [
     key: "compliance-manager",
     name: "Compliance Manager",
     purpose: "Decides assessments: finalizing, reopening, issuing and exceptions.",
-    actions: [...COMPLIANCE_ANALYST_ACTIONS, actionKey("performance-assessment", "decide")],
+    // Migration 167b: managers decide Service attribution. Not excusable -
+    // that is the Excusability Authority's alone.
+    actions: [
+      ...COMPLIANCE_ANALYST_ACTIONS,
+      actionKey("performance-assessment", "decide"),
+      actionKey("compliance-review", "attribute"),
+    ],
+  },
+  // Migration 167 (plan step 0.8): MVTA gives the excusable decision to the
+  // COO. The role holds that one decision and the pages it is taken on, and
+  // nothing a reviewer or a manager does.
+  {
+    key: "excusability-authority",
+    name: "Excusability Authority",
+    purpose: "Decides whether a confirmed service failure was excusable. MVTA gives this to the COO.",
+    actions: [...view("compliance-review", "performance-assessment"), actionKey("compliance-review", "excuse")],
   },
   {
     key: "trip-start-verifier",

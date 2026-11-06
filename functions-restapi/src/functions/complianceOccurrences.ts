@@ -1,9 +1,9 @@
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
-import { requireAccess } from "../lib/access/require";
+import { requireAccess, requireAnyAccess } from "../lib/access/require";
 import { rangedPenaltyBoundsSql } from "../lib/assessment/rangedPenalty";
 import { agreementScope } from "../lib/assessment/schemaScope";
 import { getPool, sql } from "../lib/db";
-import { parseOccurrenceSource, recordOccurrence, resolveOccurrence, setAssessedAmount, type IntakeOutcome, type IntakeRefusal } from "../lib/occurrenceIntake";
+import { attributeOccurrence, parseOccurrenceSource, recordOccurrence, resolveOccurrence, setAssessedAmount, type IntakeOutcome, type IntakeRefusal, type OccurrenceAttribution } from "../lib/occurrenceIntake";
 import { isGuid, isServiceMonth, validateComplianceOccurrence } from "../lib/validation";
 
 app.http("complianceOccurrencesList", { route:"compliance-occurrences",methods:["GET"],authLevel:"anonymous",handler:async(request:HttpRequest,context:InvocationContext)=>{
@@ -17,7 +17,8 @@ app.http("complianceOccurrencesList", { route:"compliance-occurrences",methods:[
 // tells the month its input changed. A refusal is a 409 carrying the module's
 // code and sentence; a missing occurrence is a 404.
 function refused(refusal: IntakeRefusal) {
-  return { status: refusal.code === "not_found" ? 404 : 409, jsonBody: { error: refusal.sentence, code: refusal.code } };
+  const status = refusal.code === "not_found" ? 404 : refusal.code === "attribution_authority" ? 403 : 409;
+  return { status, jsonBody: { error: refusal.sentence, code: refusal.code } };
 }
 
 type Handler = (request: HttpRequest, context: InvocationContext) => Promise<{ status: number; jsonBody: unknown }>;
@@ -51,8 +52,13 @@ const create: Handler = async (request, context) => {
   if (!body) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
   const errors = validateComplianceOccurrence(body);
   if (errors.length) return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
+  // Entering one is recording that it happened. Charging it is attribution,
+  // so it is entered as contractor error only by someone who may attribute;
+  // anyone else enters a candidate a manager then attributes (plan step 0.8).
+  const attributed = auth.access.actions.includes("compliance-review.attribute");
   return inTransaction(tx => recordOccurrence(tx, {
     kind: "manual",
+    attributed,
     standardId: String(body.standard_id),
     serviceDate: String(body.service_date),
     quantity: typeof body.quantity === "number" ? body.quantity : 1,
@@ -63,8 +69,15 @@ const create: Handler = async (request, context) => {
   }, actorOf(auth)), outcome => ({ status: 201, jsonBody: { id: outcome.occurrence.id, contractor_id: outcome.occurrence.contractorId } }), context, "POST compliance occurrence");
 };
 
-const REVIEW_STATUSES = ["candidate", "confirmed", "dismissed"] as const;
-const ATTRIBUTIONS = ["contractor_error", "excusable", "mvta_directed", "undetermined"] as const;
+// The three authorities over an occurrence (plan step 0.8, ADR 0048):
+//   PATCH .../{id}             - compliance-review.review: whether it happened
+//                                (dismiss or reopen) and its relief link.
+//   PUT   .../{id}/attribution - compliance-review.attribute: contractor error
+//                                or MVTA-directed; compliance-review.excuse:
+//                                excusable. The module decides which a change
+//                                needs, so excusable is never a manager's.
+const REVIEW_STATUSES = ["candidate", "dismissed"] as const;
+const ATTRIBUTIONS: readonly OccurrenceAttribution[] = ["contractor_error", "excusable", "mvta_directed", "undetermined"];
 
 const resolve: Handler = async (request, context) => {
   const auth = await requireAccess(request, "compliance-review.review");
@@ -72,20 +85,44 @@ const resolve: Handler = async (request, context) => {
   if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid occurrence id" } };
   const body = await jsonBody(request);
   if (!body) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
-  const status = REVIEW_STATUSES.find(v => v === body.review_status), attribution = ATTRIBUTIONS.find(v => v === body.attribution);
-  if (!status || !attribution) return { status: 400, jsonBody: { error: "Valid review_status and attribution are required" } };
+  // Attribution moved to its own endpoint and authority. An older console
+  // still sends it; refusing it says so rather than dropping it silently.
+  if (body.attribution !== undefined) {
+    return { status: 400, jsonBody: { error: "attribution is recorded with PUT /compliance-occurrences/{id}/attribution, by a manager (or the COO for excusable)" } };
+  }
+  const status = body.review_status === undefined ? undefined : REVIEW_STATUSES.find(v => v === body.review_status);
+  if (body.review_status !== undefined && !status) {
+    return { status: 400, jsonBody: { error: "review_status must be candidate or dismissed. Confirming one is attributing it to the contractor." } };
+  }
   if (body.relief_id !== undefined && body.relief_id !== null && !isGuid(body.relief_id)) return { status: 400, jsonBody: { error: "relief_id must be a claim id or null" } };
+  if (status === undefined && body.relief_id === undefined) return { status: 400, jsonBody: { error: "Give review_status, relief_id, or both" } };
   const id = request.params.id;
   return inTransaction(tx => resolveOccurrence(tx, id, {
     reviewStatus: status,
-    attribution,
     dismissReason: typeof body.dismiss_reason === "string" ? body.dismiss_reason : null,
     reliefId: body.relief_id === undefined ? undefined : (body.relief_id as string | null),
   }, actorOf(auth)), () => ({ status: 200, jsonBody: { id } }), context, "PATCH compliance occurrence");
 };
 
+const attribute: Handler = async (request, context) => {
+  const auth = await requireAnyAccess(request, ["compliance-review.attribute", "compliance-review.excuse"]);
+  if (!auth.authorized) return { status: auth.status, jsonBody: { error: auth.message } };
+  if (!isGuid(request.params.id)) return { status: 400, jsonBody: { error: "Invalid occurrence id" } };
+  const body = await jsonBody(request);
+  if (!body) return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
+  const attribution = ATTRIBUTIONS.find(v => v === body.attribution);
+  if (!attribution) return { status: 400, jsonBody: { error: `attribution must be one of: ${ATTRIBUTIONS.join(", ")}` } };
+  const held = {
+    attribute: auth.access.actions.includes("compliance-review.attribute"),
+    excuse: auth.access.actions.includes("compliance-review.excuse"),
+  };
+  const id = request.params.id;
+  return inTransaction(tx => attributeOccurrence(tx, id, attribution, held, actorOf(auth)), () => ({ status: 200, jsonBody: { id, attribution } }), context, "PUT compliance occurrence attribution");
+};
+
 app.http("complianceOccurrencesCreate", { route: "compliance-occurrences", methods: ["POST"], authLevel: "anonymous", handler: create });
 app.http("complianceOccurrencePatch", { route: "compliance-occurrences/{id}", methods: ["PATCH"], authLevel: "anonymous", handler: resolve });
+app.http("complianceOccurrenceAttribution", { route: "compliance-occurrences/{id}/attribution", methods: ["PUT"], authLevel: "anonymous", handler: attribute });
 
 // A reviewer's figure for one occurrence on a ranged band.
 //

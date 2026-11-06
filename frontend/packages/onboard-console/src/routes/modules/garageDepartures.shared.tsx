@@ -261,12 +261,21 @@ export function GroupByToggle({ id, value, onChange }: { id: string; value: Depa
 // a queue that named the run by a source_ref string. These two pieces close
 // that: the row says where it went, and the reviewer settles it here.
 
-// What a view hands the cell so it can settle an occurrence: whether a write
-// is already in flight, whether this user may decide, and the write itself.
+// What a view hands the cell so it can attribute an occurrence: whether a
+// write is already in flight, which attribution authorities this user holds,
+// and the write itself. Contractor error and MVTA-directed are a manager's
+// (compliance-review.attribute); excusable is the COO's alone
+// (compliance-review.excuse) - plan step 0.8.
 export interface OccurrenceReviewHandlers {
   busy: boolean;
-  canReview: boolean;
-  onReview: (occurrenceId: string, attribution: OccurrenceAttribution) => void;
+  canAttribute: boolean;
+  canExcuse: boolean;
+  onAttribute: (occurrenceId: string, attribution: OccurrenceAttribution) => void;
+}
+
+// The two authorities, read from the caller's access.
+export function attributionAuthorities(can: (action: string) => boolean): { canAttribute: boolean; canExcuse: boolean } {
+  return { canAttribute: can("compliance-review.attribute"), canExcuse: can("compliance-review.excuse") };
 }
 
 export interface OccurrenceLink {
@@ -291,7 +300,7 @@ export function occurrenceSummary(link: OccurrenceLink, serviceDate: string):
     return { label: "Not raised", detail: "No performance-assessment occurrence exists for this departure.", tone: "none" };
   }
   if (link.occurrence_review_status === "candidate") {
-    return { label: "Awaiting review", detail: `Raised against the ${month} assessment. It is not charged until someone says whose error it was.`, tone: "pending" };
+    return { label: "Awaiting attribution", detail: `Raised against the ${month} assessment. It is not charged until a manager says whose error it was.`, tone: "pending" };
   }
   if (link.occurrence_review_status === "dismissed") {
     const because = link.occurrence_attribution === "excusable" ? "an excusable delay"
@@ -310,7 +319,7 @@ export function occurrenceSummary(link: OccurrenceLink, serviceDate: string):
 
 // The attribution decision, taken on the departure itself.
 //
-// It is the same PATCH the Performance Assessment module's occurrence queue
+// It is the same write the Performance Assessment module's occurrence log
 // makes, so a duty settled here and one settled there are indistinguishable
 // afterwards - this is a second place to answer the question, not a second
 // answer to it. A finalized or issued month is not offered: that document is
@@ -319,13 +328,10 @@ export function occurrenceSummary(link: OccurrenceLink, serviceDate: string):
 //
 // Sized for a table cell: the pill carries the state and the buttons appear
 // only while there is a decision left to make.
-export function OccurrenceCell({ link, serviceDate, busy, canReview, onReview }: {
+export function OccurrenceCell({ link, serviceDate, busy, canAttribute, canExcuse, onAttribute }: {
   link: OccurrenceLink;
   serviceDate: string;
-  busy: boolean;
-  canReview: boolean;
-  onReview: (occurrenceId: string, attribution: OccurrenceAttribution) => void;
-}) {
+} & OccurrenceReviewHandlers) {
   const summary = occurrenceSummary(link, serviceDate);
   const closed = link.occurrence_period_status === "finalized" || link.occurrence_period_status === "issued";
   const pending = link.occurrence_review_status === "candidate";
@@ -337,14 +343,20 @@ export function OccurrenceCell({ link, serviceDate, busy, canReview, onReview }:
       >
         {summary.label}
       </span>
-      {link.occurrence_id && canReview && pending && !closed ? (
+      {link.occurrence_id && (canAttribute || canExcuse) && pending && !closed ? (
         <div className="td-occurrence-actions">
-          <button className="btn-xs" disabled={busy} title="Charge this departure to the contractor in that month's assessment"
-            onClick={() => onReview(link.occurrence_id!, "contractor_error")}>Charge</button>
-          <button className="btn-xs" disabled={busy} title="Record it against the month without charging a penalty"
-            onClick={() => onReview(link.occurrence_id!, "excusable")}>Excusable</button>
-          <button className="btn-xs" disabled={busy} title="MVTA-directed: record it without charging a penalty"
-            onClick={() => onReview(link.occurrence_id!, "mvta_directed")}>MVTA</button>
+          {canAttribute ? (
+            <>
+              <button className="btn-xs" disabled={busy} title="Contractor error: charge this departure to the contractor in that month's assessment"
+                onClick={() => onAttribute(link.occurrence_id!, "contractor_error")}>Charge</button>
+              <button className="btn-xs" disabled={busy} title="MVTA-directed: record it without charging a penalty"
+                onClick={() => onAttribute(link.occurrence_id!, "mvta_directed")}>MVTA</button>
+            </>
+          ) : null}
+          {canExcuse ? (
+            <button className="btn-xs" disabled={busy} title="Excusable (COO's decision): record it against the month without charging a penalty"
+              onClick={() => onAttribute(link.occurrence_id!, "excusable")}>Excusable</button>
+          ) : null}
         </div>
       ) : null}
     </td>

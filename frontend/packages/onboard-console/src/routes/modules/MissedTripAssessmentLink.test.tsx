@@ -1,9 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MissedTrip, MissedTripsDiagnostics } from "@mvta/shared";
 import { api } from "../../config.js";
+import { AccessContext, accessStateWith } from "../../auth/AccessContext.js";
 import { MissedTripAlerts } from "./MissedTripAlerts.js";
 
 vi.mock("../../config.js", () => ({
@@ -13,6 +14,7 @@ vi.mock("../../config.js", () => ({
     getMissedTrips: vi.fn(),
     getMissedTripReviews: vi.fn().mockResolvedValue({ reviews: [] }),
     validateMissedTrip: vi.fn(),
+    attributeComplianceOccurrence: vi.fn().mockResolvedValue({ id: "occ-1", attribution: "contractor_error" }),
   },
 }));
 
@@ -45,7 +47,11 @@ function trip(overrides: Partial<MissedTrip> = {}): MissedTrip {
   } as MissedTrip;
 }
 
-const view = () => render(<MemoryRouter><MissedTripAlerts /></MemoryRouter>);
+const view = (actions: string[] = []) => render(
+  <AccessContext.Provider value={accessStateWith(actions)}>
+    <MemoryRouter><MissedTripAlerts /></MemoryRouter>
+  </AccessContext.Provider>,
+);
 
 describe("confirming a missed trip lands it in the month's assessment", () => {
   beforeEach(() => {
@@ -57,38 +63,17 @@ describe("confirming a missed trip lands it in the month's assessment", () => {
   });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-  it("asks whose error it was at the same sitting as the review", async () => {
+  // Plan step 0.8 (MVTA, 2026-11-06): a specialist reviews, managers decide
+  // attribution, the COO decides excusable.
+  it("the review records the outcome only, and says a manager attributes it", async () => {
     const user = userEvent.setup();
-    view();
-    await screen.findByLabelText("Attribution");
-    // Charging the contractor is the default because a confirmed missed trip
-    // is the contractor's obligation unless someone says otherwise.
-    expect(screen.getByLabelText("Attribution")).toHaveValue("contractor_error");
-    expect(screen.getByText(/adds this to the 08\/2026 performance assessment/)).toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText("Attribution"), "excusable");
-    expect(screen.getByText(/records the occurrence against the month without charging/)).toBeInTheDocument();
-  });
-
-  it("sends the attribution with the review, so one action settles both", async () => {
-    const user = userEvent.setup();
-    view();
+    view(["compliance-review.view", "compliance-review.review"]);
     await user.selectOptions(await screen.findByLabelText("Reason"), "OPERATOR");
-    await user.selectOptions(screen.getByLabelText("Attribution"), "mvta_directed");
+    expect(screen.queryByLabelText("Attribution")).not.toBeInTheDocument();
+    expect(screen.getByText(/as awaiting attribution.*A manager then records whose error it was/)).toBeInTheDocument();
     await user.click(screen.getByText("Confirmed missed trip"));
-    expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({
-      trip_id: "trip-1", validation_status: "confirmed", attribution: "mvta_directed",
-    }));
-  });
-
-  it("never attributes Timely service - there is no occurrence to attribute", async () => {
-    const user = userEvent.setup();
-    view();
-    await user.selectOptions(await screen.findByLabelText("Reason"), "OPERATOR");
-    await user.click(screen.getByRole("button", { name: "Timely service" }));
-    expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({
-      validation_status: "timely_service", attribution: undefined,
-    }));
+    expect(api.validateMissedTrip).toHaveBeenCalledWith(expect.objectContaining({ trip_id: "trip-1", validation_status: "confirmed" }));
+    expect(vi.mocked(api.validateMissedTrip).mock.calls[0][0]).not.toHaveProperty("attribution");
   });
 
   it("reports it when the review saved but the assessment could not take it", async () => {
@@ -133,5 +118,39 @@ describe("confirming a missed trip lands it in the month's assessment", () => {
     view();
     await user.click(await screen.findByText("History"));
     expect(await screen.findByText("Not linked")).toBeInTheDocument();
+  });
+
+  const awaiting = () => trip({
+    validation_status: "confirmed", validated_by: "specialist@example.com", reason_code: "OPERATOR",
+    lifecycle: "reviewed", review_outcome: "confirmed_missed_trip", in_queue: false, concluded: true,
+    occurrence_id: "occ-1", occurrence_review_status: "candidate", occurrence_attribution: "undetermined",
+    occurrence_service_month: "202608", occurrence_period_status: "in_review",
+  });
+
+  it("a manager attributes a confirmed case on its occurrence, and is not offered excusable", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({ missed_trips: [awaiting()], diagnostics: { ...diagnostics, unreviewed_count: 0, confirmed_count: 1 } });
+    const user = userEvent.setup();
+    view(["compliance-review.view", "compliance-review.review", "compliance-review.attribute"]);
+    await user.click(await screen.findByText("History"));
+    expect(await screen.findByText("Awaiting a manager's attribution.")).toBeInTheDocument();
+    const group = screen.getByRole("group", { name: "Attribution" });
+    expect(screen.queryByRole("button", { name: "Excusable" })).not.toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: "Contractor error" }));
+    expect(api.attributeComplianceOccurrence).toHaveBeenCalledWith("occ-1", "contractor_error");
+  });
+
+  it("a reviewer sees who decided the attribution, and is offered nothing", async () => {
+    vi.mocked(api.getMissedTrips).mockResolvedValue({
+      missed_trips: [trip({
+        ...awaiting(), occurrence_review_status: "dismissed", occurrence_attribution: "excusable",
+        occurrence_attributed_by: "coo@example.com", occurrence_attributed_at: null,
+      } as Partial<MissedTrip>)],
+      diagnostics: { ...diagnostics, unreviewed_count: 0, confirmed_count: 1 },
+    });
+    const user = userEvent.setup();
+    view(["compliance-review.view", "compliance-review.review"]);
+    await user.click(await screen.findByText("History"));
+    expect(await screen.findByText("Excusable, decided by coo@example.com.")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Attribution" })).not.toBeInTheDocument();
   });
 });

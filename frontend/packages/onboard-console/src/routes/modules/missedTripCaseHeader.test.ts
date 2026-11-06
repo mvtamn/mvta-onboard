@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GtfsCaseEvidence, SpareCaseTimes } from "@mvta/shared";
 import { caseHeader, countingLine } from "./missedTripCaseHeader.js";
-import { attributionHelp } from "./missedTripReview.js";
+import { attributionChoices, attributionLine, confirmHelp } from "./missedTripReview.js";
 import type { MissedTripAlert } from "./missedTrips.data.js";
 
 // UTC clock, so the expectations do not depend on the machine's zone.
@@ -167,16 +167,55 @@ describe("what confirming charges", () => {
     ({ sourceSystem: "gtfs", detectionType: "silent_no_show", serviceDate: "20261031", detectorPromoted }) as Pick<MissedTripAlert, "sourceSystem" | "detectionType" | "serviceDate" | "detectorPromoted">;
 
   it("states Shadow detection as a fact when the API says so", () => {
-    expect(attributionHelp(alert(false), "contractor_error"))
+    expect(confirmHelp(alert(false)))
       .toBe("This detector is in Shadow detection: confirming records the outcome, and nothing is charged.");
-    expect(attributionHelp(alert(true), "contractor_error"))
-      .toBe("Confirming adds this to the 10/2026 performance assessment as a charged occurrence.");
-    expect(attributionHelp(alert(undefined), "excusable"))
-      .toBe("Confirming records the occurrence against the month without charging a penalty, once its detector is out of Shadow detection.");
+    expect(confirmHelp(alert(true)))
+      .toBe("Confirming raises this against the 10/2026 performance assessment as awaiting attribution. A manager then records whose error it was; nothing is charged until they do.");
+    expect(confirmHelp(alert(undefined)))
+      .toContain("as awaiting attribution, once its detector is out of Shadow detection.");
   });
 
   it("leaves the counting line out when the API does not say", () => {
     expect(countingLine(alert(undefined))).toBeNull();
-    expect(countingLine(alert(true))).toBe("The Suspected no-show detector counts toward assessments: a confirmation is charged unless you attribute it otherwise.");
+    expect(countingLine(alert(true))).toBe("The Suspected no-show detector counts toward assessments: a confirmation is charged once a manager attributes it to the contractor.");
+  });
+});
+
+// Plan step 0.8 (MVTA, 2026-11-06): a specialist reviews, managers decide
+// attribution, the COO decides excusable. The console offers each person only
+// the choices the server will accept from them.
+describe("who may attribute a confirmed case", () => {
+  const linked = {
+    validationStatus: "confirmed" as const, occurrenceId: "occ-1", occurrenceReviewStatus: "candidate" as const,
+    occurrenceAttribution: "undetermined" as const, occurrencePeriodStatus: "in_review" as const,
+  };
+  const reviewer = { canAttribute: false, canExcuse: false };
+  const manager = { canAttribute: true, canExcuse: false };
+  const coo = { canAttribute: false, canExcuse: true };
+
+  it("a reviewer is offered nothing; a manager everything but excusable; the COO only excusable", () => {
+    expect(attributionChoices(linked, reviewer)).toEqual([]);
+    expect(attributionChoices(linked, manager)).toEqual(["contractor_error", "mvta_directed"]);
+    expect(attributionChoices(linked, coo)).toEqual(["excusable"]);
+  });
+
+  it("moving off excusable is the COO's too", () => {
+    const excused = { ...linked, occurrenceReviewStatus: "dismissed" as const, occurrenceAttribution: "excusable" as const };
+    expect(attributionChoices(excused, manager)).toEqual([]);
+    expect(attributionChoices(excused, coo)).toEqual(["contractor_error", "mvta_directed", "undetermined"]);
+  });
+
+  it("nothing is offered without an occurrence, on an unconfirmed case, or in a closed month", () => {
+    expect(attributionChoices({ ...linked, occurrenceId: null }, manager)).toEqual([]);
+    expect(attributionChoices({ ...linked, validationStatus: "timely_service" as never }, manager)).toEqual([]);
+    expect(attributionChoices({ ...linked, occurrencePeriodStatus: "issued" as const }, manager)).toEqual([]);
+  });
+
+  it("says who decided the attribution", () => {
+    const time = (iso: string) => iso.slice(11, 16);
+    expect(attributionLine({ ...linked, occurrenceAttributedBy: null, occurrenceAttributedAt: null }, time)).toBe("Awaiting a manager's attribution.");
+    expect(attributionLine({ ...linked, occurrenceAttribution: "contractor_error", occurrenceAttributedBy: "manager@example.com", occurrenceAttributedAt: "2026-11-06T15:04:00Z" }, time))
+      .toBe("Contractor error, decided by manager@example.com at 15:04.");
+    expect(attributionLine({ ...linked, occurrenceReviewStatus: null }, time)).toBeNull();
   });
 });

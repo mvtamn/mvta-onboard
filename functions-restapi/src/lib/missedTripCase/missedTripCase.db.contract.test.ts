@@ -139,7 +139,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
 
     await t.test("timely start evidence closes an unreviewed case, cancellations included, and never a reviewed one", async () => {
       await observeMissedTrips(pool, [gtfs("C1", { kind: "cancellation" }), gtfs("R1", { kind: "cancellation" })], T0);
-      await actOnMissedTripCase(pool, { tripId: "R1", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: null, attribution: "undetermined" }, reviewer);
+      await actOnMissedTripCase(pool, { tripId: "R1", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: null }, reviewer);
       const timely = { kind: "trip_start" as const, at: minutesAfter(SCHEDULED, 10) };
       const report = await observeMissedTrips(pool, [gtfs("C1", timely), gtfs("R1", timely), gtfs("NOCASE", timely)], T0);
       assert.equal(report.closedByEvidence, 1);
@@ -175,7 +175,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       const observations = [gtfs("RACE", { kind: "trip_start", at: minutesAfter(SCHEDULED, 5) })];
       const snapshot = (await loadCases(pool, [{ tripId: "RACE", serviceDate: DAY }])).get(`RACE|${DAY}`)!;
       const decision = decideRun(snapshot, observations, T0)!;
-      await actOnMissedTripCase(pool, { tripId: "RACE", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: null, attribution: "undetermined" }, reviewer);
+      await actOnMissedTripCase(pool, { tripId: "RACE", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: null }, reviewer);
       assert.equal(await writeDecision(pool, decision), false);
       assert.deepEqual([(await read(pool, "RACE"))?.status, (await read(pool, "RACE"))?.validation_status], ["escalated", "confirmed"]);
     });
@@ -189,7 +189,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
 
     await t.test("a review records its history, and a shadow detector's confirmation stays out of assessment", async () => {
       await observeMissedTrips(pool, [gtfs("REV", { kind: "cancellation" })], T0);
-      const outcome = await actOnMissedTripCase(pool, { tripId: "REV", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: "Checked radio log", attribution: "contractor_error" }, reviewer);
+      const outcome = await actOnMissedTripCase(pool, { tripId: "REV", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: "Checked radio log" }, reviewer);
       assert.ok(outcome.ok);
       assert.deepEqual(outcome.handOff, { linked: false, reason: "shadow_detection" });
       assert.equal(outcome.classification.lifecycle, "reviewed");
@@ -198,14 +198,14 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
         "SELECT previous_validation_status, validation_status, reviewed_by FROM dbo.MissedTripReviewHistory WHERE trip_id = 'REV'",
       )).recordset;
       assert.deepEqual(history, [{ previous_validation_status: "unreviewed", validation_status: "confirmed", reviewed_by: reviewer.name }]);
-      const missing = await actOnMissedTripCase(pool, { tripId: "NOPE", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: null, attribution: "undetermined" }, reviewer);
+      const missing = await actOnMissedTripCase(pool, { tripId: "NOPE", serviceDate: DAY }, { act: "record_review", outcome: "confirmed", reasonCode: "OPERATOR", notes: null }, reviewer);
       assert.ok(!missing.ok && missing.refusal.code === "not_found");
     });
 
     await t.test("a second review supersedes with a reason, a legacy record needs a rereview, and confirming waits for evidence", async () => {
       const key = { tripId: "SUP", serviceDate: DAY };
       await observeMissedTrips(pool, [gtfs("SUP", { kind: "cancellation" })], T0);
-      const fields = { reasonCode: "OPERATOR", notes: null, attribution: "undetermined" as const };
+      const fields = { reasonCode: "OPERATOR", notes: null };
       assert.ok((await actOnMissedTripCase(pool, key, { act: "record_review", outcome: "confirmed", ...fields }, reviewer)).ok);
       const again = await actOnMissedTripCase(pool, key, { act: "record_review", outcome: "timely_service", ...fields }, reviewer);
       assert.ok(!again.ok && again.refusal.code === "already_reviewed");
@@ -396,7 +396,7 @@ test("Missed-trip cases against SQL Server", skip, async (t) => {
       assert.equal(before.counts_toward_assessment, false);
 
       const acted = await actOnMissedTripCase(pool, { tripId: "AV2", serviceDate: DAY },
-        { act: "record_review", outcome: "confirmed", reasonCode: "RAN", notes: "Checked both sources.", attribution: "contractor_error" },
+        { act: "record_review", outcome: "confirmed", reasonCode: "RAN", notes: "Checked both sources." },
         reviewer, T0);
       assert.equal(acted.ok, true);
 

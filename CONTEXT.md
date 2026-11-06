@@ -1328,8 +1328,20 @@ _Avoid_: enabling a detector, promoted detector list, retroactive promotion
 **Missed-trip review authority**:
 Operations authority to determine the service outcome represented by a
 Missed-trip case. It does not determine Service attribution or assessment
-treatment.
+treatment. Held by a transportation specialist (`compliance-review.review`).
 _Avoid_: compliance approval, contractor fault
+
+**Service attribution authority**:
+A manager's authority to decide whether a confirmed service failure was
+contractor error or MVTA-directed (`compliance-review.attribute`). It does not
+decide excusable. Until it is used, a Confirmed missed trip stays an
+Unattributed service failure and is not charged (ADR 0048).
+_Avoid_: reviewer attribution, default contractor error
+
+**Excusability authority**:
+The COO's authority alone to decide that a confirmed service failure was
+excusable, or to change a decision that it was (`compliance-review.excuse`).
+_Avoid_: manager exception, assessment decide
 
 **Retained missed-trip evidence**:
 Operational evidence cited by a missed-trip review or assessment and preserved

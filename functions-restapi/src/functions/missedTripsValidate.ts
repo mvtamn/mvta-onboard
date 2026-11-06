@@ -14,17 +14,16 @@
 // The review is an act on the case through the Missed-trip case module, which
 // records it and its history and, in the same transaction, hands a confirmed
 // trip from a promoted detector to that service month's performance
-// assessment. The reviewer's `attribution` answers
-// the second question Attachment G needs - was this the contractor's error, an
-// excusable delay, or MVTA-directed - so one sitting settles both, instead of
-// the old path where the candidate poll raised an `undetermined` row minutes
-// later and someone re-reviewed it in a different module. See
-// lib/occurrenceIntake (REVIEW_HANDOFF_EXPLANATIONS) for why the link never fails the review.
+// assessment. The review records the outcome only: the occurrence it raises
+// stays an `undetermined` candidate, which counts for nothing, until a manager
+// records Service attribution (PUT /compliance-occurrences/{id}/attribution,
+// compliance-review.attribute) - and excusable is the COO's alone
+// (compliance-review.excuse). MVTA, 2026-11-06; plan step 0.8; ADR 0048.
+// See lib/occurrenceIntake (REVIEW_HANDOFF_EXPLANATIONS) for why the link never fails the review.
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
 import { validateMissedTripValidation } from "../lib/validation";
-import type { OccurrenceAttribution } from "../lib/occurrenceIntake";
 import { actOnMissedTripCase, handOffExplanation, type CaseAct, type StoredReviewOutcome } from "../lib/missedTripCase";
 
 app.http("missedTripsValidate", {
@@ -58,7 +57,6 @@ app.http("missedTripsValidate", {
       outcome,
       reasonCode,
       notes: (body.notes as string | undefined) ?? null,
-      attribution: (body.attribution as OccurrenceAttribution | undefined) ?? "undetermined",
     };
     const act: CaseAct = typeof body.supersede_reason === "string"
       ? { act: "supersede_review", reason: body.supersede_reason, ...fields }

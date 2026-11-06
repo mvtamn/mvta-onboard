@@ -145,7 +145,9 @@ interface ReviewFields {
   outcome: StoredReviewOutcome;
   reasonCode: string;
   notes: string | null;
-  attribution: "contractor_error" | "excusable" | "mvta_directed" | "undetermined";
+  // No attribution: the review records the outcome only. Whose fault a
+  // Confirmed missed trip was is a manager's separate decision on its
+  // occurrence (plan step 0.8, ADR 0048).
 }
 
 export type CaseAct =

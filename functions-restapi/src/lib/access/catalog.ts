@@ -111,7 +111,18 @@ export const MODULES: AccessModule[] = [
     key: "compliance-review",
     label: "Compliance Review",
     section: "Compliance & Assessment",
-    actions: [{ key: "review", label: "Exclusions, missed-trip validation and departure review" }],
+    // Three authorities, because one was how a reviewer confirmed a missed
+    // trip and charged it to the contractor in the same act (plan step 0.8,
+    // MVTA 2026-11-06): a transportation specialist records the outcome, a
+    // manager records whose fault it was, and the COO alone decides whether
+    // it was excusable. `excuse` is its own action rather than
+    // performance-assessment.decide, which Compliance Manager holds, so a
+    // manager can never decide excusable (ADR 0048).
+    actions: [
+      { key: "review", label: "Record outcomes: exclusions, missed-trip validation and departure review" },
+      { key: "attribute", label: "Attribute occurrences: contractor error or MVTA-directed" },
+      { key: "excuse", label: "Decide an occurrence was excusable" },
+    ],
   },
   {
     key: "performance-assessment",

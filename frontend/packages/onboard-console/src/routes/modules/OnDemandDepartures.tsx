@@ -11,6 +11,7 @@ import {
   GroupByToggle,
   monitoringState,
   OccurrenceCell,
+  attributionAuthorities,
   type OccurrenceReviewHandlers,
   RiskStat,
   serviceDayLabel,
@@ -261,24 +262,19 @@ export function OnDemandDepartures() {
   const daily = useMemo(() => (departures && today ? dailyFlagged(departures, today, days) : []), [departures, today, days]);
   const columns = columnsFor(groupBy, visible.some((d) => Boolean(d.duty_identifier)));
 
-  // Same PATCH the Performance Assessment module's occurrence queue makes, so
+  // Same attribution write the Performance Assessment occurrence log makes, so
   // a duty settled here and one settled there are indistinguishable after.
   const [reviewing, setReviewing] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const review: OccurrenceReviewHandlers = {
     busy: reviewing,
-    canReview: can("compliance-review.review"),
-    onReview: (occurrenceId, attribution) => {
+    ...attributionAuthorities(can),
+    onAttribute: (occurrenceId, attribution) => {
       setReviewing(true);
       setReviewError(null);
-      void api.reviewComplianceOccurrence(
-        occurrenceId,
-        attribution === "contractor_error" ? "confirmed" : "dismissed",
-        attribution,
-        attribution === "contractor_error" ? undefined : `Attributed as ${attribution} from Garage Departures.`,
-      )
+      void api.attributeComplianceOccurrence(occurrenceId, attribution)
         .then(() => load())
-        .catch(() => setReviewError("The occurrence could not be updated."))
+        .catch((err) => setReviewError(err instanceof Error && err.message ? err.message : "The occurrence could not be updated."))
         .finally(() => setReviewing(false));
     },
   };
@@ -503,7 +499,7 @@ function DutyCell({ column, departure: d, review }: { column: string; departure:
       return <td><span className={`pill-sm ${o.pill}`}>{o.label}</span></td>;
     }
     case "assessment":
-      return <OccurrenceCell link={d} serviceDate={d.service_date} busy={review.busy} canReview={review.canReview} onReview={review.onReview} />;
+      return <OccurrenceCell link={d} serviceDate={d.service_date} {...review} />;
     default:
       return <td></td>;
   }

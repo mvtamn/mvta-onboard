@@ -15,6 +15,7 @@ import {
   parseOccurrenceSource,
   raiseCandidates,
   recordOccurrence,
+  attributeOccurrence,
   resolveOccurrence,
   setAssessedAmount,
   type IntakeOutcome,
@@ -40,7 +41,7 @@ import {
 // missed-trip case contract tests do.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_occurrence_intake_contract";
-const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn"];
+const MIGRATIONS = ["030-contractor-performance-assessment", "032b-governed-performance-assessment", "065-assessment-causality", "102-agreement-scoped-standards", "103-period-resolver-key", "104-measurement-source-kinds", "105-reference-values", "107-penalty-scaling", "108-team-and-owner-lists", "109-window-modes-and-staffing-split", "110-standard-category", "111-issuance-proof", "112a-period-rules-lock", "112b-share-binds-reviewed-items", "113-owner-principal", "114-cap-withdrawn", "167a-occurrence-attribution-decider"];
 
 const SOURCES = `
 -- Migration 134's promotion history, with the silent no-show detector out of
@@ -129,8 +130,16 @@ async function standardId(pool: sql.ConnectionPool, code: string): Promise<strin
   return (await pool.request().query<{ id: string }>(`SELECT id FROM ContractorPerformanceStandards WHERE code='${code}'`)).recordset[0].id;
 }
 
-function manual(standard: string, serviceDate: string, contractorId?: string) {
-  return { kind: "manual" as const, standardId: standard, serviceDate, quantity: 1, durationDays: null, qualifierCode: null, description: "Hand-entered", contractorId };
+function manual(standard: string, serviceDate: string, contractorId?: string, attributed = true) {
+  return { kind: "manual" as const, attributed, standardId: standard, serviceDate, quantity: 1, durationDays: null, qualifierCode: null, description: "Hand-entered", contractorId };
+}
+
+const MANAGER = { attribute: true, excuse: false };
+const COO = { attribute: false, excuse: true };
+
+async function occurrenceRow(pool: sql.ConnectionPool, id: string) {
+  return (await pool.request().query<{ review_status: string; attribution: string; attributed_by: string | null; attributed_at: Date | null; reviewed_by: string | null }>(
+    `SELECT review_status, attribution, attributed_by, attributed_at, reviewed_by FROM ComplianceOccurrences WHERE id='${id}'`)).recordset[0];
 }
 
 const params = (gates: Partial<RaiseParameters["gates"]>): RaiseParameters => ({
@@ -196,9 +205,10 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       const early = await inTx(pool, tx => recordOccurrence(tx, manual(garage, "20260410"), ACTOR));
       assert.ok(early.ok);
       await pool.request().query(`INSERT AssessmentPeriods(contractor_id,service_month,status) VALUES('${CONTRACTOR}','202604','issued')`);
-      const resolution = { reviewStatus: "dismissed" as const, attribution: "undetermined" as const, dismissReason: "no" };
+      const resolution = { reviewStatus: "dismissed" as const, dismissReason: "no" };
       assert.equal(refusalCode(await inTx(pool, tx => resolveOccurrence(tx, early.occurrence.id, resolution, ACTOR))), "period_closed");
       assert.equal(refusalCode(await inTx(pool, tx => setAssessedAmount(tx, early.occurrence.id, { amount: 1, note: "x" }, ACTOR))), "period_closed");
+      assert.equal(refusalCode(await inTx(pool, tx => attributeOccurrence(tx, early.occurrence.id, "mvta_directed", MANAGER, ACTOR))), "period_closed");
       for (const month of ["202604", "202605", "202606"]) assert.equal((await periodState(pool, month)).input_revision, 0, month);
     });
 
@@ -215,7 +225,7 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       const claim = (await pool.request().query<{ id: string }>(`DECLARE @id UNIQUEIDENTIFIER=NEWID();
         INSERT ExcusableDelayClaims(id,contractor_id,service_month,event_description,event_started_at,notice_received_at,status,created_by)
         VALUES(@id,'${CONTRACTOR}','202608','Ice storm','2026-08-15T06:00:00','2026-08-15T12:00:00','approved','${ACTOR}'); SELECT @id id`)).recordset[0].id;
-      const link = { reviewStatus: "confirmed" as const, attribution: "excusable" as const, dismissReason: null, reliefId: claim };
+      const link = { dismissReason: null, reliefId: claim };
       assert.equal(refusalCode(await inTx(pool, tx => resolveOccurrence(tx, occurrence.occurrence.id, link, ACTOR))), "relief_mismatch");
       assert.equal(refusalCode(await inTx(pool, tx => resolveOccurrence(tx, occurrence.occurrence.id, { ...link, reliefId: null }, ACTOR))), "ok");
       assert.equal(refusalCode(await inTx(pool, tx => resolveOccurrence(tx, "00000000-0000-4000-8000-000000000000", link, ACTOR))), "not_found");
@@ -345,7 +355,7 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
     });
 
     await t.test("the review hand-off restates the candidate the pass raised", async () => {
-      const review = (reviewStatus: "confirmed" | "dismissed") => ({ kind: "missed_trip_review" as const, tripId: "trip-9", serviceDate: "20260905", reviewStatus, attribution: "contractor_error" as const, note: "reviewed" });
+      const review = (reviewStatus: "confirmed" | "dismissed") => ({ kind: "missed_trip_review" as const, tripId: "trip-9", serviceDate: "20260905", confirmed: reviewStatus === "confirmed", note: "reviewed" });
       const confirmed = await inTx(pool, tx => recordOccurrence(tx, review("confirmed"), ACTOR));
       const dismissed = await inTx(pool, tx => recordOccurrence(tx, review("dismissed"), ACTOR));
       assert.ok(confirmed.ok && dismissed.ok);
@@ -357,6 +367,59 @@ test("occurrence intake against real SQL", { skip: !connectionString && "DECISIO
       await pool.request().query(`UPDATE AssessmentPeriods SET status='finalized' WHERE contractor_id='${CONTRACTOR}' AND service_month='202609'`);
       assert.equal(refusalCode(await inTx(pool, tx => recordOccurrence(tx, review("confirmed"), ACTOR))), "period_closed");
       assert.equal(refusalCode(await inTx(pool, tx => recordOccurrence(tx, { ...review("confirmed"), tripId: "missing" }, ACTOR))), "not_found");
+    });
+
+    // Plan step 0.8 (MVTA, 2026-11-06): a specialist reviews, managers decide
+    // attribution, the COO decides excusable.
+    await t.test("a confirmed review counts for nothing until a manager attributes it, and only the COO decides excusable", async () => {
+      await pool.request().query(`INSERT dbo.MonitoredMissedTrips (trip_id, service_date, route_id, scheduled_departure_at, grace_deadline_at, validation_status, detection_type, data_quality_status, detector_version)
+        VALUES ('split-1', '20260721', '460', '2026-07-21T14:00:00', '2026-07-21T14:30:00', 'confirmed', 'silent_no_show', 'source_verified', 'gtfs-silent-v4')`);
+      const reviewed = await inTx(pool, tx => recordOccurrence(tx, { kind: "missed_trip_review", tripId: "split-1", serviceDate: "20260721", confirmed: true, note: null }, "specialist@example.com"));
+      assert.ok(reviewed.ok);
+      assert.equal(reviewed.occurrence.reviewStatus, "candidate");
+      const id = reviewed.occurrence.id;
+      assert.deepEqual(await occurrenceRow(pool, id), { review_status: "candidate", attribution: "undetermined", attributed_by: null, attributed_at: null, reviewed_by: "specialist@example.com" });
+      // assess.ts scores confirmed rows only: an undetermined candidate is not one.
+      const scored = async () => (await pool.request().query<{ n: number }>(
+        `SELECT COUNT(*) n FROM ComplianceOccurrences WHERE id='${id}' AND review_status='confirmed' AND attribution='contractor_error'`)).recordset[0].n;
+      assert.equal(await scored(), 0);
+
+      // Nobody without the authority attributes; a manager cannot decide excusable.
+      assert.equal(refusalCode(await inTx(pool, tx => attributeOccurrence(tx, id, "contractor_error", { attribute: false, excuse: false }, "specialist@example.com"))), "attribution_authority");
+      assert.equal(refusalCode(await inTx(pool, tx => attributeOccurrence(tx, id, "excusable", MANAGER, "manager@example.com"))), "attribution_authority");
+      assert.equal((await occurrenceRow(pool, id)).attribution, "undetermined");
+
+      assert.equal(refusalCode(await inTx(pool, tx => attributeOccurrence(tx, id, "contractor_error", MANAGER, "manager@example.com"))), "ok");
+      const charged = await occurrenceRow(pool, id);
+      assert.deepEqual([charged.review_status, charged.attribution, charged.attributed_by, charged.reviewed_by],
+        ["confirmed", "contractor_error", "manager@example.com", "specialist@example.com"]);
+      assert.ok(charged.attributed_at);
+      assert.equal(await scored(), 1);
+
+      // A reviewer restating the confirmation leaves the manager's decision where it stands.
+      assert.ok((await inTx(pool, tx => recordOccurrence(tx, { kind: "missed_trip_review", tripId: "split-1", serviceDate: "20260721", confirmed: true, note: "rechecked" }, "specialist@example.com"))).ok);
+      assert.deepEqual(await occurrenceRow(pool, id).then(r => [r.attribution, r.attributed_by]), ["contractor_error", "manager@example.com"]);
+
+      // The COO decides it was excusable; undoing that is the COO's too.
+      assert.equal(refusalCode(await inTx(pool, tx => attributeOccurrence(tx, id, "excusable", COO, "coo@example.com"))), "ok");
+      assert.deepEqual(await occurrenceRow(pool, id).then(r => [r.review_status, r.attribution, r.attributed_by]), ["dismissed", "excusable", "coo@example.com"]);
+      assert.equal(refusalCode(await inTx(pool, tx => attributeOccurrence(tx, id, "contractor_error", MANAGER, "manager@example.com"))), "attribution_authority");
+
+      // A review that it did not miss clears the attribution and who decided it.
+      assert.ok((await inTx(pool, tx => recordOccurrence(tx, { kind: "missed_trip_review", tripId: "split-1", serviceDate: "20260721", confirmed: false, note: "It ran." }, "specialist@example.com"))).ok);
+      assert.deepEqual(await occurrenceRow(pool, id).then(r => [r.review_status, r.attribution, r.attributed_by]), ["dismissed", "undetermined", null]);
+      assert.equal(refusalCode(await inTx(pool, tx => attributeOccurrence(tx, id, "contractor_error", MANAGER, "manager@example.com"))), "not_attributable");
+    });
+
+    await t.test("a hand-entered occurrence is charged only by someone who may attribute", async () => {
+      const byManager = await inTx(pool, tx => recordOccurrence(tx, manual(garage, "20260722", undefined, true), "manager@example.com"));
+      const bySpecialist = await inTx(pool, tx => recordOccurrence(tx, manual(garage, "20260723", undefined, false), "specialist@example.com"));
+      assert.ok(byManager.ok && bySpecialist.ok);
+      assert.deepEqual(await occurrenceRow(pool, byManager.occurrence.id).then(r => [r.review_status, r.attribution, r.attributed_by]), ["confirmed", "contractor_error", "manager@example.com"]);
+      assert.deepEqual(await occurrenceRow(pool, bySpecialist.occurrence.id).then(r => [r.review_status, r.attribution, r.attributed_by]), ["candidate", "undetermined", null]);
+      // A reviewer dismissing one clears its attribution with it.
+      assert.equal(refusalCode(await inTx(pool, tx => resolveOccurrence(tx, byManager.occurrence.id, { reviewStatus: "dismissed", dismissReason: "Entered twice" }, "specialist@example.com"))), "ok");
+      assert.deepEqual(await occurrenceRow(pool, byManager.occurrence.id).then(r => [r.review_status, r.attribution, r.attributed_by]), ["dismissed", "undetermined", null]);
     });
 
     await t.test("a figure outside the contract's band is refused", async () => {
