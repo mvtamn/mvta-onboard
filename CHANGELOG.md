@@ -5,6 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.70] - 2026-11-06
+
+Step 0.5 of the missed-trips production plan: the evidence a reviewer decided on is kept with the review (CONTEXT.md, *Retained missed-trip evidence*).
+
+- **A review keeps a snapshot.** `actOnMissedTripCase` reads the case's start evidence (`caseEvidence.ts`: Dispatch Log reading, vehicle, block, origin stop, OTP Daily at the origin hour) before its transaction. It then writes the evidence into `evidence_json.review_evidence` in the same transaction as the review. Each snapshot is keyed to its `MissedTripReviewHistory.review_id` and records who reviewed, the outcome and when the evidence was read. A superseding review appends its own snapshot, and other `evidence_json` keys (`avail`, `avail_otp_origin`) are untouched. The write is self-contained in `lib/missedTripCase/reviewEvidence.ts`.
+- **Reads use it.** `GET /missed-trips` returns a reviewed case's latest snapshot as `gtfs_evidence`, so it survives the Dispatch Log pruning and the 90-day OTP Daily purge, plus a new `review_evidence` summary. Only the rest of the page is read live.
+- **A failed read is said, not hidden** (item 8 of `docs/reviews/evidence-and-detours-review.md`). If the evidence can't be read at review, the review still records, and the snapshot carries `read_failed`. The console's Start evidence section says so, and so does the case header. A page whose live read failed now shows the section with "could not be read just now" instead of dropping it.
+- **A nightly pass can't overwrite a snapshot.** A run decision that replaces `evidence_json` now expects the `evidence_json` it was decided from (`decide.ts`, `store.ts`), so a review landing between the pass's read and its write is never lost.
+- Tests: `reviewEvidence.test.ts`, a `decide.test.ts` case, console `missedTripReview.test.ts` and `missedTripCaseHeader.test.ts`. A new `reviewEvidence.db.contract.test.ts` is in CI's contract job. It covers the snapshot keyed to its history row, the case still showing evidence after its source rows are deleted, a supersede appending, a failed read recorded, and the stale pass refused.
+
+No migration. Reviews recorded before this release have no snapshot and still read live. **Restarts the REST app on merge.**
+
 ## [1.7.69] - 2026-11-06
 
 ### Added

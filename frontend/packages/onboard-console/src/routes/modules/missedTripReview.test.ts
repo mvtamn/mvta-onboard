@@ -3,7 +3,7 @@ import type { GtfsCaseEvidence, MissedTripsMonthlySummaryRow } from "@mvta/share
 import {
   AGING_HOURS, OVERDUE_HOURS, agingBadge, availTripRef, assessmentOutcome, buildReviewRequest, confirmBlockedReason,
   dataQualityLabel, detectionTypeLabel, formatServiceMonth, inView, lifecycleLabel, outcomeLabel,
-  conflictNotice, pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, startEvidenceFacts, tripCode,
+  conflictNotice, pivotMonthlySummary, reviewMode, routeLabel, sourceLabel, startEvidenceFacts, startEvidenceSource, tripCode,
 } from "./missedTripReview.js";
 
 const base = { tripId: "T1", serviceDate: "20260917", lifecycle: "ready_for_review" as const, validationStatus: "unreviewed" as const, heldReason: null };
@@ -415,5 +415,34 @@ describe("missed-trip start evidence", () => {
   it("no Avail row says so, and an older API that sends nothing shows no row", () => {
     expect(facts({ ...evidence, avail_otp: null })["Avail on-time data"].value).toBe("Nothing recorded for this stop and hour");
     expect(facts(evidence)["Avail on-time data"]).toBeUndefined();
+  });
+});
+
+describe("where the start evidence came from", () => {
+  const time = (iso: string | null) => (iso ? iso.slice(11, 16) : "—");
+  const evidence = { departure: { reading: "not_recorded", at: null }, started_at: null, started_late_minutes: null, started_inside_grace: null, vehicle: { reported_at: null, underway_at: null, vehicle_id: null }, block: null, origin_stop: null } as GtfsCaseEvidence;
+  const kept = { read_at: "2026-10-17T13:05:00Z", reviewed_by: "occ@example.com", outcome: "confirmed", read_failed: null };
+
+  it("a reviewed case says its evidence is the copy kept at review", () => {
+    const source = startEvidenceSource({ sourceSystem: "gtfs", gtfsEvidence: evidence, reviewEvidence: kept }, time);
+    expect(source).toEqual({ text: "As occ@example.com saw it at review, 13:05. Kept with the decision, so it stays after the feeds are purged.", tone: null });
+  });
+
+  it("a review whose read failed says so, whether or not there is a live read to show", () => {
+    const failed = { ...kept, read_failed: "The evidence read failed: timeout" };
+    expect(startEvidenceSource({ sourceSystem: "gtfs", gtfsEvidence: null, reviewEvidence: failed }, time))
+      .toEqual({ text: "The start evidence could not be read when occ@example.com reviewed this at 13:05, so none was kept.", tone: "warn" });
+    expect(startEvidenceSource({ sourceSystem: "gtfs", gtfsEvidence: evidence, reviewEvidence: failed }, time)?.text)
+      .toMatch(/What follows is read now/);
+  });
+
+  it("a page whose evidence read failed says so instead of showing nothing", () => {
+    expect(startEvidenceSource({ sourceSystem: "gtfs", gtfsEvidence: null, reviewEvidence: null }, time, { evidenceUnavailable: true }))
+      .toEqual({ text: "The start evidence could not be read just now. Reload before deciding.", tone: "warn" });
+  });
+
+  it("an unreviewed case read live, and a Spare case, need no note", () => {
+    expect(startEvidenceSource({ sourceSystem: "gtfs", gtfsEvidence: evidence, reviewEvidence: null }, time)).toBe(null);
+    expect(startEvidenceSource({ sourceSystem: "spare", gtfsEvidence: null, reviewEvidence: null }, time, { evidenceUnavailable: true })).toBe(null);
   });
 });

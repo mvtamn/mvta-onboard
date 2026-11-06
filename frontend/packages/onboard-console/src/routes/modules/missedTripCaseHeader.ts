@@ -28,7 +28,7 @@ type Time = (iso: string | null) => string;
 type HeaderAlert = Pick<MissedTripAlert,
   | "sourceSystem" | "detectionType" | "evidenceFinding" | "dataQualityStatus" | "detectorVersion"
   | "scheduledDepartureAt" | "graceDeadlineAt" | "firstSeenWatchingAt" | "detectedLateArrivalAt" | "tripId"
-  | "startDelaySeconds" | "arrivalDelaySeconds" | "gtfsEvidence" | "spareTimes" | "detectorPromoted">;
+  | "startDelaySeconds" | "arrivalDelaySeconds" | "gtfsEvidence" | "reviewEvidence" | "spareTimes" | "detectorPromoted">;
 
 function minutesBetween(from: string | null, to: string | null): number | null {
   if (!from || !to) return null;
@@ -110,6 +110,7 @@ function gtfsSeen(alert: HeaderAlert, time: Time, evidenceUnavailable: boolean):
   const evidence = alert.gtfsEvidence;
   if (!evidence) {
     if (evidenceUnavailable) return ["The start evidence could not be read just now. Reload before deciding."];
+    if (alert.reviewEvidence?.read_failed) return ["The start evidence could not be read when this was reviewed, so none was kept."];
     return [alert.detectedLateArrivalAt ? `First seen past the first stop ${time(alert.detectedLateArrivalAt)}` : "Not seen past the first stop."];
   }
   const lines: string[] = [];

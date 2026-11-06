@@ -452,6 +452,36 @@ function dispatchDepartureLabel(departure: GtfsCaseEvidence["departure"], time: 
   }
 }
 
+/**
+ * Where the Start evidence on screen came from, said above it - or why there is
+ * none. A reviewed case shows the readings kept at its review, which outlive
+ * their sources; a read that failed is said to have failed, never shown as
+ * "Not recorded" (review item 8, docs/reviews/evidence-and-detours-review.md).
+ * Null for an unreviewed case read live without trouble, and for Spare.
+ */
+export function startEvidenceSource(
+  alert: Pick<MissedTripAlert, "sourceSystem" | "gtfsEvidence" | "reviewEvidence">,
+  time: (iso: string | null) => string,
+  options: { evidenceUnavailable?: boolean } = {},
+): { text: string; tone: "warn" | null } | null {
+  if (alert.sourceSystem === "spare") return null;
+  const kept = alert.reviewEvidence ?? null;
+  const live = alert.gtfsEvidence ?? null;
+  if (kept && !kept.read_failed && live) {
+    return { text: `As ${kept.reviewed_by} saw it at review, ${time(kept.read_at)}. Kept with the decision, so it stays after the feeds are purged.`, tone: null };
+  }
+  if (kept?.read_failed) {
+    const when = `${kept.reviewed_by} reviewed this at ${time(kept.read_at)}`;
+    return live
+      ? { text: `The start evidence could not be read when ${when}, so none was kept. What follows is read now, and the feeds may no longer hold all of it.`, tone: "warn" }
+      : { text: `The start evidence could not be read when ${when}, so none was kept.`, tone: "warn" };
+  }
+  if (!live && options.evidenceUnavailable) {
+    return { text: "The start evidence could not be read just now. Reload before deciding.", tone: "warn" };
+  }
+  return null;
+}
+
 export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: string | null) => string, scheduledAt: string | null = null): EvidenceFact[] {
   const facts: EvidenceFact[] = [];
 

@@ -8,7 +8,7 @@ import {
   REVIEW_DECISIONS, agingBadge, assessmentOutcome, attributionHelp, buildReviewRequest, confirmBlockedReason, conflictNotice,
   formatServiceMonth, heldReasonLabel, inView,
   lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
-  availTripRef, routeLabel, sourceLabel, startEvidenceFacts, tripCode,
+  availTripRef, routeLabel, sourceLabel, startEvidenceFacts, startEvidenceSource, tripCode,
 } from "./missedTripReview.js";
 import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
@@ -114,6 +114,7 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     evidenceConflict: Boolean(trip.evidence_conflict),
     evidenceConflictReason: trip.evidence_conflict_reason ?? null,
     gtfsEvidence: trip.gtfs_evidence ?? null,
+    reviewEvidence: trip.review_evidence ?? null,
     spareTimes: trip.spare_times ?? null,
     detectorPromoted: trip.detector_promoted,
   };
@@ -897,6 +898,7 @@ function MissedTripDetail({
   const outcome = assessmentOutcome(alert);
   const conflict = conflictNotice(alert);
   const header = caseHeader(alert, timeLabel, { evidenceUnavailable });
+  const evidenceSource = startEvidenceSource(alert, timeLabel, { evidenceUnavailable });
 
   return (
     <aside className="risk-detail missed-trip-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
@@ -956,20 +958,25 @@ function MissedTripDetail({
         </dl>
       </details>
 
-      {alert.sourceSystem !== "spare" && alert.gtfsEvidence ? (
+      {alert.sourceSystem !== "spare" && (alert.gtfsEvidence || evidenceSource) ? (
         <div className="risk-detail-section">
           <h4>Start evidence</h4>
-          <dl className="missed-trip-evidence">
-            {startEvidenceFacts(alert.gtfsEvidence, timeLabel, alert.scheduledDepartureAt).map((fact) => (
-              <div key={fact.label} className={fact.tone ? `is-${fact.tone}` : undefined}>
-                <dt>{fact.label}</dt>
-                <dd>
-                  {fact.value}
-                  {fact.note ? <small>{fact.note}</small> : null}
-                </dd>
-              </div>
-            ))}
-          </dl>
+          {evidenceSource ? (
+            <p className={evidenceSource.tone === "warn" ? "risk-unknown is-warn" : "risk-unknown"}>{evidenceSource.text}</p>
+          ) : null}
+          {alert.gtfsEvidence ? (
+            <dl className="missed-trip-evidence">
+              {startEvidenceFacts(alert.gtfsEvidence, timeLabel, alert.scheduledDepartureAt).map((fact) => (
+                <div key={fact.label} className={fact.tone ? `is-${fact.tone}` : undefined}>
+                  <dt>{fact.label}</dt>
+                  <dd>
+                    {fact.value}
+                    {fact.note ? <small>{fact.note}</small> : null}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
         </div>
       ) : null}
 

@@ -20,6 +20,7 @@ import { sql } from "../db";
 import { occurrenceSourceRefSql } from "../occurrenceIntake/sources";
 import { missedTripCaseSql } from "./classify";
 import { readCaseEvidence, type GtfsCaseEvidence } from "./caseEvidence";
+import { latestReviewEvidence } from "./reviewEvidence";
 import { detectorPromotionWindows, promotionWindowsSql } from "./promotion";
 import type { MissedTripEvidenceFinding, MissedTripLifecycle, MissedTripReviewOutcome } from "./types";
 
@@ -102,7 +103,13 @@ export interface CaseListRow {
   direction_label: string | null;
   // What a reviewer has to go on for a GTFS case (caseEvidence.ts). Null on a
   // Spare case, and where the evidence tables are missing or could not be read.
+  // On a reviewed case it is the copy kept at the latest review, when there is
+  // one (review_evidence says so), not a live read.
   gtfs_evidence: GtfsCaseEvidence | null;
+  // The latest review's evidence snapshot (reviewEvidence.ts): when it was
+  // read, by whose review, and why it is missing when the read failed. Null on
+  // an unreviewed case and on a review recorded before 1.7.70.
+  review_evidence: ReviewEvidenceSummary | null;
   // The times a Spare case is decided on: what the rider was promised at
   // booking, what Spare last scheduled, and when the vehicle arrived. Null on
   // a GTFS case.
@@ -178,6 +185,14 @@ export async function caseTablesReady(pool: sql.ConnectionPool): Promise<CaseTab
   return { cases: row?.cases === 1, occurrences: row?.occurrences === 1, spareSource: row?.spare_source === 1 };
 }
 
+export interface ReviewEvidenceSummary {
+  read_at: string;
+  reviewed_by: string;
+  outcome: string;
+  /** Why the review has no evidence: the read failed when it was recorded. */
+  read_failed: string | null;
+}
+
 export type CaseReadResult =
   | { ready: false }
   | { ready: true; cases: CaseListRow[]; totals: CaseTotals; evidenceError?: unknown };
@@ -234,7 +249,7 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
   const listReq = pool.request();
   listReq.input("offset", sql.Int, query.offset);
   listReq.input("limit", sql.Int, query.limit);
-  const result = await listReq.query<Omit<CaseListRow, "gtfs_evidence" | "spare_times"> & SpareTimeColumns>(`
+  const result = await listReq.query<Omit<CaseListRow, "gtfs_evidence" | "review_evidence" | "spare_times"> & SpareTimeColumns & { review_evidence_json: string | null }>(`
     SELECT mmt.trip_id, mmt.service_date, mmt.route_id, mmt.scheduled_departure_at,
            mmt.grace_deadline_at, mmt.status, mmt.detection_type, mmt.detected_late_arrival_at,
            mmt.suggested_alert_id, mmt.first_seen_watching_at, mmt.last_checked_at,
@@ -247,7 +262,8 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
            sme.condition_late_start, sme.condition_superseded, sme.condition_late_arrival,
            sme.start_delay_seconds, sme.arrival_delay_seconds,
            ${spareColumns},
-           td.direction_label${occurrenceColumns}
+           td.direction_label,
+           CASE WHEN ISJSON(mmt.evidence_json) = 1 THEN JSON_QUERY(mmt.evidence_json, '$.review_evidence') END AS review_evidence_json${occurrenceColumns}
     FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
     LEFT JOIN GtfsTripDirections td ON td.trip_id = mmt.trip_id
     LEFT JOIN SpareMissedTripEvaluations sme
@@ -283,33 +299,47 @@ export async function readMissedTripCases(pool: sql.ConnectionPool, query: CaseQ
     FROM MonitoredMissedTrips mmt ${missedTripCaseSql("mmt")}
   `);
 
-  // The evidence is a second read over just this page. Failing it leaves the
-  // queue usable - the cases still list, without their evidence - and the
+  // A reviewed case shows the evidence kept at its latest review: its sources
+  // may be gone, and it is what the decision was made on. The rest of the page
+  // is read live, in a second read over just those cases. Failing it leaves
+  // the queue usable - the cases still list, without their evidence - and the
   // handler says why.
+  const kept = new Map(result.recordset.map((row) => [
+    `${row.trip_id}|${row.service_date}`,
+    row.validation_status !== "unreviewed" ? latestReviewEvidence(row.review_evidence_json) : null,
+  ]));
   let evidence = new Map<string, GtfsCaseEvidence>();
   let evidenceError: unknown;
   try {
-    evidence = await readCaseEvidence(pool, result.recordset.filter((row) => row.source_system !== "spare"));
+    evidence = await readCaseEvidence(pool, result.recordset.filter((row) =>
+      row.source_system !== "spare" && !kept.get(`${row.trip_id}|${row.service_date}`)?.evidence));
   } catch (err) {
     evidenceError = err;
   }
   const cases: CaseListRow[] = result.recordset.map(({
     spare_original_pickup_at, spare_scheduled_pickup_at, spare_pickup_arrived_at,
-    spare_original_dropoff_at, spare_scheduled_dropoff_at, spare_dropoff_arrived_at, ...row
-  }) => ({
-    ...row,
-    gtfs_evidence: evidence.get(`${row.trip_id}|${row.service_date}`) ?? null,
-    spare_times: row.source_system === "spare"
-      ? {
-        original_pickup_at: spare_original_pickup_at,
-        scheduled_pickup_at: spare_scheduled_pickup_at,
-        pickup_arrived_at: spare_pickup_arrived_at,
-        original_dropoff_at: spare_original_dropoff_at,
-        scheduled_dropoff_at: spare_scheduled_dropoff_at,
-        dropoff_arrived_at: spare_dropoff_arrived_at,
-      }
-      : null,
-  }));
+    spare_original_dropoff_at, spare_scheduled_dropoff_at, spare_dropoff_arrived_at, review_evidence_json: _kept, ...row
+  }) => {
+    const key = `${row.trip_id}|${row.service_date}`;
+    const snapshot = kept.get(key) ?? null;
+    return {
+      ...row,
+      gtfs_evidence: snapshot?.evidence ?? evidence.get(key) ?? null,
+      review_evidence: snapshot
+        ? { read_at: snapshot.read_at, reviewed_by: snapshot.reviewed_by, outcome: snapshot.outcome, read_failed: snapshot.read_failed }
+        : null,
+      spare_times: row.source_system === "spare"
+        ? {
+          original_pickup_at: spare_original_pickup_at,
+          scheduled_pickup_at: spare_scheduled_pickup_at,
+          pickup_arrived_at: spare_pickup_arrived_at,
+          original_dropoff_at: spare_original_dropoff_at,
+          scheduled_dropoff_at: spare_scheduled_dropoff_at,
+          dropoff_arrived_at: spare_dropoff_arrived_at,
+        }
+        : null,
+    };
+  });
 
   return { ready: true, cases, totals: totals.recordset[0], ...(evidenceError === undefined ? {} : { evidenceError }) };
 }

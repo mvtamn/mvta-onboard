@@ -1333,7 +1333,9 @@ _Avoid_: compliance approval, contractor fault
 
 **Retained missed-trip evidence**:
 Operational evidence cited by a missed-trip review or assessment and preserved
-under contractual retention even after its source telemetry expires.
+under contractual retention even after its source telemetry expires. Each
+review of a fixed-route case keeps the start evidence the reviewer saw with the
+decision. A review recorded when that evidence could not be read says so.
 _Avoid_: live telemetry, temporary feed data
 
 **Missed-trip case lifecycle**:

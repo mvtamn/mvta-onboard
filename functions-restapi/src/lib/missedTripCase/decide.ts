@@ -54,8 +54,10 @@ export type RunDecision =
       kind: "update";
       key: { trip_id: string; service_date: string };
       // The status and review the write expects to find; a row changed since
-      // it was read is left for the next run.
-      expect: { status: CaseStatus; validation_status: string };
+      // it was read is left for the next run. evidence_json is expected too,
+      // when the write replaces it, so a pass never drops a snapshot a review
+      // wrote after the pass read the case (reviewEvidence.ts).
+      expect: { status: CaseStatus; validation_status: string; evidence_json?: string | null };
       set: Partial<CaseState>;
       outcome: Exclude<DecisionOutcome, "created">;
     };
@@ -300,7 +302,14 @@ export function decideRun(snapshot: CaseState | null, observations: RunObservati
       : decided.status === "escalated" && snapshot.status !== "escalated" ? "confirmed"
         : decided.status === "watching" && snapshot.status !== "watching" ? "held"
           : "evidence_recorded";
-  return { kind: "update", key: { trip_id: snapshot.trip_id, service_date: snapshot.service_date }, expect: { status: snapshot.status, validation_status: snapshot.validation_status }, set, outcome };
+  return { kind: "update", key: { trip_id: snapshot.trip_id, service_date: snapshot.service_date }, expect: {
+      status: snapshot.status,
+      validation_status: snapshot.validation_status,
+      ...("evidence_json" in set ? { evidence_json: snapshot.evidence_json } : {}),
+    },
+    set,
+    outcome,
+  };
 }
 
 export type ReviewKind = "review" | "supersede" | "legacy_rereview";

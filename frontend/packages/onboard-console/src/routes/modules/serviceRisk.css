@@ -615,6 +615,12 @@
   color: var(--pill-warning-fg);
 }
 
+/* Start evidence that could not be read: said in amber, not left to look
+   like "Not recorded". */
+.risk-unknown.is-warn {
+  color: var(--pill-warning-fg);
+}
+
 /* A note about the data rather than about the contractor: the accent, so it
    does not share amber with "No start observed". */
 .missed-trip-evidence .is-info dd {
