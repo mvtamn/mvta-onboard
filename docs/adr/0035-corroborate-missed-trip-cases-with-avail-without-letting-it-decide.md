@@ -1,6 +1,8 @@
 # Corroborate Missed-trip cases with Avail without letting it decide
 
-**Status:** accepted
+**Status:** accepted. The matching rule (second paragraph) is amended by
+[ADR-0047](0047-place-an-avail-record-by-the-trip-that-left-that-minute.md): Avail's start time is
+the actual departure, so a record is placed by the trip that left that minute.
 
 Avail's Missed Trips By Route/Stop/Day report reaches Missed-trip cases as a
 third source adapter, but it only speaks about cases that already exist. It

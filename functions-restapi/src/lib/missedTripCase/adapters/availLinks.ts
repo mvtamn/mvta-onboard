@@ -44,6 +44,14 @@ export interface AvailEvidenceLink {
  * cases it could be, and whether Avail gave a start time at all, does.
  */
 export function matchReason(row: AvailMissedTripRow, match: AvailMatch): string {
+  // Resolved against the day's trips (ADR-0047): say which trip Avail's
+  // departure named, because that is what a reviewer checks.
+  if (match.trip_id !== undefined && row.departure_trip_start_time) {
+    if (match.confidence === "exact") return `Avail's departure time names one trip, ${match.trip_id}, and it has a missed-trip case.`;
+    if (match.trip_id) return `Avail's departure time names trip ${match.trip_id}, which has no missed-trip case.`;
+    if (match.confidence === "probable") return `${match.candidates} trips on that route left in the minute Avail reported.`;
+    return `${match.candidates} trip(s) on that route and service date, none leaving in the minute Avail reported.`;
+  }
   if (match.confidence === "exact") {
     return "Route, service date and start time name exactly one case.";
   }

@@ -5,11 +5,21 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.61] - 2026-11-06
+## [1.7.65] - 2026-11-06
 
 - **Integrations & Data Health showed every applied migration as Empty.** A schema row for a migration that is applied reports success and counts no records, and the connection table read "no records" as Empty (amber). Prod's export of 2026-11-05 carried fourteen amber "Database schema · migration N" rows while every one of those migrations was in fact applied. A check that counts nothing now reads **Passed**; a feed that answered with zero records still reads Empty, and a missing migration still reads Failed with the file to run.
 - **The Avail OTP Daily check asked for a day Avail had not published.** `feedChecks` probed the UTC calendar's yesterday, which all Central evening is the service day still running, so the row read Empty (0) while `otpDailyFeedPoll` was upserting about 2,000 rows a day. The probe now sends the poll's own request, the last three completed Central service days (`otpDailyWindow`), the same fix the poll took when it moved to 12:00 UTC.
 - Found in the prod data-integration review of 2026-11-06. Neither change touches what is ingested; both only change what the page says.
+
+## [1.7.62] - 2026-11-06
+
+- **Avail's start time is the departure, not the schedule.** `DepartureTripStartTime` on the Missed Trips By Route/Stop/Day feed is the minute the bus actually left, truncated: on dev, 90% of the records 1-5 minutes off a scheduled start fell within a minute of the Dispatch Log's actual start. ADR-0035 matched it to a case's scheduled start, so a late bus's record matched nothing, and a record could go to a case merely scheduled that minute while another trip was the one that left.
+- **Placed in two steps** (`lib/missedTripCase/adapters/avail.ts`, ADR-0047): resolve the record to the one trip on that route and service date whose departure fell in Avail's minute (its `TripStartLog` actual start when plausible, no more than 30 minutes early or 3 hours late, otherwise its scheduled start), then look for a case on that trip. One trip with a case is exact; several trips that minute is probable; no trip, or a trip with no case, is unmatched, and the link's reason names the trip. Route-days the Dispatch Log does not cover (before 2026-08-31) keep the old rule. The minute stays strict.
+- New read: `tripsInWindow` on `AvailDetectionDeps` (TripStartLog for the dates with timed records). `AvailMatch` gains `trip_id`; `matchReason` words trip-resolved outcomes.
+- Measured on dev's 95-day window: exact links on covered route-days 57 -> 69; 54 keep their trip, 1 that named the wrong trip moves. Every 2026-09-09 Dispatch Log reading on dev sits 24 hours late, which is why the plausibility bound exists.
+- Research addendum in `docs/research/avail-vs-gtfs-rt-missed-trip-detection-2026-11-04.md`: the stations where Avail records no origin departure are a trip-changeover problem at turnaround terminals, not GPS or mobile data (Burnsville Center: 2.1% of mid-block trips report a position before leaving, against 76.6% of first-of-block trips at the same stop).
+
+**Restarts the REST app on merge.** No migration.
 
 ## [1.7.57] - 2026-11-06
 

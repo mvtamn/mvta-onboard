@@ -71,3 +71,20 @@ test("every record in a run becomes a link, placed or not", () => {
   ]);
   assert.deepEqual(links.map((l) => l.match_confidence), ["exact", "unmatched"]);
 });
+
+test("a link resolved by departure names the trip Avail's time pointed at", () => {
+  const timed = row();
+  assert.match(matchReason(timed, match({ trip_id: "T9" })), /names one trip, T9, and it has a missed-trip case/);
+  assert.match(
+    matchReason(timed, match({ confidence: "unmatched", matched: null, candidates: 0, trip_id: "T9" })),
+    /names trip T9, which has no missed-trip case/,
+  );
+  assert.match(
+    matchReason(timed, match({ confidence: "probable", matched: null, candidates: 2, trip_id: null })),
+    /2 trips on that route left in the minute/,
+  );
+  assert.match(
+    matchReason(timed, match({ confidence: "unmatched", matched: null, candidates: 40, trip_id: null })),
+    /40 trip\(s\) on that route and service date, none leaving/,
+  );
+});
