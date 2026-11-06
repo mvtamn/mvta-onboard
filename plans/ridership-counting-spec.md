@@ -1,0 +1,896 @@
+# Ridership Counting — Spec
+
+Date: 2026-10-30. **Not implemented.** Decisions agreed with the user in a
+grilling session on 2026-10-30, after the review recorded in
+`plans/ridership-counting-gaps.md`. Gap IDs (C1, P4, D2 …) refer to that file.
+
+Replaces the Access ridership database (`Ridership Data Entry_be.mdb` /
+`Ridership Data Manager.mdb`) for fixed-route ridership, in time for the new
+operations contractor (Keolis) starting 2027-01-01. The draft procedure for the
+contractor is `plans/ridership-counting-procedure-draft.md`.
+
+## The obligation this serves
+
+The operations contract requires Operators to count passengers on all trips in
+accordance with MVTA's procedures and standards, accurately and in a timely
+manner, and makes the Contractor responsible for training, supervising and
+monitoring so that MVTA's ridership procedures are followed. This spec gives
+each of those words a measurable rule:
+
+| Contract word | Rule here |
+|---|---|
+| all trips | Completeness (§5) |
+| timely | Entered by end of the next calendar day (§5) |
+| accurately | Outlier flags answered by month close (§6) |
+| MVTA's procedures | The procedure draft, plus OPR-038 amended (§2) |
+
+## 1. Scope
+
+- **v1: fixed route.**
+- **v2: MVTA Connect** from the Spare Ridership Export, bucketed by Central
+  service date (D4, D5). Not designed here; the export returned HTTP 503 on the
+  last probe (`plans/onboard-spare-integration-spec.md` §8).
+- **Later: special events.** Event Plans do not schedule trips, so there is no
+  Dispatch Log row to count against (C7).
+
+## 2. The count
+
+- **Unit:** one boardings total per trip. OPR-038's "boardings and alightings
+  at each timepoint" is amended to match (C1). Per-stop detail is APC's job,
+  if and where APC exists (C8 stays open with Operations).
+- **Count Sheet:** one per **block per service date**. At MVTA a block is a
+  run (one operator's assignment), so this is also one operator's sheet.
+- **Trips on a sheet:** the block's revenue trips from the Dispatch Log
+  (`TripStartLog`, one row per revenue trip per service date, Block in `001`
+  form). This replaces the Optibus → Excel → `Riders_FINAL` roster build
+  entirely (P1, P3, D1).
+
+## 3. Count Sheet printing
+
+- OnBoard produces the **next service date's** sheets overnight, after
+  `tripStartLogMaterialize` has written the day: one page per block, listing
+  each trip's route, direction, scheduled start/end and trip ID (plus a QR
+  code identifying the block and date) (D2).
+- Operators are assigned in real time just before pull-out, so the **operator
+  and bus are left blank** for the operator to write in. When operators are
+  pre-assigned in future, the name prints on the sheet.
+- Sheets are printed by the contractor at each garage from OnBoard.
+- **Decided 2026-10-30** (`plans/ridership-build-plan.md`):
+  - The QR code is printed from Dec 1.
+  - Each trip row takes a total or **DNO** (did not operate).
+  - Three blank rows take unscheduled trips.
+- **The sheet's design (agreed 2026-10-31,** prototype commit `86ca3da3` on
+  `claude/ridership-ui-0aa433`). It is built to be filled in with a pen on a
+  moving bus, and read twice: by OCC from Dec 1, and by the scan reader with
+  the kiosk pilot (§15).
+  - **Page:** US Letter, one block per page. A block with more than 14 trips
+    continues on page 2, whose QR link carries `?p=2`. The unscheduled rows
+    and the footer go on the last page only.
+  - **Header:** MVTA, "Passenger Count Sheet", the garage, a large boxed
+    **BLOCK** number, the service date and weekday, and the QR link marked
+    "Scan to enter counts on the kiosk or web · Sign-in required".
+  - **Operator section:** a line for the operator's name, one-digit boxes for
+    the operator ID (5) and bus (4), and an initials box.
+  - **"How to count" strip:** one stroke per boarding; write the total one
+    digit per box; tick DNO if the trip didn't run; write 0 for zero riders.
+  - **Trip rows:** route and direction in large type, scheduled start–end,
+    trip ID, a wide tally area, **three one-digit boxes for the total**, and a
+    **DNO tick box**. This replaces writing "Did not operate" or "DNO" in
+    the total, because a tick is quicker on a bus and far easier for the
+    scan reader.
+  - **Three unscheduled-trip rows:** boxes for the route and the start time
+    (HH:MM), N S E W to circle, Tripper / Extra / OCC to tick, a tally area
+    and a total.
+  - **Footer:** ☐ Reconstructed; "Hand in at pull-in to operations
+    management. Do not fold through the code. Entering on the kiosk does not
+    replace handing this in."; page x of y, the link, and the print time.
+  - **Four solid corner marks**, so a scan can be straightened and matched to
+    its page.
+  - **Always black on white**, whatever the screen theme.
+
+## 4. Entry
+
+- **v1: contractor OCC staff** key sheets in OnBoard, replacing the Access form.
+  **Later: operators** enter their own counts (e.g. by scanning the sheet's QR
+  code at check-in), once v1 is proven.
+- **Entry screen** mirrors the sheet: pick service date + block → the block's
+  trips in order → a total per trip.
+- **Operator name, operator ID and bus** are pre-filled from Avail's pull-out
+  report (`FixedRouteDepartures`, keyed service date + block + run, holding
+  who actually logged in and on which vehicle). OCC overrides when the sheet
+  differs (relief, swap, bus change); the override is recorded and the
+  handwritten value wins.
+- **Unscheduled trips** (extra service, trippers, OCC-added trips): OCC adds the
+  trip to the block with route, direction, start time and a reason, and enters
+  its count. Included in totals, marked as added.
+- **Lost or damaged sheets:** counts reconstructed per OPR-038 are entered
+  marked **reconstructed**. Not an occurrence if on time; the reconstructed rate
+  is reported by garage and operator.
+- **Each trip** is keyed as a number, **Not counted** or **Did not operate**
+  (decided 2026-10-30). Not counted is a visible gap, never a 0. Did not
+  operate excuses the trip, pending the Dispatch Log and missed-trip cases.
+- **Relief:** one operator per sheet. The first run is pre-filled, and other
+  runs on the block are shown as a hint for an override.
+- Every entry and change records who and when (P6).
+
+**Layout (decided 2026-10-30, from the prototype's three options).** OCC lands
+on a **worklist** of sheets still to enter: completeness by garage at the top,
+then one row per sheet, late first, then due today. Choosing a row opens the
+**sheet form**, laid out like the paper Count Sheet: Avail's operator, ID and bus with
+an override, the block's trips in order with the Dispatch Log status, one total
+per trip, add unscheduled trip, and Reconstructed. The form is keyboard-first:
+Enter moves down the trips, and Save goes straight to the next sheet on the
+worklist.
+
+Why: a weekday is about 144 blocks (the APC sample day), so keying speed
+matters. But each sheet also carries checks that belong to the sheet, not the
+trip (operator/bus override, reconstructed, unscheduled trips, marking it
+entered), and a single grid for the whole day (the prototype's Datasheet)
+handled those worst. The paper-shaped form is the closest to Access, so it
+needs the least retraining. The worklist puts §5's completeness and deadline
+in front of OCC instead of on a separate page.
+
+## 5. Completeness and timeliness
+
+- **A count is required** for every scheduled revenue trip, **unless** a
+  missed-trip case confirms it missed or canceled. Trips whose Dispatch Log
+  status is `unknown` still need a count.
+- **Late:** not entered by the end of the calendar day after the service date
+  (Central time).
+- **Completeness view:** trips that need a count and have none, and counts
+  entered late, by **garage** and service date, drilling to block.
+- **Garage** comes from a **block-to-garage list Planning maintains** in OnBoard
+  each service change. Blocks with no garage show as "Unassigned" so the gap is
+  visible rather than silent.
+
+## 6. Accuracy — outlier flags
+
+- A trip's count is compared with the **same trip** (route, direction,
+  scheduled start, day type) over the **previous 4 weeks**.
+- **Flag** when the count is **> 3 × the median and at least 10 above it**, or
+  is **0 when the median is ≥ 5**. All three numbers are settings, not code.
+- A flag goes to the contractor, who either **corrects** the count or
+  **confirms** it with a note. A flag is a question, not a finding.
+- Planning (ridership manager) can also raise a flag on any trip by hand.
+
+## 7. Month close
+
+1. **By the 5th** of the following month the contractor has answered every
+   flag and **marks the month complete** (who/when recorded).
+2. **By the 10th** Planning **closes** the month (who/when recorded). The
+   closed month produces the monthly totals (§9).
+3. **Reopen:** only a ridership manager, with a reason. Any change to a closed
+   month's totals is recorded with previous value, new value, who and why —
+   the same pattern as `OtpMonthlyRestatements` (ADR 0039).
+
+## 8. Compliance — occurrences
+
+- Failures feed the existing Attachment G occurrence penalty **Incident and
+  Data Reporting** (`INCIDENT_REPORTING`, $500 per incident; CAP after 3+ in
+  30 days).
+- **One occurrence per Count Sheet** (block + service date) that is any of:
+  missing, entered late, or carrying a flag still unanswered at month close.
+  A reconstructed sheet entered on time is not an occurrence.
+- At close, OnBoard proposes **candidate occurrences** with their evidence; the
+  **compliance manager confirms** each before it reaches the assessment. That
+  confirmation is the management review Attachment G requires before a
+  penalty.
+- **Paper sheets are retained** by the contractor until the month's Assessment
+  Period is final and its dispute window has passed (C6). Once scanning
+  arrives (§15), the scan held in OnBoard under MVTA's records schedule is the
+  kept copy.
+
+## 9. Day types, totals and reporting
+
+- **Day type** (Wk / Sat / Sun / SpSat) is the type of the GTFS service the trip
+  ran under, not the calendar weekday: a holiday on a Sunday schedule is Sun.
+- **Monthly totals** are the replacement for `FixedTotals`: per month, route,
+  direction, day type and service type → trips, riders, average.
+- **First:** a totals export shaped like `FixedTotals` so Planning's existing
+  workbook keeps working. **Later:** an OnBoard report page with PDF/Excel
+  export replaces the workbook (P7).
+- **History:** the full Access `FixedTotals` history is imported once, so every
+  year-over-year chart can be rebuilt. Needs an export of the whole table from
+  Access.
+
+## 10. Roles and visibility
+
+Two new app-owned roles (ADR 0032):
+
+| Role | Held by | Can |
+|---|---|---|
+| `ridership-recorder` | Contractor OCC staff | Enter and correct counts, add unscheduled trips, answer flags, mark a month complete, print sheets |
+| `ridership-manager` | MVTA Planning | Everything a recorder can, plus raise flags, maintain the block-to-garage list, close and reopen months, edit settings |
+
+**Operator names** are visible only to `ridership-recorder`,
+`ridership-manager` and the compliance roles; other viewers and their exports
+see totals without names.
+
+**Where it lives in the console (decided 2026-10-30).** Several roles use
+ridership, so it is not a tab of OCC Tools (that would make every recorder
+need `decision-matrix.view`, and Planning would not look for it there).
+
+- A **Ridership** entry in the sidebar under **Specialist Operations**, next
+  to Detours and Schedule Review, shown to anyone with `ridership.view`.
+- Inside it, tabs gated by action, so each role sees only its own:
+
+  | Tab | Who |
+  |---|---|
+  | Enter sheets (worklist opening the sheet form, §4) | recorder, manager |
+  | Print sheets | recorder, manager |
+  | Flags | recorder answers; manager also raises |
+  | Month close | recorder marks complete; manager closes and reopens |
+  | Totals & export | anyone with `ridership.view`; operator names hidden unless the role may see them |
+  | APC comparison (future, §12) | manager |
+  | APC health (future, §14) | recorder, manager; Fleet read-only |
+
+- **Planning's setup** (the block-to-garage list and the flag thresholds) is an
+  **Administration** page beside Service Configuration, listed once in
+  `adminNav.ts` and gated by a `ridership.configure` action that only
+  `ridership-manager` holds. A manager with no other admin action sees
+  Administration with just this page.
+- **Candidate occurrences** (§8) are confirmed in the existing **Compliance**
+  area, not in Ridership.
+- Creating the two roles and **assigning them to named people** (contractor
+  OCC staff, Planning) in Access & Identity is an explicit step of the Dec 1
+  delivery, not something left implied.
+
+## 11. Delivery
+
+| By | Increment |
+|---|---|
+| **2026-12-01** | Block-to-garage list; overnight Count Sheet printing; OCC entry with Avail pre-fill, unscheduled trips and reconstructed flag; completeness and lateness view; the two roles |
+| **2027-01-01** | Outlier flags and answers; month complete + close + reopen with restatements; monthly totals export; `FixedTotals` history import |
+| **Early Feb 2027** (January close) | Candidate occurrences → compliance manager confirmation → `INCIDENT_REPORTING` |
+| **v2** | Connect; OnBoard report page; operator self-entry |
+
+**Cutover:** December 2026 is keyed in **both** Access and OnBoard; Access is
+the record for December, and Planning compares December's totals across the
+two. From January 2027 OnBoard is the only record and Access is frozen.
+
+### Steps outside the code (numbered, owner in brackets)
+
+1. Seed `ridership-recorder` and `ridership-manager` in the app-owned roles
+   table and assign Planning staff to `ridership-manager`. [Engineering + an
+   access administrator]
+2. Create Entra B2B guest accounts for Keolis OCC staff (Guest Sponsorship) and
+   assign them `ridership-recorder` in OnBoard before 2026-12-01. [MVTA IT +
+   Operations]
+3. Enter the block-to-garage list for the current service change. [Planning]
+4. Export the full `FixedTotals` table from Access. [Planning]
+5. Amend OPR-038 "Ridership Counting and Count Sheet Submission" to a per-trip
+   boardings total, the next-day entry deadline and the sheet retention rule.
+   [Planning + Operations]
+6. Review and issue the contractor procedure
+   (`plans/ridership-counting-procedure-draft.md`). [Planning + Operations]
+
+## 12. Future — comparison with Avail passenger counting (APC)
+
+Added 2026-10-30 at the user's request. Not decided; the comparison screen is
+mocked in the prototype (`?prototype=ridership`, "Compare with Avail APC").
+
+**What exists today.** No passenger-count data reaches OnBoard. The Avail360
+endpoints OnBoard calls (`lib/availClient.ts`: AVL, pull-out, OTP daily and
+monthly, missed trips, detours) carry no boardings or alightings. The only
+related signal is GTFS-RT VehiclePosition `occupancy_status`, a live load band
+overwritten each poll, not a count.
+
+**What the comparison would do,** once per-trip APC boardings arrive:
+
+- Match each manual count to the APC figure for the same trip (trip ID,
+  block, service date) on buses whose counter is reporting healthy; exclude
+  trips where the counter faulted.
+- Show **agreement** (share of trips within ±N %) and the day's manual vs APC
+  totals on comparable trips.
+- Show the **APC ÷ manual ratio by bus**, and later by operator: a steady gap
+  on one bus points at the counter; a gap that follows one operator across
+  buses points at the sheets.
+
+**What it is for:**
+
+1. **Accuracy evidence.** An APC figure beside a flagged count lets the
+   contractor and Planning settle a flag on evidence rather than judgement
+   (§6).
+2. **Retiring paper (C8).** OPR-038 lets APC replace the sheet when the Garage
+   Manager confirms it is sufficient. The comparison gives "sufficient" a
+   test, e.g. a bus or route whose APC agrees within an agreed tolerance for
+   an agreed number of weeks.
+3. **NTD.** Using APC for NTD ridership requires validating it against
+   manual counts; the manual counts collected here are that sample.
+
+**The Avail360 report (data definition received 2026-10-30).** Avail has an
+APC report: *APC Ridership By Service Level, Block, Route, Trip, Timepoint*,
+boards and alights by service level, block, route, trip, timepoint and
+direction.
+
+- `GET {base}/ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1/{Property}`
+  (the definition shows the test host `avail360-test.myavail.cloud` and
+  property `ACME`; MVTA's is `MVTA` in `lib/availClient.ts`). The production
+  endpoint is coming from the user.
+- Query: `ReportStartDate`, `ReportEndDate` (both **YYYY-MM-DD**, unlike the
+  OTP and missed-trip endpoints' MM-DD-YYYY), optional comma-separated
+  `ServiceLevelFilter`, `BlockFilter`, `RouteFilter`, `TripFilter`
+  (**Farebox IDs**), `PropertyNameFilter`.
+- Auth: `Ocp-Apim-Subscription-Key` header. **MVTA's existing Avail360 key
+  works** (HTTP 200 on 2026-10-30).
+- Production URL used for the sample:
+  `https://avail360-api.myavail.cloud/ApcRidershipBySvcLvlBlockRouteTripTimepoint/v1/MVTA`.
+
+**What one day returns** (sample pulled 2026-10-30 for service date
+2026-10-28, a weekday; 3.9 MB, 15,171 rows, kept outside the repo):
+
+- Envelope `{ "errors": [], "result": { "ApcRidershipBySvcLvlBlockRouteTripTimepoint": [...] } }`,
+  the same shape as the other Avail360 reports.
+- **One row per stop per trip**, not per timepoint. Fields: `CalendarDate`,
+  `ServiceLevelDesc` ("Weekday"), `Block` (int, e.g. `1` = Block `001`),
+  `RouteID` (int) / `RouteName`, `Trip` (int), `TripName` (`542-S`),
+  `Direction` (North/South/East/West/Deadhead), `StopName`
+  (`"30513 - Yankee Doodle Rd at …"`, stop ID then a truncated name),
+  `Timepoint` (0/1 flag; 4,299 of the rows are timepoints), `Boards`, `Alights`.
+- **`Trip` is the scheduled start time as HHMM** (542 = 05:42; every value is a
+  valid time, max 2302). The Access table's TripID `143620542` for Route 436,
+  Block 001 at 05:42 S carries the same number, so the two systems already
+  share this key.
+- **No vehicle, no operator, no actual time, no counter-health field.**
+- Each trip can have **one row with `StopName` null**: 242 of 1,029 trips, 480
+  boards in total. These are boardings APC counted but could not place at a stop.
+  They belong in the trip's total.
+- **Pseudo-routes** are in the same feed: `999` Deadhead (418 legs, 371
+  boards; noise or garage boardings), `1121` MN United (33 boards, a special
+  event), `4444` MVTA Connect, `1010` Flex, `5555` Training, `6666`
+  Maintenance. These have `Trip` 0, `TripName` "(X) Undefined" and no direction.
+- **Revenue only (routes 420–499):** 606 trips, **6,263 boards**, 6,050 alights.
+  43 trips (7%) are all zeros; 2 of 144 blocks are zero throughout, which most
+  likely means no working counter on that bus.
+- One route, trip and direction appears on two blocks (460 07:50 N, blocks 23
+  and 41), which looks like a double-out or tripper. This is the "unscheduled
+  trip" case in §4, and APC sees it.
+
+**First comparison with manual counts** (one APC day against September 2026's
+average manual weekday by route, from `FixedTotals`; indicative only):
+
+- **Trip counts match exactly** on 13 of 19 routes (e.g. 420: 30 = 30). The
+  others are express routes where APC has 1–5 more trips (460: 30 vs 27,
+  465: 51 vs 46), which are likely trippers that the manual roster doesn't
+  carry.
+- **APC boardings are 16% higher overall** (6,263 vs 5,396 per weekday) and
+  higher on **every** route: from 1.05× (475) to 1.76× (499), and 1.4–1.5×
+  on the local routes 436, 440 and 497. A gap that is systematic in one
+  direction points to manual undercounting or APC over-counting, not to
+  random error. This needs a same-day comparison: one October day of Access
+  trip-level counts against this sample. **Superseded by the same-day
+  comparison below: the 16% was mostly the day, not the counters.**
+
+### Same-day comparison (2026-10-28)
+
+Added 2026-11-03. Manual counts are the 10/28 rows of the Access `Riders`
+table, read from a copy of the back end (`Ridership Data Entry_be.mdb`; OCC's
+"Recent Riders SST DATA ENTRY" reads the same table). Bus per block is from
+`FixedRouteDepartures` on dev. The working files are kept outside the repo.
+
+**The manual day was complete.** All 606 rows for 10/28 have a Riders value
+(49 are 0, none blank). Access creates each day's rows ahead of time with
+Riders blank: blanks appear only from 11/02 onwards, so blanks can't be
+mistaken for disagreement here.
+
+**Trips match one to one.** Matching on block + route + direction + start
+HHMM: **606 APC trips, 606 Access trips, 606 matched, none on only one
+side.** The 460 07:50 N trip on blocks 23 and 41 is in Access too, so the
+manual roster carries it. The extra express trips in the first comparison
+were a gap in September's `FixedTotals` trip count, not trips missing from
+the roster. MBlock = SBlock on every row.
+
+**No APC.** 43 trips have every row zero (boards and alights). These are
+treated as no APC, not 0 riders. Manual counted 83 riders on them, and 26 of
+the 43 were also 0 manually. A further 19 trips have alights but no
+boardings (manual 68 riders), which points to a counter seeing only one door.
+These are kept in the comparison as 0 boardings.
+
+**Totals.**
+
+| | Trips | Manual | APC | APC ÷ manual |
+|---|---|---|---|---|
+| All trips | 606 | 6,129 | 6,263 | 1.02 |
+| Comparable (APC not all zero) | 563 | 6,046 | 6,263 | **1.04** |
+| Local (`ServiceType` L) | 375 | 1,788 | 2,272 | 1.27 |
+| Express (MX) | 174 | 4,096 | 3,826 | 0.93 |
+| Express (SX) | 14 | 162 | 165 | 1.02 |
+
+**Trip agreement** on the 563 comparable trips: 124 exact, 403 within ±2
+riders, median difference 0; APC higher on 279 and lower on 160. Of the 204
+trips with 10 or more manual riders, 112 are within ±10% and 165 within ±20%.
+
+**By route** (comparable trips only; ratio = APC ÷ manual):
+
+| Route | Trips | Comparable | Manual | APC | Ratio | Manual on no-APC trips |
+|---|---|---|---|---|---|---|
+| 420 | 30 | 27 | 61 | 68 | 1.11 | 4 |
+| 425 | 28 | 23 | 87 | 117 | 1.34 | 13 |
+| 436 | 34 | 34 | 149 | 188 | 1.26 | 0 |
+| 440 | 36 | 35 | 197 | 240 | 1.22 | 0 |
+| 442 | 29 | 25 | 37 | 48 | 1.30 | 0 |
+| 444 | 65 | 65 | 497 | 625 | 1.26 | 0 |
+| 445 | 34 | 31 | 141 | 164 | 1.16 | 15 |
+| 446 | 38 | 37 | 209 | 246 | 1.18 | 2 |
+| 447 | 16 | 15 | 61 | 79 | 1.30 | 0 |
+| 460 | 30 | 30 | 481 | 471 | 0.98 | 0 |
+| 465 | 51 | 51 | 1,020 | 992 | 0.97 | 0 |
+| 470 | 12 | 12 | 323 | 291 | 0.90 | 0 |
+| 475 | 28 | 28 | 809 | 730 | 0.90 | 0 |
+| 477 | 32 | 32 | 975 | 900 | 0.92 | 0 |
+| 480 | 14 | 14 | 162 | 165 | 1.02 | 0 |
+| 490 | 21 | 21 | 488 | 442 | 0.91 | 0 |
+| 495 | 40 | 36 | 289 | 398 | 1.38 | 44 |
+| 497 | 34 | 24 | 39 | 57 | 1.46 | 1 |
+| 499 | 34 | 23 | 21 | 42 | 2.00 | 4 |
+
+**By trip size** (manual riders on the trip): under 5, 212 trips, APC 1.48×;
+5–14, 217 trips, 1.12×; 15–29, 81 trips, 0.97×; 30 or more, 53 trips, 0.92×.
+
+**Does the +16% hold? No.** On the same day the gap is **+4%** on comparable
+trips (+2% on all trips). Most of the earlier 16% is the day itself: 10/28's
+manual total (6,129) is 14% above September's weekday average (5,396), in line
+with the other late-October weekdays in Access (5,420–6,369).
+
+The "higher on every route" finding does not hold either. The gap **splits by
+route type and load**:
+
+- **Local routes, light trips:** APC reads higher, 1.1–2.0×. The ratios are
+  large but the riders are few: 499's 2.0× is 42 vs 21.
+- **Express routes, heavy trips:** APC reads 2–10% lower.
+
+The two directions nearly cancel in the day total. This one day can't say
+which side is wrong. Possible explanations are operators rounding down or
+missing boardings on near-empty local trips, APC counting non-riders on
+quiet trips, and APC under-counting crowded boardings at Park & Rides. The
+answers to Avail's questions and a second day are needed first.
+
+**Not concentrated on particular blocks or buses.** On 142 blocks, APC is
+higher on 72 and lower on 59. The ten blocks with the largest APC excess
+account for 42% of it, spread across routes 444, 445, 440/446 and 495. No
+single bus explains the gap. Where one bus stands out, the counter looks
+faulty, and a gap like that belongs in §14, not in the accuracy figure:
+
+- **Bus 4143:** no APC on any of its 10 trips (manual 61 riders).
+- **Bus 4509** (blocks 18 and 358): 6 trips all zero and most of the rest
+  alights only. Its boardings read 5 vs 56 manual.
+- **Bus 4838** (block 65): 490 07:35 N reads 3 vs 32 manual.
+- **Bus 4142:** 5 of 12 trips all zero.
+
+**What the Access rows show about the TripID rule (§16):**
+
+- Weekday digit is **1**.
+- Direction digits are **N = 1, S = 2, E = 3, W = 4** on all 566 rows that
+  have a TripID.
+- All **40 blank TripIDs are route 495**. Riders were entered on all of them,
+  so the rows were keyed: the TripID is the only gap.
+- Two route 425 TripIDs on block 013 carry an **old start time**:
+  `142510626` is the 06:46 N trip and `142520735` the 07:55 S. Match on
+  block + start, not on TripID alone.
+
+### Four more days (2026-10-24 to 10-27)
+
+Added 2026-11-03, using the same method. Access was fully entered on every
+day. **Trips matched one to one on every day** (606 on weekdays, 241 at
+weekends), with no trip on only one side.
+
+| Day | Comparable trips | Manual | APC | APC ÷ manual | Local | Express (MX) | No-APC trips |
+|---|---|---|---|---|---|---|---|
+| Sat 10/24 | 234 | 1,310 | 1,491 | 1.14 | 1.14 | — | 7 |
+| Sun 10/25 | 227 | 959 | 1,258 | 1.31 | 1.31 | — | 14 |
+| Mon 10/26 | 554 | 5,333 | 5,482 | 1.03 | 1.26 | 0.93 | 52 |
+| Tue 10/27 | 559 | 6,118 | 6,356 | 1.04 | 1.27 | 0.94 | 47 |
+| Wed 10/28 | 563 | 6,046 | 6,263 | 1.04 | 1.27 | 0.93 | 43 |
+| **3 weekdays** | 1,676 | 17,497 | 18,101 | **1.03** | **1.27** | **0.94** | |
+| **Weekend** | 461 | 2,269 | 2,749 | **1.21** | 1.21 | — | |
+
+What the five days show:
+
+- **The 10/28 result repeats.** Every weekday is +3 to +4% overall, with
+  locals about 1.27× and express about 0.94×.
+- **The size pattern repeats.** Trips under 5 manual riders read 1.40–1.51×;
+  trips with 30 or more read 0.90–0.94×.
+- **Weekends are local-only, so the gap shows openly:** +14% on Saturday and
+  +31% on Sunday. Route ratios swing from day to day: route 444 was 0.97 on
+  Saturday and 1.33 on Sunday. A single route-day isn't a reliable measure.
+- **Still not concentrated.** On weekdays, APC is higher on 76–78 blocks and
+  lower on 50–56. The ten blocks with the largest excess hold 31–42% of it.
+  Weekends lean more one way (28–32 of 36 blocks higher), as expected when
+  every trip is local.
+
+**Faulty counters across days:**
+
+| Bus | Pattern |
+|---|---|
+| **4509** | Every weekday it's on, boardings are mostly missing or alights only: 45 vs 94 on 10/26, 7 vs 52 on 10/27, 5 vs 56 on 10/28. A failed counter, not a calibration gap. |
+| **4143** | No APC on any of its trips on 10/26 and 10/28. On Saturday it reads low: 26 vs 45 on block 563. |
+| **4129, 4142, 4766, 4846** | Several all-zero trips on at least one day. |
+
+**APC isn't available for every day.** Fetched on 2026-11-03:
+
+- 10/24–10/28 returned data.
+- **10/29 failed inside Avail's report** with a SQL error: "Conversion failed
+  when converting the varchar value 'null' to data type int".
+- **10/30, 10/31 and 11/01 returned no rows.**
+
+So the data either arrives five or more days late, or stopped after 10/28.
+Both go to Avail with the questions below.
+
+**Next:** get Avail's answers, and repeat once later days return data, with
+bus 4509 left out. Only a ride check on a few trips can say which side is
+wrong: a near-empty local versus a full express at a Park & Ride.
+`ridership/avail-apc-sample/fetch_apc_sample.sh` fetches days, and the user
+supplies the key.
+
+How it fits OnBoard:
+
+- A seventh endpoint on `lib/availClient.ts` (`apc_ridership`), polled nightly
+  for the previous service date, with dates in YYYY-MM-DD (the OTP feeds use
+  MM-DD-YYYY).
+- **Matching to the Dispatch Log:** Block (int → `001`) + route + direction +
+  scheduled start (`Trip` HHMM) on the service date. There's no GTFS
+  `trip_id`, and none is needed. APC trips that match no Dispatch Log trip are
+  candidates for unscheduled trips.
+- **APC per trip** = the sum of all its rows' `Boards`, including the null-stop
+  row. Stop and timepoint rows are kept for drill-down.
+- **Bus** comes from the GTFS-RT vehicle on each trip, with pull-out
+  (`FixedRouteDepartures`, by block) as the fallback, not from this feed.
+  Pull-out alone cannot see a mid-day bus change (§14).
+- **Excluded from fixed-route totals:** routes 999, 1010, 4444, 5555, 6666.
+  Route 1121 (MN United) is a possible source for special-event counts (C7).
+- **A trip whose rows are all zero** is treated as "no APC" rather than "0
+  riders" until Avail says how a faulty counter shows up.
+- **Service level** ("Weekday") corresponds to the Day type in §9.
+
+**Questions still for Avail:**
+
+- Which MVTA vehicles have APC, and is the APC module licensed for MVTA?
+- How a faulty or absent counter appears: all zeros, missing rows, or
+  something else. Can the report carry the vehicle and a health flag?
+- What the null-`StopName` row is: boardings between stops, or unmatched GPS?
+- Why deadheads record boardings.
+- How soon after the service day the data is complete, and whether it is
+  restated later (compare ADR 0039 for OTP).
+- Whether MVTA's APC data is certified for NTD reporting.
+- Why the report fails for 10/29 (SQL error, "varchar value 'null' to
+  int") and returns no rows for 10/30–11/01 when fetched on 11/03.
+- Why some trips record alights but no boardings, as on bus 4509 most days.
+- The troubleshooting questions in §14.
+
+**Decisions for later,** once the answers are in: the tolerance and number of
+weeks that let a bus or route drop the paper sheet; and which figure is the
+record for a trip that has both.
+
+## 13. Future — operator mobile app
+
+Added 2026-10-30 at the user's request; the later stage of Q1 ("operators enter
+their own counts once v1 is proven"). Mocked in the prototype as "Operator
+mobile". Not decided.
+
+- **No scanning.** The app knows the operator's block from their Avail login
+  (`FixedRouteDepartures`), the same source the OCC screen pre-fills from;
+  the sheet QR is the fallback.
+- **One trip at a time:** a large +1 tally per trip, a did-not-operate switch,
+  unscheduled trips, a review screen, and **Submit at pull-in**. Submitting
+  replaces the paper sheet for that block, and the submit time is the
+  timeliness proof.
+- **Counting locks while the bus is moving** (AVL speed), because OPR-038 bans
+  device use while operating.
+- **Offline:** counts are kept on the device through dead zones and sent later.
+
+Decisions this needs:
+
+1. **Device.** OPR-038 bans personal electronic devices on duty, so this must
+   be an MVTA-issued phone or tablet, or the MDT. Which?
+2. **Mounting:** handheld, or mounted at the farebox.
+3. **Buses with working APC:** skip manual counting, or count both during
+   validation (§12).
+4. **Rollout:** a pilot garage or route first, with paper as backup.
+
+## 14. Future — APC troubleshooting
+
+Agreed with the user 2026-10-30 (design conversation, before anything is
+built). It builds on §12: §12 compares APC with manual counts, and this section
+explains **why** they disagree for a trip, a bus or a route, in either
+direction. On 2026-10-28 APC ran about 16% above manual on every route, so the
+tool must explain an over-count as well as an under-count.
+
+**Two layers.**
+
+1. **APC health**, nightly, on every trip, with no manual count needed. Most
+   counter, GPS, cellular and logon faults show in APC and AVL data alone.
+2. **Manual vs APC comparison** (§12) on top of it, only on buses the health
+   layer finds usable.
+
+**Unit: the bus-day** (one vehicle on one service date), with its trips
+underneath. A counter, a GPS receiver and a modem belong to a bus, and Fleet
+fixes buses. Route views roll bus-days up.
+
+**Which bus ran a trip.** The GTFS-RT `vehicle_id` per trip
+(`GtfsTripOperationalEvidence`), with pull-out (`FixedRouteDepartures`) as the
+fallback. This replaces §12's pull-out join. On 2026-10-28 the two sources used
+the same bus numbers and agreed on all 138 single-bus blocks, and GTFS-RT had a
+vehicle for all 606 revenue trips. Pull-out holds one row per block, so it
+cannot see a swap: 6 blocks ran on two buses according to GTFS-RT. When the two
+sources disagree, OnBoard records a bus-swap finding and does not pick a
+winner.
+
+### Causes and their evidence
+
+Each named cause is a **finding** with its evidence attached. Every threshold
+is a setting, not code, as in §6. Starting values come from the 2026-10-28
+sample and are retuned after a month of nightly runs.
+
+| Family | Cause | Fingerprint | Corroboration |
+|---|---|---|---|
+| Equipment | Counter dead | Every trip on the bus-day is zero (2026-10-28: blocks 6, 313, 366) | Trips ran (Dispatch Log actual start, positions) |
+| Equipment | Counter failing | ≥ 75% of trips zero, with a trickle on the rest (blocks 18: 7 of 9 trips zero, 4 boards; 358: 7 of 8, 1 board) | Same |
+| Equipment | Counter miscalibrated | Bus-day alights ÷ boards stays far from 1 over several days (fleet median 0.97; block 349 at 0.63, 59 at 1.27). The APC ÷ manual ratio on that bus is steady across operators | Multi-day only; one day is too noisy |
+| Equipment | GPS loss | Share of the bus-day's boardings on the null-`StopName` row > 25% (system 4.2%; block 63 at 87%, 49 at 59%) | Position gap ≥ 10 min inside a trip (new coverage columns) |
+| Equipment | Cellular loss | A run of trips with no APC rows **and** no positions, then recovery | Coverage columns; the Dispatch Log shows the trips ran |
+| AVL assignment | Counted outside a revenue trip | Deadhead (route 999) boardings > 15% of the bus-day (block 1: 17 deadhead vs 47 revenue) | Logon time against the first trip |
+| AVL assignment | Late or missing logon | Pull-out `login_actual` after the first trip's scheduled start, or none | Low or zero APC on the early trips |
+| AVL assignment | Wrong trip or block | APC trips that match no Dispatch Log trip, or one trip counted on two blocks | Dispatch Log, GTFS-RT trip assignment |
+| AVL assignment | Swap without re-logon | GTFS-RT vehicle ≠ pull-out vehicle inside a block | — |
+| Manual sheet | Sheet error | Bus healthy and the gap appears on one sheet only, or the gap follows one block or operator across buses | §6 flag history |
+| Avail delivery | Late, restated or missing | A day's data arrives late or changes on re-pull; a trip that ran has no APC rows while the bus's other trips do | Nightly re-pull (below) |
+
+**Deadhead boardings** are shown as a separate line, "counted outside a revenue
+trip", on the bus-day and the route. They never go into a trip's total and are
+never re-attributed, because the feed carries no times to place them by.
+
+### Outcome
+
+- Each bus-day carries **every finding that fired**, each with its evidence,
+  plus a **leading cause** or **Undetermined**. A bus can fail two ways at
+  once, and Undetermined is an allowed answer, as Indeterminate trip is for
+  missed trips.
+- Findings are proposals. A person **confirms or dismisses** them. Evidence
+  corroborates and never decides (the ADR 0035 stance).
+- Findings that repeat (same bus, same cause) roll up into **one open issue
+  per bus and cause**: first seen, last seen, days affected; Confirmed or
+  Dismissed; **Resolved** once a clean day follows a fix, which the next
+  nightly run can show.
+
+### Who it reaches
+
+| Family | Goes to |
+|---|---|
+| Equipment | Fleet/maintenance, as a per-bus list |
+| AVL assignment | Contractor dispatch (logon practice) and Avail support (trip matching on their side) |
+| Manual sheet | The contractor, through the §6 flag flow |
+| Avail delivery | Avail support |
+
+Delivery: a console worklist, plus a **weekly digest email** for each audience.
+A **newly dead counter** alerts the next morning. OnBoard has no work-order
+system to write to.
+
+**§6 flags.** When a flagged count sits on a bus-day with an open equipment or
+assignment finding, the flag shows that finding as context ("APC not usable
+here: counter dead"). It never resolves the flag, and no one settles a flag
+against an unusable APC figure.
+
+**§8 occurrences.** None in v1; the tool is diagnostic. Whether repeated
+logon findings (contractor practice) should propose occurrences is for later.
+
+### Console and access
+
+- An **APC health** tab in Ridership (§10):
+  - **Bus issues:** the open issues per bus and cause, with confirm and
+    dismiss.
+  - **Bus-day drill-down:** trips, boardings, unplaced boardings, deadhead
+    boardings, position gaps, logon time, and the bus on each trip.
+- The ridership roles from §10 use it. **Fleet gets a read-only view** of Bus
+  issues.
+- Avail APC delivery appears on **Integrations & Data Health** as a new feed.
+
+### Data
+
+- **Position coverage per trip.** OnBoard keeps no GPS history for ordinary
+  service: `AvailAvlVehiclePositions` holds only each vehicle's current
+  position, and history exists only during Events. Add a few columns to
+  `GtfsTripOperationalEvidence` from the GTFS-RT poller: positions received,
+  longest gap, and the gap's start and end. These **cannot be backfilled**, so
+  they land early as a small change of their own. Missed-trip evidence can
+  use them too.
+- **APC backfill:** on the first run, pull the last 90 days so each bus has a
+  baseline (miscalibration needs many days). Backfilled days get findings
+  from APC alone, with no gap evidence, and say so.
+- **Restatement:** re-pull the trailing 7 days each night and record changes
+  as ADR 0039 does for OTP. A late or changed delivery is itself an Avail
+  delivery finding.
+
+### Build order
+
+1. Position coverage columns on the GTFS-RT poller. Can go ahead of the rest.
+2. APC ingestion (§12) with the health layer: the bus per trip, findings and
+   bus-day issues.
+3. Worklist, weekly digests, the next-morning dead-counter alert and the Fleet
+   view.
+4. The manual comparison, and finding context on §6 flags, once manual entry
+   exists.
+
+### Steps outside the code (numbered, owner in brackets)
+
+1. Add a read-only APC health action (e.g. `ridership.apc-health.view`) and
+   assign it to Fleet/maintenance staff in Access & Identity. [Engineering +
+   an access administrator]
+2. Name the digest recipients for Fleet, contractor dispatch and Avail
+   support. [Planning + Operations]
+3. Share Avail's APC health report for review, and fold its fields into the
+   findings above. [User]
+
+### Questions for Avail (added to §12's list)
+
+- What the **APC health report** covers, its endpoint, and whether it carries
+  the vehicle.
+- How APC assigns a boarding to a trip when the operator is logged on to the
+  wrong trip or not logged on, and whether those boardings go to Deadhead 999.
+- Whether a counter that needs calibration can be seen on Avail's side
+  (door-level counts, board/alight balance).
+- Whether the ridership report can carry the vehicle and the door per row.
+- Whether a null `StopName` means no GPS fix or only "between stops".
+
+## 15. Future — the Count Sheet's journey: QR link, submission, scan and reading
+
+Added 2026-10-31 at the user's request. It ties together the printed sheet
+(§3), OCC entry (§4) and the operator app (`plans/ridership-operator-app.md`,
+PR #458), and **changes #458 decision 20**: the paper is handed in and
+scanned even when the run was submitted digitally.
+
+**The flow**
+
+1. **The contractor prints** each block's Count Sheet with its QR code (§3,
+   build plan decision 2).
+2. **The operator submits** their totals in one of two ways:
+   - on the **Operator Kiosk**;
+   - on the **web**, by scanning the sheet's QR code with a phone (once
+     OPR-038 allows phones, #458 decision 3).
+
+   Either way they still tally on the paper during the trip.
+3. **The paper goes to the contractor's operations management** at the
+   garage, every time, whether or not the run was submitted.
+4. **Operations management batch-scans the day's sheets** on the garage
+   multifunction printer. The PDF reaches OnBoard through an upload page or a
+   watched folder, and OnBoard splits the batch into sheets by each page's QR
+   code.
+5. **OnBoard reads each scanned sheet and flags anything wrong** (below).
+6. **The scan is stored** under MVTA's records retention schedule.
+
+**Decisions (agreed 2026-10-31)**
+
+- **The QR code is a link, not a secret.**
+  - It is the operator app's address plus the block and service date, for
+    example `https://<operator app>/r/20261201/024`. The address is not set
+    until the operator app is built.
+  - Opening it lands on that run **after** the normal sign-in (Avail logon
+    ID + PIN, #458 decision 7). The link alone submits nothing, so a photo
+    of a sheet does not let anyone else submit its counts.
+  - OCC's USB-scanner box (§4) and the batch splitter read the same link.
+    This **replaces** the `MVTA-RIDERSHIP:<date>:<block>` payload in build
+    plan decision 2.
+  - A link makes the code denser. At about 25 mm with error correction Q it
+    is still about 0.75 mm per module, which office printers and phone
+    cameras handle, but test it at the OCC rehearsal.
+  - **Built (PR 4, 2026-11-01):** a longer link (a console on a long
+    hostname, or `?p=2`) grows the code past 25 mm so a module stays about
+    0.7 mm, up to 30 mm. Prod's console link fits at 25 mm (about 0.71 mm).
+- **The submission is the record; the scan is evidence that verifies it.**
+  - A kiosk or web submission stays the count of record (#458 decision 16).
+  - The scanned paper is kept and compared with it. Differences become
+    flags (§6) that OCC settles; neither copy silently overwrites the other.
+  - A run with no submission falls back to OCC entry (§4), now helped by the
+    scan.
+- **What reading a scanned sheet does** (all three):
+  - **Compares with the submission:** each trip whose handwritten total
+    differs from the kiosk or web total is flagged with both figures and the
+    page image beside them.
+  - **Pre-fills when nothing was submitted:** the totals read from the page
+    go into OCC's sheet form as **proposed** values, marked as read from the
+    scan. OCC confirms or corrects each one. A handwritten number is never
+    stored as a count without a person confirming it.
+  - **Checks the sheet itself:**
+    - a sheet expected but never scanned;
+    - a page whose QR code can't be read;
+    - a trip left blank, or a total that can't be read;
+    - an operator or bus that disagrees with Avail's pull-out;
+    - DNO written against a trip the Dispatch Log says ran;
+    - a QR code whose block and date don't match the trips printed on the page.
+- **Who scans:** the contractor's operations management at each garage,
+  using the garage's multifunction printer.
+- **Retention:** a setting filled from MVTA's records retention schedule,
+  together with the FTA/NTD record rules, once Planning or records management
+  confirms the period. Scans are stored under a **locked, time-based
+  retention policy**, so nobody can delete one early. Until the period is
+  set, nothing is deleted.
+- **When:** scanning, storage and reading all arrive **with the kiosk pilot**,
+  after the March 2027 close (#458 decision 24). Dec 1 and Jan 1 are
+  unchanged, except that the QR code printed from Dec 1 is already the link,
+  so sheets don't change format when the pilot starts.
+
+**Still open**
+
+- **How handwriting is read.** The likely route is Azure AI Document
+  Intelligence with a custom model trained on real filled-in sheets. Its
+  accuracy on operators' handwriting, and the cost per page, need a trial.
+  That trial needs a few hundred filled-in sheets, which December's parallel
+  run will produce.
+- **Upload route:** a watched folder (SharePoint or email-to-scan) or an
+  OnBoard upload page. It depends on what the garage printers can send to.
+- **The retention period itself (X):** from MVTA's records schedule.
+- **Personal data in scans:** a scan shows the operator's name and
+  handwriting. Who may open scans should follow §10's operator-name rule.
+
+## 16. What the Access screens show (added 2026-11-02)
+
+Two screenshots Planning added to the "Ridership Database Procedures" thread
+(kept in the main checkout's `ridership/`, not in git): the OCC entry form and
+Planning's day crosstab.
+
+### The Access TripID rule
+
+`TripID` is **day type + route + direction + scheduled start (24-hour HHMM)**:
+
+| TripID | Day type | Route | Direction | Start |
+|---|---|---|---|---|
+| `243610748` | 2 = Sat | 436 | 1 = N | 07:48 |
+| `243621732` | 2 = Sat | 436 | 2 = S | 17:32 (5:32 PM) |
+| `143620542` | 1 = Wk | 436 | 2 = S | 05:42 |
+
+So OnBoard can compute an Access-style TripID for every Dispatch Log trip. Uses:
+
+- **December parallel run:** Planning matches Access and OnBoard trip by trip.
+- **APC comparison:** the 10/28 Access export joins to OnBoard and Avail
+  (whose `Trip` is the same HHMM) on this key.
+- **D1 (blank `TripID` on route 495):** the blank is an Access-side gap, not a
+  missing rule; check whether those rows were keyed at all.
+
+The Access rows for 10/24–11/01 (§12, same-day comparison) settle more of
+the rule:
+
+- **Day digit:** 1 = Monday–Thursday weekday, **3 = Friday**, 2 = Saturday
+  **and Sunday**. Friday has its own pattern with 559 trips against 606, but
+  its `Days` value is still `Wk`.
+- **Direction digit:** N = 1, S = 2, E = 3, W = 4.
+
+Still unknown: the digit for Special Saturday, and how a route number other
+than three digits is written.
+
+### OCC entry form (Ridership Data Manager)
+
+- Pick **Date + SST Block** → the block's trips with Date, Start, End, Route,
+  **Riders** and a free-text **Flag**; saves automatically. This is §4's entry
+  screen. Block 501 on 10/31/2026 lists the same three route 495 trips
+  (3:20–4:40 AM, 5:20–6:40 AM, 6:42–8:15 AM) that the Dispatch Log produces,
+  which supports building the roster from the Dispatch Log (§2).
+- Menu: **Find Records Not Yet Entered** (§5 completeness), **View by Flag**
+  (§6), **View by Date Entered** (greyed out — no entry timestamps, gap P6),
+  **View Crosstab**.
+- **Open:** what OCC types in **Flag** today. OnBoard has only *Not counted*
+  and *Did not operate*; any other use needs a home before December.
+
+### Planning's crosstab ("Riders by Trip > Direction > Date")
+
+- One row per trip (Days, Route, Direction, TripID, `Vehtypgrp`,
+  `MaxOfVariation`, `FirstOfTerm`, `LastOfStart`) and **one column per service
+  date** holding riders. This trip × date grid is what Planning reviews and
+  exports monthly for accuracy, so the reporting work needs an equivalent grid
+  and Excel export, not only monthly totals.
+- **Open:** what `Vehtypgrp` (seen: R), `MaxOfVariation` (blank) and
+  `FirstOfTerm` (seen: S) mean. One of them may be the ServiceType source (Q15).
+
+## Open
+
+- **ServiceType (Q15).** Each trip carries a code (L, MX, RC, SX, DX) that
+  varies within a route (e.g. 460 has L and MX trips), so it is a trip property,
+  most likely from Optibus trip properties. Where OnBoard gets it, and what each
+  code means, is unsettled. Until then the totals export cannot fill the
+  `ServiceType` column. Check the Access crosstab's `Vehtypgrp`,
+  `MaxOfVariation` and `FirstOfTerm` columns first (§16).
+- **Access TripID digits and the Flag column (§16).** Sunday / Special
+  Saturday digits; what OCC enters in Flag.
+- **Connect (v2).** Not designed; depends on the Spare export being reachable.
+- **APC (C8).** See §12. Unknown which vehicles have working APC; no APC data reaches
+  OnBoard today.
+- **Terms for `CONTEXT.md`.** Count Sheet, Ridership count, Day type, Month
+  close, and ServiceType once settled, before code is written.
