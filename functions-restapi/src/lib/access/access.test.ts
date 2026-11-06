@@ -110,14 +110,22 @@ test("the seeded roles", async (t) => {
     assert.ok(!recorder.actions.includes("ridership.configure"));
     assert.ok(manager.actions.includes("ridership.configure"));
     // Only the ridership roles hold Ridership; System Administrator gets it through its wildcard.
+    // The compliance roles hold the one exception, opening scan images (migration 164).
     assert.deepEqual(
-      SEEDED_ROLES.filter((r) => r.actions.some((a) => a.startsWith("ridership."))).map((r) => r.key),
+      SEEDED_ROLES.filter((r) => r.actions.some((a) => a.startsWith("ridership.") && a !== "ridership.scans.view")).map((r) => r.key),
       ["ridership-recorder", "ridership-manager", "ridership-printer"],
     );
   });
 
-  await t.test("Ridership Printer prints and nothing else: no counts, no garage list", () => {
-    assert.deepEqual(seededRole("ridership-printer")!.actions, ["ridership.print"]);
+  await t.test("Ridership Printer prints and uploads scans, and nothing else: no counts, no garage list, no scan images", () => {
+    assert.deepEqual(seededRole("ridership-printer")!.actions, ["ridership.print", "ridership.scan"]);
+  });
+
+  await t.test("a scan image opens for the recorder, the manager and the compliance roles, and for nobody else (spec §10)", () => {
+    assert.deepEqual(
+      SEEDED_ROLES.filter((r) => r.actions.includes("ridership.scans.view")).map((r) => r.key),
+      ["compliance-analyst", "compliance-manager", "ridership-recorder", "ridership-manager"],
+    );
   });
 
   await t.test("exactly two roles are locked, and only one holds the wildcard", () => {

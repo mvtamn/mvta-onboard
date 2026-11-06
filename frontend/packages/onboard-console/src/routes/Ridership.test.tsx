@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { ApiError, type RidershipPrintStatus, type RidershipSheet, type RidershipWorklist, type RidershipWorklistSheet } from "@mvta/shared";
+import { ApiError, type RidershipPrintStatus, type RidershipScanPage, type RidershipSheet, type RidershipWorklist, type RidershipWorklistSheet } from "@mvta/shared";
 import { Ridership, SheetLink } from "./Ridership.js";
 import { visibleAreas } from "../components/adminNav.js";
 import { accessStateWith } from "../auth/AccessContext.js";
@@ -19,7 +19,17 @@ const getRidershipSheet = vi.fn();
 const saveRidershipSheet = vi.fn();
 const getRidershipPrintStatus = vi.fn();
 const printRidershipSheets = vi.fn();
+const getRidershipScanDesk = vi.fn();
+const createRidershipScanUpload = vi.fn();
+const submitRidershipScanUpload = vi.fn();
+const updateRidershipScanPage = vi.fn();
+const getRidershipScanImage = vi.fn();
 vi.mock("../config.js", () => ({ api: {
+  getRidershipScanDesk: (...args: unknown[]) => getRidershipScanDesk(...args),
+  createRidershipScanUpload: (...args: unknown[]) => createRidershipScanUpload(...args),
+  submitRidershipScanUpload: (...args: unknown[]) => submitRidershipScanUpload(...args),
+  updateRidershipScanPage: (...args: unknown[]) => updateRidershipScanPage(...args),
+  getRidershipScanImage: (...args: unknown[]) => getRidershipScanImage(...args),
   getRidershipWorklist: (...args: unknown[]) => getRidershipWorklist(...args),
   getRidershipSheet: (...args: unknown[]) => getRidershipSheet(...args),
   saveRidershipSheet: (...args: unknown[]) => saveRidershipSheet(...args),
@@ -422,6 +432,109 @@ describe("Ridership › Print sheets", () => {
     await user.click(await screen.findByRole("button", { name: "Print 2 sheets · Burnsville" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/migration 157/);
     expect(opened.close).toHaveBeenCalled();
+  });
+});
+
+// --- Upload scans (migration 163) -------------------------------------------------
+
+const scanPage = (over: Partial<RidershipScanPage>): RidershipScanPage => ({
+  page_id: "p1", page_number: 1, state: "matched", reason: null, service_date: "20261130", block: "024", sheet_page: 1,
+  identified_by: "qr", straightened: true, printed_at: "2026-11-30T03:10:00Z", date_flag: false, processed_at: "2026-12-01T04:00:00Z", assigned_by: null, ...over,
+});
+
+describe("Ridership › Upload scans", () => {
+  beforeEach(() => {
+    actions = ["ridership.print", "ridership.scan"];
+    window.localStorage.clear();
+    getRidershipWorklist.mockReset().mockResolvedValue(WORKLIST);
+    getRidershipPrintStatus.mockReset().mockResolvedValue(printStatus("Burnsville", []));
+    getRidershipScanDesk.mockReset().mockResolvedValue({
+      service_date: "20261130", garage: "Burnsville", unassigned: 1,
+      expected: [{ block: "024", pages: 1, scanned_pages: 1 }, { block: "105", pages: 1, scanned_pages: 0 }],
+      uploads: [{
+        upload_id: "u1", garage: "Burnsville", file_name: "shift.pdf", status: "done", status_detail: null, page_count: 3, created_at: "", created_by: "desk@example.test",
+        pages: [scanPage({}), scanPage({ page_id: "p2", page_number: 2, state: "blank", block: null, service_date: null, sheet_page: null, identified_by: null }),
+          scanPage({ page_id: "p3", page_number: 3, state: "unreadable", reason: "not_identified", block: null, service_date: null, sheet_page: null, identified_by: null })],
+      }],
+    });
+    createRidershipScanUpload.mockReset().mockResolvedValue({ upload_id: "u2", upload_url: "https://scans.example.test/count-sheet-originals/u2.pdf?sig" });
+    submitRidershipScanUpload.mockReset().mockResolvedValue({});
+    updateRidershipScanPage.mockReset().mockResolvedValue(scanPage({ page_id: "p3", identified_by: "person" }));
+  });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it("the desk sees Print sheets and Upload scans, and never the Count Sheets", async () => {
+    renderPage();
+    const tabs = await screen.findByRole("tablist");
+    expect(within(tabs).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Print sheets", "Upload scans"]);
+    expect(getRidershipWorklist).not.toHaveBeenCalled();
+  });
+
+  it("lists each page's outcome with no image, the sheets not scanned, and a page that needs the desk", async () => {
+    renderPage("/ridership?tab=scan");
+    expect((await screen.findByLabelText("Sheets still to scan")).textContent).toMatch(/1 of 2 sheets scanned\. Not scanned yet: 105\./);
+    expect(screen.getByText("3 pages · 1 recognised · 1 blank · 1 needs you")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("The QR code could not be read.")).toBeTruthy();
+  });
+
+  it("the desk types an unreadable page's block from the paper", async () => {
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=scan");
+    await user.type(await screen.findByLabelText("Block for page 3"), "105");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updateRidershipScanPage).toHaveBeenCalledWith("p3", expect.objectContaining({ action: "assign", block: "105", sheet_page: 1 })));
+  });
+
+  it("uploads the PDF straight to storage, then submits its SHA-256", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 201 }));
+    const user = userEvent.setup();
+    renderPage("/ridership?tab=scan");
+    const file = new File(["%PDF-1.4 synthetic"], "shift.pdf", { type: "application/pdf" });
+    await user.upload(await screen.findByLabelText("Choose the scanned PDF to upload"), file);
+    await waitFor(() => expect(submitRidershipScanUpload).toHaveBeenCalledWith("u2", expect.stringMatching(/^[0-9a-f]{64}$/)));
+    expect(createRidershipScanUpload).toHaveBeenCalledWith(expect.objectContaining({ file_name: "shift.pdf", garage: "Burnsville", size_bytes: file.size }));
+    expect(fetchMock).toHaveBeenCalledWith("https://scans.example.test/count-sheet-originals/u2.pdf?sig", expect.objectContaining({ method: "PUT" }));
+  });
+});
+
+describe("Ridership › scans on Enter sheets", () => {
+  beforeEach(() => {
+    actions = ["ridership.view", "ridership.enter", "ridership.scans.view"];
+    getRidershipWorklist.mockReset().mockResolvedValue({
+      ...WORKLIST,
+      sheets: WORKLIST.sheets.map((s) => ({ ...s, scan: s.block === "024" ? "scanned" : s.block === "212" ? "not_scanned" : null })),
+    });
+    getRidershipSheet.mockReset().mockImplementation(async (date: string, block: string) => sheetFor(date, block, { scan: { pages: [scanPage({})], can_view_images: true } }));
+    getRidershipScanImage.mockReset().mockResolvedValue({ url: "https://scans.example.test/page.jpg?sig", expires_at: "" });
+  });
+  afterEach(cleanup);
+
+  it("marks sheets Scanned and Not scanned", async () => {
+    renderPage();
+    const table = await screen.findByRole("table");
+    expect(within(table).getAllByText("Scanned")).toHaveLength(1);
+    expect(within(table).getAllByText("Not scanned")).toHaveLength(1);
+  });
+
+  it("opens the scan beside the sheet, through a logged link", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "024" }));
+    const image = await screen.findByRole("img", { name: /Scan of block 024/ });
+    expect(image.getAttribute("src")).toBe("https://scans.example.test/page.jpg?sig");
+    expect(getRidershipScanImage).toHaveBeenCalledWith("p1");
+  });
+
+  it("without ridership.scans.view the sheet says it is scanned and opens no image", async () => {
+    actions = ["ridership.view", "ridership.enter"];
+    getRidershipSheet.mockImplementation(async (date: string, block: string) => sheetFor(date, block, { scan: { pages: [scanPage({})], can_view_images: false } }));
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "024" }));
+    expect(await screen.findByText(/This sheet is scanned/)).toBeTruthy();
+    expect(getRidershipScanImage).not.toHaveBeenCalled();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 });
 

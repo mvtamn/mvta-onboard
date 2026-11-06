@@ -98,7 +98,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     title: "OCC Tools",
     sub: "Service-risk prediction, procedure guidance, and vehicle monitoring",
   },
-  { match: (p) => p === "/ridership", title: "Ridership", sub: "Print and key Count Sheets, with completeness by garage and the deadline in front" },
+  { match: (p) => p === "/ridership", title: "Ridership", sub: "Print, scan and key Count Sheets, with completeness by garage and the deadline in front" },
   {
     match: (p) => p === "/schedule-review",
     title: "Schedule Review",
@@ -292,7 +292,7 @@ function AuthenticatedApp({ account, signOut }: {
   const canSeePerformanceAssessment = can("performance-assessment.view");
   const canSeeDetours = can("detours.view");
   // The garage check-in desk holds print only, and opens Ridership on Print sheets.
-  const canSeeRidership = canAny(["ridership.view", "ridership.print"]);
+  const canSeeRidership = canAny(["ridership.view", "ridership.print", "ridership.scan"]);
   const canSeeDetourIntake = can("detours.intake");
   // Detour requests waiting on OCC. Nothing notifies them when one arrives, so
   // the number has to be visible from wherever they are.
@@ -653,7 +653,7 @@ function AuthenticatedApp({ account, signOut }: {
               <Route path="/audit" element={<RequireAccess action="governance-audit.view"><AuditLog /></RequireAccess>} />
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/schedule-review" element={<ScheduleReview />} />
-              <Route path="/ridership" element={<RequireAccess anyOf={["ridership.view", "ridership.print"]}><Ridership /></RequireAccess>} />
+              <Route path="/ridership" element={<RequireAccess anyOf={["ridership.view", "ridership.print", "ridership.scan"]}><Ridership /></RequireAccess>} />
               <Route path="/r/:date/:block" element={<SheetLink />} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireAccess anyOf={[...ADMIN_ACTIONS]}><AdminLayout /></RequireAccess>}>

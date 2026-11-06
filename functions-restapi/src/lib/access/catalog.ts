@@ -76,6 +76,11 @@ export const MODULES: AccessModule[] = [
       { key: "enter", label: "Key and correct Count Sheets" },
       { key: "print", label: "Print Count Sheets" },
       { key: "configure", label: "Maintain the block-to-garage list" },
+      // Migration 163, the scan capture pilot: the desk uploads its scans and
+      // sees which pages were recognised, but never the images, which show
+      // operators' names and handwriting (spec §10).
+      { key: "scan", label: "Upload scanned Count Sheets" },
+      { key: "scans.view", label: "Open Count Sheet scan images" },
     ],
   },
   {
@@ -184,15 +189,24 @@ export function allActionKeysExceptAccess(): string[] {
   return MODULES.filter((m) => m.key !== ACCESS_MODULE).flatMap(moduleActionKeys);
 }
 
+/**
+ * `ridership.scans.view` is module `ridership`, action `scans.view`: the
+ * module is everything before the first dot, the action everything after.
+ */
+function splitAction(key: string): [string, string] {
+  const dot = key.indexOf(".");
+  return dot < 0 ? [key, ""] : [key.slice(0, dot), key.slice(dot + 1)];
+}
+
 export function isKnownAction(key: string): boolean {
-  const [moduleKey, action] = key.split(".");
+  const [moduleKey, action] = splitAction(key);
   const module = moduleKey ? MODULE_BY_KEY.get(moduleKey) : undefined;
   if (!module) return false;
   return action === VIEW || module.actions.some((a) => a.key === action);
 }
 
 export function actionLabel(key: string): string | undefined {
-  const [moduleKey, action] = key.split(".");
+  const [moduleKey, action] = splitAction(key);
   const module = moduleKey ? MODULE_BY_KEY.get(moduleKey) : undefined;
   if (!module) return undefined;
   if (action === VIEW) return VIEW_LABEL;
