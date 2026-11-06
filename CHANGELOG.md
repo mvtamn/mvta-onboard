@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.63] - 2026-11-06
+## [1.7.66] - 2026-11-06
 
 Avail OTP Daily departures at a case's origin become contradicting evidence (option d of `docs/research/avail-vs-gtfs-rt-missed-trip-detection-2026-11-04.md`, ADR 0046).
 
@@ -17,6 +17,17 @@ Avail OTP Daily departures at a case's origin become contradicting evidence (opt
 - Tests: `decide.test.ts` (which cases conflict, first arrival only, Spare untouched), `availOriginDepartures.test.ts`, and `availOriginDepartures.db.contract.test.ts` (DST, the after-midnight calendar day, direction rows summed, no row is not zero) in CI's SQL Server job.
 
 **Restarts the REST app on merge.**
+
+## [1.7.64] - 2026-11-06
+
+Architecture review candidate 1: one module owns the stored schedule review.
+
+- **`lib/scheduleReview/store.ts` owns every read and write of a stored review.** `history.ts` is folded in. The interface is `saveReview`, `latestReview`, `routeDetail`, `latestSegments` and `compareReviews({from?, to?})`. The module reads the check list itself, so handlers no longer pass `PREDICTION_RISK_CHECKS` in. Choosing which two reviews to compare (by default the newest against the one before, put in time order) moved out of the REST handler.
+- **Retired checks are handled the same way on every read.** A stored result for a check that no longer exists is dropped when the row is decoded, and `flag_count` is recounted without it. Previously the route detail and the latest summary kept the stored `flag_count`, and a review snapshot kept the retired result. Route detail now also returns `fixable_flag_count` and `structural_flag_count`.
+- **The module assumes migrations 143 and 145 are applied**, as they are on dev and on the prod copy. The "migration missing" states, the 503s that named the migration files, and the console's matching messages are removed. The health page's schema check (`lib/schemaDrift.ts`) is now the one place that says a migration is missing.
+- **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
+- **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
+- The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
 
 ## [1.7.62] - 2026-11-06
 

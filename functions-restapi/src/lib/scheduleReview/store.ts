@@ -1,22 +1,42 @@
-// Where the static sync keeps each schedule review, and how the API reads it
-// back: the summary row in GtfsPredictionRiskReviews (migration 143) and, once
-// migration 145 is applied, one detail row per route in
-// GtfsScheduleReviewRoutes.
+// The stored schedule review: where the static sync keeps each review and
+// everything that reads one back - the latest review, one route's evidence,
+// every route's segments, and the history with what changed between two
+// reviews. One summary row in GtfsPredictionRiskReviews (migration 143) and
+// one detail row per route in GtfsScheduleReviewRoutes (migration 145).
 //
 // Written on change, not on every sync. The verdict (the summary) decides
 // whether a new review row is written; the evidence behind an unchanged
 // verdict is refreshed in place, so new code that records more about a
-// segment reaches the detail without adding a row to the history.
+// segment reaches the detail without adding a row to the history. The feed
+// changes a few times a year and the sync runs daily, so reviewed_at means
+// "first seen" and confirmed_at "last found the same".
 //
-// The feed changes a few times a year
-// and the sync runs daily, so a row a day was the same review 150 times over
-// and made feed-to-feed history unreadable. With 145 applied an identical
-// review only stamps confirmed_at on the row it already has; a new one (a new
-// feed, or new code) gets a new row with its detail. Without 145 the daily
-// insert of v1.5.319 carries on unchanged.
+// Every read decodes a stored row the same way (decodeSummary, decodeRoute).
+// The check definitions are not stored with the row: they are today's code,
+// so a review always describes its checks in today's words. A stored result
+// for a check that no longer exists is dropped rather than shown with no
+// explanation, and the route's counts are recounted without it.
+//
+// This module assumes both migrations are applied. A missing table is an
+// error here, and the health page's schema check (lib/schemaDrift.ts) is the
+// one place that says which migration to run.
 import { sql } from "../db";
-import type { PredictionRiskFeedInfo, PredictionRiskReview, RouteScheduleDetail, ScheduleReview } from "./types";
+import { PREDICTION_RISK_CHECKS } from "./checks";
+import { diffReviews, type ReviewDiff, type ReviewSnapshot } from "./diff";
 import { withFlagCounts, type RankedRoute } from "./ranking";
+import type {
+  PredictionRiskFeedInfo,
+  PredictionRiskReview,
+  PredictionRiskRoute,
+  RouteScheduleDetail,
+  ScheduleReview,
+} from "./types";
+
+const REVIEWS_TABLE = "GtfsPredictionRiskReviews";
+const DETAIL_TABLE = "GtfsScheduleReviewRoutes";
+const LATEST_REVIEW_ID = `(SELECT TOP 1 review_id FROM ${REVIEWS_TABLE} ORDER BY reviewed_at DESC, review_id DESC)`;
+
+export const HISTORY_LIMIT = 50;
 
 export interface ServedPredictionRiskRoute extends RankedRoute {
   /** From GtfsRoutes; null when the table has no row or no long name for it. */
@@ -25,33 +45,39 @@ export interface ServedPredictionRiskRoute extends RankedRoute {
 
 export interface StoredPredictionRiskReview extends Omit<PredictionRiskReview, "routes"> {
   reviewed_at: string;
-  /** Last sync that found the same review; null before migration 145. */
+  /** Last sync that found the same review; null until one has. */
   confirmed_at: string | null;
   routes: ServedPredictionRiskRoute[];
 }
 
-/** route_id -> route_long_name from the static sync's GtfsRoutes table; empty if it is missing. */
-export async function loadRouteLongNames(pool: sql.ConnectionPool): Promise<Map<string, string>> {
-  if (!await tableReady(pool, "GtfsRoutes")) return new Map();
-  const result = await pool.request().query<{ route_id: string; route_long_name: string | null }>(
-    "SELECT route_id, route_long_name FROM GtfsRoutes",
-  );
-  return new Map(result.recordset.filter((r) => r.route_long_name).map((r) => [r.route_id, r.route_long_name as string]));
+export type StoredRouteScheduleDetail =
+  | {
+      state: "ready";
+      reviewed_at: string;
+      confirmed_at: string | null;
+      feed: PredictionRiskFeedInfo;
+      route: RouteScheduleDetail & Pick<RankedRoute, "fixable_flag_count" | "structural_flag_count">;
+      route_long_name: string | null;
+    }
+  /** The latest review has no detail for this route: it is not in the feed. */
+  | { state: "route_missing" }
+  | { state: "none" };
+
+export interface ReviewHistoryEntry {
+  review_id: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  feed_version: string | null;
+  route_count: number;
+  flagged_route_count: number;
 }
 
-const REVIEWS_TABLE = "GtfsPredictionRiskReviews";
-const DETAIL_TABLE = "GtfsScheduleReviewRoutes";
-
-async function tableReady(pool: sql.ConnectionPool, table: string): Promise<boolean> {
-  const result = await pool.request().query<{ ready: number }>(
-    `SELECT CASE WHEN OBJECT_ID('dbo.${table}', 'U') IS NULL THEN 0 ELSE 1 END AS ready`,
-  );
-  return result.recordset[0]?.ready === 1;
-}
-
-function summaryJson(review: ScheduleReview): string {
-  return JSON.stringify({ feed: review.summary.feed, routes: review.summary.routes, distance: review.distance });
-}
+export type ReviewComparison =
+  /** diff is null when there is nothing to compare: fewer than two reviews kept. */
+  | { state: "ready"; history: ReviewHistoryEntry[]; diff: ReviewDiff | null }
+  | { state: "same_review" }
+  /** One of the two asked-for reviews does not exist. */
+  | { state: "not_kept" };
 
 export type SaveOutcome =
   /** A new review was stored with its per-route detail. */
@@ -64,16 +90,59 @@ export type SaveOutcome =
    * replaced in place and confirmed_at stamped. No new review row, because
    * nothing a reader compares across reviews changed.
    */
-  | "detail_refreshed"
-  /** Migration 145 is not applied: the summary was stored as before, without detail. */
-  | "detail_table_missing"
-  /** Migration 143 is not applied: nothing was stored. */
-  | "summary_table_missing";
+  | "detail_refreshed";
 
-/** Whether the stored per-route detail differs from the review's. Pure, for the save path and its test. */
-export function detailChanged(stored: ReadonlyMap<string, string>, details: readonly RouteScheduleDetail[]): boolean {
+// --- Decoding a stored row --------------------------------------------------
+
+const KNOWN_CHECKS = new Set<string>(PREDICTION_RISK_CHECKS.map((c) => c.id));
+const CHECK_ORDER = PREDICTION_RISK_CHECKS.map((c) => c.id);
+
+function current<R extends Pick<PredictionRiskRoute, "checks" | "flag_count">>(route: R): R {
+  const checks = route.checks.filter((c) => KNOWN_CHECKS.has(c.id));
+  return { ...route, checks, flag_count: checks.filter((c) => c.flagged).length };
+}
+
+function decodeSummary(reviewJson: string): { feed: PredictionRiskFeedInfo; routes: PredictionRiskRoute[] } {
+  const stored = JSON.parse(reviewJson) as Pick<PredictionRiskReview, "feed" | "routes">;
+  return { feed: stored.feed, routes: stored.routes.map(current) };
+}
+
+function decodeRoute(detailJson: string): Extract<StoredRouteScheduleDetail, { state: "ready" }>["route"] {
+  const route = current(JSON.parse(detailJson) as RouteScheduleDetail);
+  const [{ fixable_flag_count, structural_flag_count }] = withFlagCounts([route], PREDICTION_RISK_CHECKS);
+  return { ...route, fixable_flag_count, structural_flag_count };
+}
+
+function summaryJson(review: ScheduleReview): string {
+  return JSON.stringify({ feed: review.summary.feed, routes: review.summary.routes, distance: review.distance });
+}
+
+/** route_id -> route_long_name from the static sync's GtfsRoutes table. */
+async function routeLongNames(pool: sql.ConnectionPool): Promise<Map<string, string>> {
+  const result = await pool.request().query<{ route_id: string; route_long_name: string | null }>(
+    "SELECT route_id, route_long_name FROM GtfsRoutes",
+  );
+  return new Map(result.recordset.filter((r) => r.route_long_name).map((r) => [r.route_id, r.route_long_name as string]));
+}
+
+// --- Writing ----------------------------------------------------------------
+
+/** Whether the stored per-route detail differs from the review's. */
+function detailChanged(stored: ReadonlyMap<string, string>, details: readonly RouteScheduleDetail[]): boolean {
   if (stored.size !== details.length) return true;
   return details.some((detail) => stored.get(detail.route_id) !== JSON.stringify(detail));
+}
+
+async function inTransaction(pool: sql.ConnectionPool, work: (tx: sql.Transaction) => Promise<void>): Promise<void> {
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    await work(tx);
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
 }
 
 async function writeDetail(tx: sql.Transaction, reviewId: number, details: readonly RouteScheduleDetail[]): Promise<void> {
@@ -86,49 +155,32 @@ async function writeDetail(tx: sql.Transaction, reviewId: number, details: reado
   }
 }
 
-export async function savePredictionRiskReview(pool: sql.ConnectionPool, review: ScheduleReview): Promise<SaveOutcome> {
-  if (!await tableReady(pool, REVIEWS_TABLE)) return "summary_table_missing";
+export async function saveReview(pool: sql.ConnectionPool, review: ScheduleReview): Promise<SaveOutcome> {
   const json = summaryJson(review);
-  const detailReady = await tableReady(pool, DETAIL_TABLE);
+  const latest = await pool.request().query<{ review_id: number; review_json: string }>(
+    `SELECT review_id, review_json FROM ${REVIEWS_TABLE} WHERE review_id = ${LATEST_REVIEW_ID}`,
+  );
+  const row = latest.recordset[0];
 
-  if (detailReady) {
-    const latest = await pool.request().query<{ review_id: number; review_json: string; detail_rows: number }>(`
-      SELECT TOP 1 r.review_id, r.review_json,
-             (SELECT COUNT(*) FROM ${DETAIL_TABLE} d WHERE d.review_id = r.review_id) AS detail_rows
-      FROM ${REVIEWS_TABLE} r
-      ORDER BY r.reviewed_at DESC, r.review_id DESC
-    `);
-    const row = latest.recordset[0];
-    // A row from before 145 has no detail; it is replaced rather than confirmed.
-    if (row && row.review_json === json && row.detail_rows > 0) {
-      const storedDetail = await pool.request().input("review_id", sql.Int, row.review_id)
-        .query<{ route_id: string; detail_json: string }>(`SELECT route_id, detail_json FROM ${DETAIL_TABLE} WHERE review_id = @review_id`);
-      const stored = new Map(storedDetail.recordset.map((d) => [d.route_id, d.detail_json]));
-      if (!detailChanged(stored, review.details)) {
-        await pool.request().input("review_id", sql.Int, row.review_id)
-          .query(`UPDATE ${REVIEWS_TABLE} SET confirmed_at = SYSUTCDATETIME() WHERE review_id = @review_id`);
-        return "unchanged";
-      }
-      const refresh = new sql.Transaction(pool);
-      await refresh.begin();
-      try {
-        await new sql.Request(refresh).input("review_id", sql.Int, row.review_id)
-          .query(`DELETE FROM ${DETAIL_TABLE} WHERE review_id = @review_id`);
-        await writeDetail(refresh, row.review_id, review.details);
-        await new sql.Request(refresh).input("review_id", sql.Int, row.review_id)
-          .query(`UPDATE ${REVIEWS_TABLE} SET confirmed_at = SYSUTCDATETIME() WHERE review_id = @review_id`);
-        await refresh.commit();
-      } catch (err) {
-        await refresh.rollback();
-        throw err;
-      }
-      return "detail_refreshed";
+  if (row && row.review_json === json) {
+    const storedDetail = await pool.request().input("review_id", sql.Int, row.review_id)
+      .query<{ route_id: string; detail_json: string }>(`SELECT route_id, detail_json FROM ${DETAIL_TABLE} WHERE review_id = @review_id`);
+    const stored = new Map(storedDetail.recordset.map((d) => [d.route_id, d.detail_json]));
+    const confirm = `UPDATE ${REVIEWS_TABLE} SET confirmed_at = SYSUTCDATETIME() WHERE review_id = @review_id`;
+    if (!detailChanged(stored, review.details)) {
+      await pool.request().input("review_id", sql.Int, row.review_id).query(confirm);
+      return "unchanged";
     }
+    await inTransaction(pool, async (tx) => {
+      await new sql.Request(tx).input("review_id", sql.Int, row.review_id)
+        .query(`DELETE FROM ${DETAIL_TABLE} WHERE review_id = @review_id`);
+      await writeDetail(tx, row.review_id, review.details);
+      await new sql.Request(tx).input("review_id", sql.Int, row.review_id).query(confirm);
+    });
+    return "detail_refreshed";
   }
 
-  const tx = new sql.Transaction(pool);
-  await tx.begin();
-  try {
+  await inTransaction(pool, async (tx) => {
     const inserted = await new sql.Request(tx)
       .input("feed_version", sql.NVarChar(100), review.summary.feed.version)
       .input("route_count", sql.Int, review.summary.routes.length)
@@ -139,106 +191,107 @@ export async function savePredictionRiskReview(pool: sql.ConnectionPool, review:
         OUTPUT INSERTED.review_id
         VALUES (@feed_version, @route_count, @flagged_route_count, @review_json)
       `);
-    const reviewId = inserted.recordset[0].review_id;
-    if (detailReady) await writeDetail(tx, reviewId, review.details);
-    await tx.commit();
-  } catch (err) {
-    await tx.rollback();
-    throw err;
-  }
-  return detailReady ? "stored" : "detail_table_missing";
+    await writeDetail(tx, inserted.recordset[0].review_id, review.details);
+  });
+  return "stored";
 }
 
-export type LatestPredictionRiskReview =
-  | { state: "ready"; review: StoredPredictionRiskReview }
-  | { state: "none" }
-  | { state: "migration_missing" };
+// --- Reading ----------------------------------------------------------------
 
-type StoredSummary = Pick<PredictionRiskReview, "feed" | "routes">;
-
-// The check definitions are not stored with the row: they are read from the
-// code, so a review always describes its checks in today's words. A stored
-// result for a check that no longer exists is dropped rather than shown with
-// no explanation.
-export async function loadLatestPredictionRiskReview(
-  pool: sql.ConnectionPool,
-  checks: PredictionRiskReview["checks"],
-): Promise<LatestPredictionRiskReview> {
-  if (!await tableReady(pool, REVIEWS_TABLE)) return { state: "migration_missing" };
-  const hasConfirmed = await tableReady(pool, DETAIL_TABLE);
-  const result = await pool.request().query<{ reviewed_at: Date; confirmed_at: Date | null; review_json: string }>(`
-    SELECT TOP 1 reviewed_at, ${hasConfirmed ? "confirmed_at" : "CAST(NULL AS DATETIME2) AS confirmed_at"}, review_json
-    FROM ${REVIEWS_TABLE}
-    ORDER BY reviewed_at DESC, review_id DESC
-  `);
+/** The newest review with every route's counts and long name; null before the first sync. */
+export async function latestReview(pool: sql.ConnectionPool): Promise<StoredPredictionRiskReview | null> {
+  const result = await pool.request().query<{ reviewed_at: Date; confirmed_at: Date | null; review_json: string }>(
+    `SELECT reviewed_at, confirmed_at, review_json FROM ${REVIEWS_TABLE} WHERE review_id = ${LATEST_REVIEW_ID}`,
+  );
   const row = result.recordset[0];
-  if (!row) return { state: "none" };
-  const stored = JSON.parse(row.review_json) as StoredSummary;
-  const known = new Set(checks.map((c) => c.id));
-  const names = await loadRouteLongNames(pool);
-  const routes = withFlagCounts(stored.routes.map((route) => ({ ...route, checks: route.checks.filter((c) => known.has(c.id)) })), checks);
+  if (!row) return null;
+  const { feed, routes } = decodeSummary(row.review_json);
+  const names = await routeLongNames(pool);
   return {
-    state: "ready",
-    review: {
-      reviewed_at: row.reviewed_at.toISOString(),
-      confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
-      feed: stored.feed,
-      checks,
-      routes: routes.map((route) => ({ ...route, route_long_name: names.get(route.route_id) ?? null })),
-    },
+    reviewed_at: row.reviewed_at.toISOString(),
+    confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
+    feed,
+    checks: PREDICTION_RISK_CHECKS,
+    routes: withFlagCounts(routes, PREDICTION_RISK_CHECKS).map((route) => ({ ...route, route_long_name: names.get(route.route_id) ?? null })),
   };
 }
 
-export type StoredRouteScheduleDetail =
-  | {
-      state: "ready";
-      reviewed_at: string;
-      confirmed_at: string | null;
-      feed: PredictionRiskFeedInfo;
-      route: RouteScheduleDetail;
-      route_long_name: string | null;
-    }
-  /** The latest review has no detail for this route: not in the feed, or stored before migration 145. */
-  | { state: "route_missing" }
-  | { state: "none" }
-  | { state: "migration_missing" };
-
-export async function loadRouteScheduleDetail(
-  pool: sql.ConnectionPool,
-  routeId: string,
-  checks: PredictionRiskReview["checks"],
-): Promise<StoredRouteScheduleDetail> {
-  if (!await tableReady(pool, REVIEWS_TABLE) || !await tableReady(pool, DETAIL_TABLE)) return { state: "migration_missing" };
+/** One route's checks with their evidence and its timepoint segments, from the newest review. */
+export async function routeDetail(pool: sql.ConnectionPool, routeId: string): Promise<StoredRouteScheduleDetail> {
   const result = await pool.request().input("route_id", sql.NVarChar(50), routeId)
-    .query<{ reviewed_at: Date; confirmed_at: Date | null; review_json: string; detail_json: string | null }>(`
-      SELECT TOP 1 r.reviewed_at, r.confirmed_at, r.review_json, d.detail_json
+    .query<{ reviewed_at: Date; confirmed_at: Date | null; review_json: string; detail_json: string | null; route_long_name: string | null }>(`
+      SELECT r.reviewed_at, r.confirmed_at, r.review_json, d.detail_json, g.route_long_name
       FROM ${REVIEWS_TABLE} r
       LEFT JOIN ${DETAIL_TABLE} d ON d.review_id = r.review_id AND d.route_id = @route_id
-      ORDER BY r.reviewed_at DESC, r.review_id DESC
+      LEFT JOIN GtfsRoutes g ON g.route_id = @route_id
+      WHERE r.review_id = ${LATEST_REVIEW_ID}
     `);
   const row = result.recordset[0];
   if (!row) return { state: "none" };
   if (!row.detail_json) return { state: "route_missing" };
-  const stored = JSON.parse(row.review_json) as StoredSummary;
-  const detail = JSON.parse(row.detail_json) as RouteScheduleDetail;
-  const known = new Set(checks.map((c) => c.id));
   return {
     state: "ready",
     reviewed_at: row.reviewed_at.toISOString(),
     confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
-    feed: stored.feed,
-    route: { ...detail, checks: detail.checks.filter((c) => known.has(c.id)) },
-    route_long_name: (await loadRouteLongNames(pool)).get(routeId) ?? null,
+    feed: decodeSummary(row.review_json).feed,
+    route: decodeRoute(row.detail_json),
+    route_long_name: row.route_long_name || null,
   };
 }
 
-/** Every route's stored timepoint segments from the latest review; empty before migration 145. */
-export async function loadLatestRouteSegments(pool: sql.ConnectionPool): Promise<Map<string, RouteScheduleDetail["segments"]>> {
-  if (!await tableReady(pool, REVIEWS_TABLE) || !await tableReady(pool, DETAIL_TABLE)) return new Map();
-  const result = await pool.request().query<{ route_id: string; detail_json: string }>(`
-    SELECT d.route_id, d.detail_json
-    FROM ${DETAIL_TABLE} d
-    WHERE d.review_id = (SELECT TOP 1 review_id FROM ${REVIEWS_TABLE} ORDER BY reviewed_at DESC, review_id DESC)
-  `);
+/** Every route's stored timepoint segments from the newest review; empty before the first sync. */
+export async function latestSegments(pool: sql.ConnectionPool): Promise<Map<string, RouteScheduleDetail["segments"]>> {
+  const result = await pool.request().query<{ route_id: string; detail_json: string }>(
+    `SELECT route_id, detail_json FROM ${DETAIL_TABLE} WHERE review_id = ${LATEST_REVIEW_ID}`,
+  );
   return new Map(result.recordset.map((r) => [r.route_id, (JSON.parse(r.detail_json) as RouteScheduleDetail).segments]));
+}
+
+async function history(pool: sql.ConnectionPool): Promise<ReviewHistoryEntry[]> {
+  const result = await pool.request().input("limit", sql.Int, HISTORY_LIMIT).query<{
+    review_id: number; reviewed_at: Date; confirmed_at: Date | null; feed_version: string | null; route_count: number; flagged_route_count: number;
+  }>(`
+    SELECT TOP (@limit) review_id, reviewed_at, confirmed_at, feed_version, route_count, flagged_route_count
+    FROM ${REVIEWS_TABLE}
+    ORDER BY reviewed_at DESC, review_id DESC
+  `);
+  return result.recordset.map((r) => ({
+    review_id: r.review_id,
+    first_seen_at: r.reviewed_at.toISOString(),
+    last_seen_at: (r.confirmed_at ?? r.reviewed_at).toISOString(),
+    feed_version: r.feed_version,
+    route_count: r.route_count,
+    flagged_route_count: r.flagged_route_count,
+  }));
+}
+
+async function snapshot(pool: sql.ConnectionPool, reviewId: number): Promise<ReviewSnapshot | null> {
+  const result = await pool.request().input("review_id", sql.Int, reviewId)
+    .query<{ review_id: number; reviewed_at: Date; review_json: string }>(
+      `SELECT review_id, reviewed_at, review_json FROM ${REVIEWS_TABLE} WHERE review_id = @review_id`,
+    );
+  const row = result.recordset[0];
+  if (!row) return null;
+  return { review_id: row.review_id, reviewed_at: row.reviewed_at.toISOString(), ...decodeSummary(row.review_json) };
+}
+
+/**
+ * The history (newest first) and what changed between two reviews. By default
+ * the newest against the one before it; given only `to`, that review against
+ * the one before it. Compared in time order whichever way round they were asked.
+ */
+export async function compareReviews(
+  pool: sql.ConnectionPool,
+  ids: { from?: number | null; to?: number | null } = {},
+): Promise<ReviewComparison> {
+  const entries = await history(pool);
+  const toId = ids.to ?? entries[0]?.review_id ?? null;
+  const toIndex = entries.findIndex((entry) => entry.review_id === toId);
+  const fromId = ids.from ?? (toIndex === -1 ? null : entries[toIndex + 1]?.review_id ?? null);
+  if (toId === null || fromId === null) return { state: "ready", history: entries, diff: null };
+  if (fromId === toId) return { state: "same_review" };
+  const [from, to] = await Promise.all([snapshot(pool, fromId), snapshot(pool, toId)]);
+  if (!from || !to) return { state: "not_kept" };
+  const [earlier, later] = from.reviewed_at <= to.reviewed_at ? [from, to] : [to, from];
+  return { state: "ready", history: entries, diff: diffReviews(earlier, later, CHECK_ORDER) };
 }

@@ -8,14 +8,14 @@
 // detector (gtfsMissedTripsPoll.ts) needs to know what SHOULD have run.
 // Static schedules change infrequently, so this does a full replace rather
 // than an incremental diff. Each import also stores the schedule's
-// prediction-risk review (lib/gtfsPredictionRisk.ts, migration 143) for
-// Integrations & Data Health.
+// schedule review (lib/scheduleReview) for Integrations & Data Health
+// and the Schedule Review page.
 import { app, type InvocationContext, type Timer } from "@azure/functions";
 import { getPool, sql } from "../lib/db";
 import { fetchAndParseStatic, resolveDirectionLabels } from "../lib/gtfsStatic";
 import { runFeedIngestion, type FeedRunReport } from "../lib/feedRun";
 import { scheduleCoverage } from "../lib/gtfsScheduleHorizon";
-import { savePredictionRiskReview } from "../lib/scheduleReview/store";
+import { saveReview } from "../lib/scheduleReview/store";
 
 // Days of remaining coverage below which the sync warns while the schedule is
 // still valid, so an expiring feed is visible before it lapses.
@@ -244,14 +244,8 @@ app.timer("gtfsStopsSync", {
           context.warn(`GTFS prediction-risk review failed and was not stored: ${predictionRiskError}`);
         } else if (predictionRisk) {
           try {
-            const outcome = await savePredictionRiskReview(pool, predictionRisk);
-            if (outcome === "summary_table_missing") {
-              context.warn("GtfsPredictionRiskReviews does not exist yet; apply migration 143 to keep the schedule's prediction-risk review.");
-            } else if (outcome === "detail_table_missing") {
-              context.warn("GtfsScheduleReviewRoutes does not exist yet; apply migration 145 to keep the evidence behind the schedule review.");
-            } else {
-              context.log(`Schedule review ${outcome === "stored" ? "stored" : outcome === "detail_refreshed" ? "unchanged, evidence refreshed" : "unchanged, confirmed"} for feed ${predictionRisk.summary.feed.version ?? "(no version)"}: ${predictionRisk.summary.routes.filter((r) => r.flag_count > 0).length} of ${predictionRisk.summary.routes.length} routes flagged (shape distances: ${predictionRisk.distance.unit}).`);
-            }
+            const outcome = await saveReview(pool, predictionRisk);
+            context.log(`Schedule review ${outcome === "stored" ? "stored" : outcome === "detail_refreshed" ? "unchanged, evidence refreshed" : "unchanged, confirmed"} for feed ${predictionRisk.summary.feed.version ?? "(no version)"}: ${predictionRisk.summary.routes.filter((r) => r.flag_count > 0).length} of ${predictionRisk.summary.routes.length} routes flagged (shape distances: ${predictionRisk.distance.unit}).`);
           } catch (err) {
             context.warn("Failed to store the GTFS prediction-risk review:", err);
           }
