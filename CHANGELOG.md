@@ -5,11 +5,18 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.54] - 2026-11-05
+## [1.7.56] - 2026-11-05
 
 - **One freshness rule for every feed.** `feedDependency` in `lib/kpiTrust.ts` is now the only place a feed's ledger row is judged: it reads the stale limit from `FEED_STALE_AFTER_MINUTES` in `lib/feedFreshness.ts`, takes the older of the source timestamp and the last success, and calls a non-empty delivery with no source time unavailable. KPI trust contracts list feed names only (each `staleAfterMinutes` they repeated equalled the table's value); `contract_pending` is derived from the table, with the same result.
 - **The feed connection checks use it too.** `ledgerFeedChecks` calls `feedDependency` for every feed and `ledgerOnlyDependency` is gone. Behaviour change for `prediction_capture`, which no KPI declares: it used to age by last success alone, so a capture writing a frozen GTFS-RT snapshot every run read Current; it now reads Stale, and a non-empty write with no source time reads unavailable (shown as stale on the row).
 - `feedChecks.ts` builds the Spare pipeline and Prediction capture rows through one `ledgerChecks` helper; their names, configured flags and error texts are unchanged.
+## [1.7.53] - 2026-11-05
+
+- **The Detour Register's CSV could carry a live formula.** `lib/detourSearch.ts`'s `csvCell` quoted every field but did nothing about a leading `=`, `+`, `-` or `@`, so a closure, note or location typed as `=HYPERLINK(...)` ran as a formula in the Excel workbook the export is pasted into. The Access inventory export already guarded against this with `spreadsheetSafeText`; the detour export did not.
+- **One rule for both.** `spreadsheetSafeText` moves from `routes/access/accessData.tsx` to `lib/spreadsheetSafeText.ts` (accessData re-exports it, so its callers are unchanged), and the detour `csvCell` runs every cell through it. Only the file is guarded: the export preview table shows the text as typed.
+- **Trade-off, same as the Access export:** a cell that legitimately starts with `-` (a location like "-3rd St") gets a leading apostrophe in the file. Excel hides the apostrophe in the cell.
+- Found by the reporting module review (`plans/reporting-module-review.md` §3.4).
+
 ## [1.7.50] - 2026-11-05
 
 - **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
