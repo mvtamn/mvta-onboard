@@ -100,3 +100,65 @@ export function observingSystem(source: OccurrenceSource | null): ObservingSyste
 export function observingSystemSql(refExpr: string): string {
   return `CASE WHEN ${refExpr} LIKE '${PREFIX.fixed_route_departure}%' THEN 'Avail_CAD_AVL' WHEN ${refExpr} LIKE '${PREFIX.missed_trip}gtfs:%' THEN 'Avail_CAD_AVL' WHEN ${refExpr} LIKE '${PREFIX.missed_trip}spare:%' THEN 'Spare' WHEN ${refExpr} LIKE '${PREFIX.on_demand_departure}%' THEN 'Spare' END`;
 }
+
+// ---------------------------------------------------------------------------
+// Missed trips: which standard, and which band.
+//
+// MVTA answered on 2026-11-06 that fixed route and microtransit are two
+// standards, one per service mode (plans/missed-trips-production-plan.md,
+// "Answers received", Q3). A case's mode is its MonitoredMissedTrips
+// source_system: Spare is microtransit, everything else (NULL included, which
+// predates migration 029) is fixed route.
+export const MISSED_TRIP_STANDARD_CODES = { fixed_route: "MISSED_TRIPS_FR", microtransit: "MISSED_TRIPS_MT" } as const;
+export type MissedTripStandardCode = (typeof MISSED_TRIP_STANDARD_CODES)[keyof typeof MISSED_TRIP_STANDARD_CODES];
+
+export function missedTripStandardCodeFor(sourceSystem: string | null | undefined): MissedTripStandardCode {
+  return sourceSystem === "spare" ? MISSED_TRIP_STANDARD_CODES.microtransit : MISSED_TRIP_STANDARD_CODES.fixed_route;
+}
+
+const plainAlias = (alias: string, what: string) => {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias)) throw new TypeError(`${what} alias must be a plain identifier`);
+};
+
+// The same choice over a MonitoredMissedTrips row, as a code to join
+// ContractorPerformanceStandards on.
+export function missedTripStandardCodeSql(alias: string): string {
+  plainAlias(alias, "missedTripStandardCodeSql");
+  return `CASE WHEN ISNULL(${alias}.source_system,N'gtfs')=N'spare' THEN N'${MISSED_TRIP_STANDARD_CODES.microtransit}' ELSE N'${MISSED_TRIP_STANDARD_CODES.fixed_route}' END`;
+}
+
+// The qualifier the tier-2 band is written against (migration 030):
+// $2,000 instead of $1,000.
+export const LAST_TRIP_QUALIFIER = "LAST_TRIP_OF_DAY";
+
+// LAST_TRIP_OF_DAY when a fixed-route case is the last trip of its block on
+// its service date, else NULL. MVTA's answer (Q2): "the last trip of the
+// assigned work (block) at the end of the day, before the operator and vehicle
+// return to the garage" - so per block per service date, not per route.
+//
+// The block comes from TripStartLog, the Dispatch Log's one row per revenue
+// trip scheduled on that date, written as a snapshot so a past day survives
+// the morning schedule replace. A day the Dispatch Log never materialized
+// falls back to GtfsScheduledTrips: the same block_id and service_id, which is
+// today's schedule and therefore only a fallback. A trip with no block in
+// either is not a last trip - tier 1, never a guess at tier 2.
+//
+// Microtransit has no qualifier yet: what the last trip of a Spare duty is
+// waits on question F4.
+export function missedTripQualifierSql(alias: string): string {
+  plainAlias(alias, "missedTripQualifierSql");
+  const date = `CAST(LEFT(${alias}.service_date,8) AS CHAR(8))`;
+  return `CASE WHEN ISNULL(${alias}.source_system,N'gtfs')<>N'spare' AND (
+      EXISTS(SELECT 1 FROM TripStartLog own
+        WHERE own.service_date=${date} AND own.trip_id=${alias}.trip_id AND own.block_id IS NOT NULL
+          AND NOT EXISTS(SELECT 1 FROM TripStartLog later
+            WHERE later.service_date=own.service_date AND later.block_id=own.block_id AND later.trip_id<>own.trip_id
+              AND later.scheduled_start_seconds>own.scheduled_start_seconds))
+      OR (NOT EXISTS(SELECT 1 FROM TripStartLog logged WHERE logged.service_date=${date})
+        AND EXISTS(SELECT 1 FROM GtfsScheduledTrips own
+          WHERE own.trip_id=${alias}.trip_id AND own.block_id IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM GtfsScheduledTrips later
+              WHERE later.block_id=own.block_id AND later.service_id=own.service_id AND later.trip_id<>own.trip_id
+                AND later.first_departure_seconds>own.first_departure_seconds))))
+    THEN N'${LAST_TRIP_QUALIFIER}' END`;
+}

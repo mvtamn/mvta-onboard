@@ -35,10 +35,19 @@ export const RESOLVERS: RegisteredResolver[] = [
     source: "api_feed",
     resolve: resolveOtpFixedRoute,
   },
+  // Two standards, one per service mode (MVTA, 2026-11-06). Intake picks one
+  // from the case's source_system: occurrenceIntake/sources.ts.
   {
     key: "MISSED_TRIPS_FR",
-    label: "Confirmed missed trips",
-    description: "Occurrences raised from MonitoredMissedTrips once a reviewer confirms the trip, from both the GTFS and Spare pipelines.",
+    label: "Confirmed fixed-route missed trips",
+    description: "Occurrences raised from MonitoredMissedTrips once a reviewer confirms a fixed-route (GTFS) trip. The last trip of a block carries LAST_TRIP_OF_DAY.",
+    appliesTo: "occurrence",
+    source: "onboard_compliance",
+  },
+  {
+    key: "MISSED_TRIPS_MT",
+    label: "Confirmed microtransit missed trips",
+    description: "Occurrences raised from MonitoredMissedTrips once a reviewer confirms a microtransit (Spare) case.",
     appliesTo: "occurrence",
     source: "onboard_compliance",
   },

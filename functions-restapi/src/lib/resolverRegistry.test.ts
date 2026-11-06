@@ -5,11 +5,12 @@ import { findResolver, RESOLVERS, resolveAutomatedThreshold, resolverKeys } from
 
 const context = { tx: {} as Transaction, contractorId: "c1", month: "202608", standardCode: "SOME_STANDARD" };
 
-test("every key migration 030 seeds is registered", () => {
-  // The catalog carries these three resolver_key values. A seeded key the
+test("every key the migrations seed is registered", () => {
+  // The catalog carries these resolver_key values (030, and MISSED_TRIPS_MT
+  // from 166). A seeded key the
   // registry does not answer to would score the month not assessable, which
   // is a loud failure but still a failure nobody intended.
-  for (const key of ["OTP_FIXED_ROUTE", "MISSED_TRIPS_FR", "GARAGE_DEPARTURE"]) {
+  for (const key of ["OTP_FIXED_ROUTE", "MISSED_TRIPS_FR", "MISSED_TRIPS_MT", "GARAGE_DEPARTURE"]) {
     assert.ok(findResolver(key), `${key} must be registered`);
   }
 });

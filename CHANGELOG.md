@@ -5,6 +5,19 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.69] - 2026-11-06
+
+Steps 0.7 and 1.4 of `plans/missed-trips-production-plan.md`, from MVTA's answers of 2026-11-06 (Q2 and Q3).
+
+- **Two standards, one per service mode.** `MISSED_TRIPS_FR` becomes "Missed Trips (Fixed Route)" and the new `MISSED_TRIPS_MT`, "Missed Trips (Microtransit)", takes Spare cases. Occurrence intake picks the standard from `MonitoredMissedTrips.source_system` in both paths, the nightly `raiseCandidates` pass and the review hand-off in `recordOccurrence`, through one rule in `occurrenceIntake/sources.ts` (`missedTripStandardCodeSql`). The resolver registry has a `MISSED_TRIPS_MT` entry, so Performance Standards admin offers it, and the review hand-off's `standard_code` names whichever standard the case landed on.
+- **Microtransit's amounts are placeholders.** Its tiers are fixed route's $1,000 a trip and $2,000 for the last trip, copied, with notes saying they wait on question F4 (what one missed microtransit trip is, what a duty's last trip is, and the amounts). Microtransit never gets the last-trip qualifier until F4 is answered.
+- **The last trip of a block is tier 2.** A fixed-route case that is the block's last scheduled trip on its service date gets `qualifier_code = 'LAST_TRIP_OF_DAY'`, so the assessment charges the $2,000 band. The block comes from `TripStartLog` (the Dispatch Log's per-date snapshot); a date the Dispatch Log never materialized falls back to `GtfsScheduledTrips` by block and `service_id`. A trip with no block in either stays tier 1. A restated review reads the qualifier again. Until now only manual intake ever set a qualifier.
+- **Migration 166** renames the fixed-route standard and its tier-2 note and the `LAST_TRIP_OF_DAY` condition label ("Last trip of the block"), adds `MISSED_TRIPS_MT` with its tiers, and scores it on every active Agreement that scores fixed route, over the same dates. It moves any Spare occurrence on `MISSED_TRIPS_FR` in a drafting month to microtransit and marks that month's input changed (none exist on dev). It dismisses missed-trip candidates raised before any detector was promoted: on dev, the 4 GTFS candidates of 5 and 7 August, which counted toward nothing. Re-runnable.
+- **Order matters.** Until migration 166 runs, a confirmed Spare case's review says the Missed Trips standard is not configured, and the nightly pass raises no Spare candidate. Spare detection is in Shadow detection, so nothing that counts is lost meanwhile.
+- Tests: `occurrenceIntake.db.contract.test.ts` (in CI's SQL Server job) proves a Spare case raises a microtransit occurrence and a GTFS case a fixed-route one on both paths, tier 2 on a block's last trip and tier 1 on its earlier trips (Dispatch Log and schedule fallback), and the migration's move, dismissal and re-run.
+
+**Restarts the REST app on merge.**
+
 ## [1.7.67] - 2026-11-06
 
 - **Integrations & Data Health showed every applied migration as Empty.** A schema row for a migration that is applied reports success and counts no records, and the connection table read "no records" as Empty (amber). Prod's export of 2026-11-05 carried fourteen amber "Database schema · migration N" rows while every one of those migrations was in fact applied. A check that counts nothing now reads **Passed**; a feed that answered with zero records still reads Empty, and a missing migration still reads Failed with the file to run.
