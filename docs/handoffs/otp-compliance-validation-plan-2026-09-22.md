@@ -79,11 +79,20 @@ successful upsert. No feed check, restatement or console figure could have shown
 | 497 | 31780 | 34 and 54 | 88 | 31860 (same split): 88 |
 
 Across all 27 keys the two values sum to the neighbouring stop's own total, day by day. The
-split follows the count of each weekday before and after about **18 March** — three Mondays
-and two, three Tuesdays and two, two Wednesdays and two, two Thursdays and two — which is
-what a mid-month schedule change looks like through a per-day-of-week aggregate. Routes
-affected: **425** (5 keys), **442** (7), **497** (15), at stops 30435, 31768, 31780 and
-31860.
+split follows the count of each weekday before and from **Monday 16 March** — two Mondays
+and three, two Tuesdays and three, two Wednesdays and two — which is what a **mid-month stop
+rename** looks like through a per-day-of-week aggregate. Routes affected: **425** (5 keys),
+**442** (7), **497** (15), at stops 30435, 31768, 31780 and 31860.
+
+**The cause is the rename, not a schedule change.** The two records differ in exactly one
+field that is not a measurement: `StopInternetName`. February returns only the old spelling
+and April onward only the new, which is what fixes the direction — the record carrying the
+old spelling is the *smaller* of the pair, holding the first two occurrences of each
+weekday. Fitting all 27 pairs against every candidate date in March 2026 leaves exactly one
+answer: the 16th is consistent with all 27, the 15th fails one, the 17th fails five and the
+18th fails ten. An earlier reading of this table dated the change to 18 March and called it
+a service pattern change; the arithmetic had the halves the wrong way round. The weekday
+counts date *a* change; only the names say *what* changed.
 
 **The correction.** +855 departures and +805 on-time departures, all 27 keys:
 
