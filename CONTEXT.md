@@ -1300,17 +1300,20 @@ _Avoid_: actual start, trip update time
 
 **Shadow detection**:
 Operation of a candidate detector for evaluation without automatic contractual
-promotion. A detector leaves Shadow detection only after a complete service
-week demonstrates at least 95 percent precision while reporting indeterminate
-and unmatched cases separately; on-demand service-quality additionally requires
-two complete service weeks, dispatcher agreement, and no unresolved feed-health
-issue. Cases from a detector in Shadow detection can be reviewed but never
-reach Assessment promotion.
+promotion. A detector leaves Shadow detection only after two complete service
+weeks in which every escalation was reviewed and no more than two were false
+alarms, measured against the runs the detector watched, and at least 95 percent
+precision whenever those weeks hold twenty or more cases; indeterminate and
+unmatched cases are reported separately. Real missed trips are rare, so the bar
+counts false alarms rather than asking for a sample of confirmed misses.
+On-demand service-quality additionally requires dispatcher agreement and no
+unresolved feed-health issue. Cases from a detector in Shadow detection can be
+reviewed but never reach Assessment promotion.
 _Avoid_: production truth, enabled detector, experimental detector
 
 **Detector promotion**:
 A dated decision that a detector family leaves Shadow detection, recorded with
-the precision and sample size it was measured on, the reason, and the person who
+the false alarms, runs watched, precision and sample size it was measured on, the reason, and the person who
 decided. It takes effect from a service date and applies only to cases on that
 date onward, so a promotion never changes a month already measured. The same
 record demotes a detector, which leaves the service dates it was trusted for
