@@ -11,6 +11,7 @@ import { detectorLabel, detectorSource, type PromotionDraft } from "../lib/detec
 import {
   availRecallText,
   availText,
+  backlogText,
   dispatcherRecallText,
   dispatcherText,
   draftFromWeek,
@@ -75,14 +76,16 @@ function DetectorRow({ scorecard, detector, onUseWeek }: {
   const fill = draftFromWeek(period, figures);
   const fixedRoute = detector !== "spare";
   const tone = weekTone(figures);
+  const backlog = backlogText(scorecard.periods, detector, featured);
 
   return <article className={`readiness-row is-${tone}`} aria-label={detectorLabel(detector)}>
     <div className="readiness-verdict">
       <strong>{detectorLabel(detector)}</strong>
       <small>{detectorSource(detector)}</small>
       <span className="readiness-figure">{figures.precision === null ? "—" : rateText(figures.precision)}</span>
-      <small>{periodLabel(period, "week")} · {figures.sample} decisive</small>
+      <small>{periodLabel(period, "week")} · {figures.sample} reviewed to a decision</small>
       <p>{figures.bar?.sentence}</p>
+      {backlog && <p className="readiness-backlog">{backlog}</p>}
       {fill
         ? <button type="button" className="btn-sm" onClick={() => onUseWeek(fill)}>Promote with this week</button>
         : <small>{weeksMetText(scorecard.periods, detector)}</small>}
@@ -101,11 +104,11 @@ function DetectorRow({ scorecard, detector, onUseWeek }: {
       </div>
       <div>
         <dt>Avail</dt>
-        <dd>{availText(figures)}{fixedRoute && <small>Recall {availRecallText(period.avail_recall)}</small>}</dd>
+        <dd>{availText(figures)}{fixedRoute && <small>{availRecallText(period.avail_recall)}</small>}</dd>
       </div>
       <div>
         <dt>Dispatchers agree</dt>
-        <dd>{dispatcherText(figures)}{fixedRoute && <small>Recall {dispatcherRecallText(period.dispatcher_recall)}</small>}</dd>
+        <dd>{dispatcherText(figures)}{fixedRoute && <small>{dispatcherRecallText(period.dispatcher_recall)}</small>}</dd>
       </div>
       <div>
         <dt>Review burden</dt>
@@ -126,7 +129,7 @@ export function DetectorReadiness({ scorecard, failure, detectors, onUseWeek }: 
       <h3>Ready to promote?</h3>
       <p className="detector-note">
         Each detector's latest complete service week (Monday to Sunday) against the {Math.round((scorecard?.precision_bar ?? 0.95) * 100)}% bar.
-        Precision is confirmed cases over every decisive review; held cases and indeterminate reviews are counted apart.
+        Precision is confirmed cases over every case reviewed to a decision; held cases and indeterminate reviews are counted apart.
         Select a week in the strip to read its evidence. Avail and the Dispatch Log are compared for fixed route only.
       </p>
     </header>
@@ -135,7 +138,7 @@ export function DetectorReadiness({ scorecard, failure, detectors, onUseWeek }: 
     {scorecard && detectors.map((detector) =>
       <DetectorRow key={detector} scorecard={scorecard} detector={detector} onUseWeek={onUseWeek} />)}
     {scorecard && (!scorecard.sources.avail || !scorecard.sources.dispatch_log) && <p className="detector-note">
-      {!scorecard.sources.avail && "This database has no Avail evidence links (migration 136), so Avail is not compared. "}
+      {!scorecard.sources.avail && "This database has no Avail evidence links yet, so Avail is not compared. "}
       {!scorecard.sources.dispatch_log && "This database has no Dispatch Log verifications, so dispatchers are not compared."}
     </p>}
   </section>;

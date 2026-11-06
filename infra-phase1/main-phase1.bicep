@@ -122,11 +122,25 @@ param availMissedTripsUrl string = 'https://avail360-api.myavail.cloud/MissedTri
 @description('Avail Pullout endpoint used for fixed-route garage departure monitoring.')
 param availPulloutUrl string = 'https://avail360-api.myavail.cloud/Pullout/v1/MVTA'
 
+@description('How the Function Apps sign in to SQL. "password": the admin login and password from Key Vault\'s sql-connection-string. "managedIdentity": each app\'s own identity (Authentication=Active Directory Default), which needs that app\'s database user - infra-stage0/scripts/grant-function-app-sql-users.sql - and leaves no secret in the setting.')
+@allowed(['password', 'managedIdentity'])
+param sqlAuthentication string = 'password'
+
 var cleanSuffix = replace(uniqueSuffix, '-', '')
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: 'kv-mvta-${environment}-${uniqueSuffix}'
 }
+
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' existing = {
+  name: 'sql-mvta-${environment}-${uniqueSuffix}'
+}
+
+// One SQL_CONNECTION_STRING for all three apps. Switching back to "password"
+// is the rollback: the Key Vault secret stays until Entra-only is on.
+var sqlConnectionString = sqlAuthentication == 'managedIdentity'
+  ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=sqldb-mvta-onboard-${environment};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;'
+  : '@Microsoft.KeyVault(SecretUri=https://${keyVault.name}.vault.azure.net/secrets/sql-connection-string/)'
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: 'appi-mvta-onboard-${environment}'
@@ -180,6 +194,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     storageAccountName: take('stmvtarestapi${environment}${cleanSuffix}', 24)
     subnetId: vnet.properties.subnets[0].id
     keyVaultName: keyVault.name
+    sqlConnectionString: sqlConnectionString
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
@@ -202,6 +217,7 @@ module restApiFunction 'modules/functionapp.bicep' = {
     riderAppBaseUrl: riderAppBaseUrl
     includeSpareApiKey: true
     complianceReportsStorageAccountName: take('stmvtacompreport${environment}${cleanSuffix}', 24)
+    ridershipScansStorageAccountName: take('stmvtasheetscan${environment}${cleanSuffix}', 24)
     predictionCaptureStorageAccountName: take('stmvtapredcap${environment}${cleanSuffix}', 24)
     spareMissedTripsEnabled: spareMissedTripsEnabled
     onDemandDeparturesEnabled: onDemandDeparturesEnabled
@@ -244,6 +260,7 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     storageAccountName: take('stmvtadispatch${environment}${cleanSuffix}', 24)
     subnetId: vnet.properties.subnets[0].id
     keyVaultName: keyVault.name
+    sqlConnectionString: sqlConnectionString
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
@@ -256,6 +273,7 @@ module dispatchFunction 'modules/functionapp.bicep' = {
     // no connection setting and every listener failed to start.
     serviceBusNamespace: 'sb-mvta-onboard-${environment}'
     acsEndpoint: acsEndpoint
+    acsResourceName: empty(acsEndpoint) ? '' : 'acs-mvta-onboard-${environment}'
     acsEmailFrom: acsEmailFrom
     acsSmsFrom: acsSmsFrom
     riderAppBaseUrl: riderAppBaseUrl
@@ -297,6 +315,7 @@ module spareWebhookFunction 'modules/functionapp.bicep' = {
     storageAccountName: take('stmvtasparehk${environment}${cleanSuffix}', 24)
     subnetId: vnet.properties.subnets[0].id
     keyVaultName: keyVault.name
+    sqlConnectionString: sqlConnectionString
     planSku: 'B1'
     planTier: 'Basic'
     aadClientId: aadClientId
@@ -399,6 +418,22 @@ module complianceReportsStorage 'modules/storage-compliance-reports.bicep' = {
   }
 }
 
+// Scanned Count Sheets (plans/count-sheet-scan-upload.md §5, increment S1):
+// the originals under an unlocked WORM retention policy, and the derived page
+// images. New resource, real (small) cost: approved by the user before the
+// infra workflow deploys it (PR description).
+module countSheetScansStorage 'modules/storage-count-sheet-scans.bicep' = {
+  name: 'count-sheet-scans-storage-deployment'
+  params: {
+    location: location
+    storageAccountName: take('stmvtasheetscan${environment}${cleanSuffix}', 24)
+    functionAppPrincipalId: restApiFunction.outputs.functionAppPrincipalId
+    manageRoleAssignments: manageRoleAssignments
+    // The console PUTs the original straight to Blob Storage.
+    allowedCorsOrigins: allowedCorsOrigins
+  }
+}
+
 // Azure Maps account for Event Monitoring's real map overlay
 // (event-module-implementation-plan.md, Part A3). CONFIRMED LIVE 2026-08-06:
 // the owner provisioned this manually (az/Portal), not via this module -
@@ -428,4 +463,5 @@ output serviceBusNamespace string = serviceBus.outputs.namespaceName
 output serviceBusQueueName string = serviceBus.outputs.queueName
 output detourImagesStorageAccount string = detourImagesStorage.outputs.storageAccountName
 output detourImagesContainer string = detourImagesStorage.outputs.containerName
+output countSheetScansStorageAccount string = countSheetScansStorage.outputs.storageAccountName
 output spareWebhookFunctionHostname string = spareWebhookFunction.outputs.functionAppHostname

@@ -3,11 +3,12 @@ import { ApiError, type GtfsRouteOption, type MissedTrip, type MissedTripReview,
 import { Link } from "react-router-dom";
 import { api } from "../../config.js";
 import { MISSED_TRIP_ALERTS, type MissedTripAlert } from "./missedTrips.data.js";
+import { caseHeader } from "./missedTripCaseHeader.js";
 import {
-  REVIEW_DECISIONS, agingBadge, assessmentOutcome, buildReviewRequest, confirmBlockedReason, conflictNotice,
-  dataQualityLabel, detectionTypeLabel, findingLabel, formatServiceMonth, heldReasonLabel, inView,
+  REVIEW_DECISIONS, agingBadge, assessmentOutcome, attributionHelp, buildReviewRequest, confirmBlockedReason, conflictNotice,
+  formatServiceMonth, heldReasonLabel, inView,
   lifecycleClass, lifecycleLabel, outcomeClass, outcomeLabel, pivotMonthlySummary, reviewMode,
-  routeLabel, sourceLabel, startEvidenceFacts, tripCode,
+  availTripRef, routeLabel, sourceLabel, startEvidenceFacts, tripCode,
 } from "./missedTripReview.js";
 import { LiveBanner } from "../../components/LiveSignal.js";
 import "./serviceRisk.css";
@@ -60,6 +61,17 @@ function formatServiceDate(yyyymmdd: string): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
+// The header's reference: the trip as Avail names it ("Avail trip 1019-N"),
+// so staff can look the same trip up in Avail. The GTFS trip_id stays under
+// Technical details, and is shown here only when no Avail form can be read
+// from it (a Spare request, or an id not in MVTA's form).
+function TripRef({ alert }: { alert: Pick<MissedTripAlert, "tripId" | "direction" | "sourceSystem"> }) {
+  const avail = alert.sourceSystem === "spare" ? null : availTripRef(alert.tripId, alert.direction);
+  return avail
+    ? <span className="mono-ref" title={`GTFS trip ID ${alert.tripId}`}>Avail trip {avail}</span>
+    : <span className="mono-ref">Ref {alert.tripId}</span>;
+}
+
 function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
   return {
     id: `${trip.trip_id}-${trip.service_date}`,
@@ -102,6 +114,8 @@ function fromMissedTrip(trip: MissedTrip): MissedTripAlert {
     evidenceConflict: Boolean(trip.evidence_conflict),
     evidenceConflictReason: trip.evidence_conflict_reason ?? null,
     gtfsEvidence: trip.gtfs_evidence ?? null,
+    spareTimes: trip.spare_times ?? null,
+    detectorPromoted: trip.detector_promoted,
   };
 }
 
@@ -468,6 +482,7 @@ function MissedTripsInvestigationPage({
       validateError={validateError}
       assessmentNotice={assessmentNotice}
       reviews={reviews}
+      evidenceUnavailable={!isPreview && diagnostics?.case_evidence_unavailable === true}
       onValidate={(decision) => void validate(selected, decision)}
     />
   ) : (
@@ -571,7 +586,7 @@ function MissedTripsInvestigationPage({
       <div className="risk-stat-grid" aria-label="Missed trip review summary">
         <RiskStat value={unreviewed} label="Unreviewed" tone="warning" />
         <RiskStat value={confirmed} label="Confirmed" tone="danger" />
-        <RiskStat value={falsePositives} label="False positives" tone="muted" />
+        <RiskStat value={falsePositives} label="Timely service" tone="muted" />
         <RiskStat value={routesAffected} label="Routes affected" tone="accent" />
       </div>
 
@@ -580,9 +595,8 @@ function MissedTripsInvestigationPage({
           remedy for them. */}
       {mode === "queue" && !isPreview && (diagnostics?.legacy_unverified_count ?? 0) > 0 ? (
         <p className="empty-note" style={{ padding: "0 4px 10px" }}>
-          {diagnostics!.legacy_unverified_count.toLocaleString()} legacy candidates from the superseded
-          detector are excluded from this queue. Their outcome is unknown rather than false — the evidence
-          needed to decide them was never recorded — so they are retained for audit instead of reviewed.
+          {diagnostics!.legacy_unverified_count.toLocaleString()} older cases from the retired detector are
+          kept for audit and are not waiting for review: the evidence needed to decide them was never recorded.
         </p>
       ) : null}
 
@@ -707,7 +721,7 @@ function MissedTripsInvestigationPage({
                             <span className="pill-sm pill-warning" style={{ marginLeft: 6 }}>Sources disagree</span>
                           )}
                           <div className="td-dim" style={{ marginTop: 4 }}>
-                            {timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}
+                            Deadline {timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}
                           </div>
                         </td>
                         <td>
@@ -795,7 +809,7 @@ function MissedTripsInvestigationPage({
                     {alert.evidenceConflict && (
                       <span className="pill-sm pill-warning" style={{ marginLeft: 6 }}>Sources disagree</span>
                     )}
-                    <small>{timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}</small>
+                    <small>Deadline {timeLabel(alert.graceDeadlineAt)} · {agoLabel(minutesAgo(alert.graceDeadlineAt))}</small>
                   </span>
                   <span className="risk-threshold">
                     <span className={`pill-sm ${outcomeClass(alert.validationStatus)}`}>
@@ -856,6 +870,7 @@ function MissedTripDetail({
   validateError,
   assessmentNotice,
   reviews,
+  evidenceUnavailable,
   onValidate,
 }: {
   alert: MissedTripAlert;
@@ -873,6 +888,7 @@ function MissedTripDetail({
   validateError: string | null;
   assessmentNotice: string | null;
   reviews: MissedTripReview[];
+  evidenceUnavailable: boolean;
   onValidate: (decision: MissedTripReviewDecision) => void;
 }) {
   const reviewed = alert.validationStatus !== "unreviewed";
@@ -880,6 +896,7 @@ function MissedTripDetail({
   const confirmBlocked = mode === "review" ? confirmBlockedReason(alert) : null;
   const outcome = assessmentOutcome(alert);
   const conflict = conflictNotice(alert);
+  const header = caseHeader(alert, timeLabel, { evidenceUnavailable });
 
   return (
     <aside className="risk-detail missed-trip-detail" aria-label={`${routeLabel(alert.route, routesById, alert.sourceSystem)} missed trip detail`}>
@@ -888,7 +905,7 @@ function MissedTripDetail({
           <span className="risk-eyebrow">Selected trip</span>
           <h3>{alert.sourceSystem === "spare" ? "Request" : "Trip"} {tripCode(alert.scheduledDepartureAt, alert.direction)} · {routeLabel(alert.route, routesById, alert.sourceSystem)}</h3>
           <p>
-            Service date {formatServiceDate(alert.serviceDate)} · <span className="mono-ref">Ref {alert.tripId}</span>
+            Service date {formatServiceDate(alert.serviceDate)} · <TripRef alert={alert} />
           </p>
         </div>
         <span className={`pill-sm ${lifecycleClass(alert)}`}>
@@ -906,34 +923,44 @@ function MissedTripDetail({
         </div>
       )}
 
-      <div className="risk-hero-metric">
-        <span>Grace deadline</span>
-        <strong>{timeLabel(alert.graceDeadlineAt)}</strong>
-        <small>Scheduled departure {timeLabel(alert.scheduledDepartureAt)}</small>
-      </div>
-
-      <dl className="risk-facts">
-        <div><dt>Source</dt><dd>{alert.sourceSystem === "spare" ? "Spare Requests + Slots" : "GTFS / GTFS-RT"}</dd></div>
-        <div><dt>Where it stands</dt><dd>{alert.lifecycle === "awaiting_evidence" ? heldReasonLabel(alert.heldReason) : lifecycleLabel(alert)}</dd></div>
-        <div><dt>Evidence finding</dt><dd>{findingLabel(alert.evidenceFinding)}</dd></div>
-        <div><dt>Detection type</dt><dd>{detectionTypeLabel(alert.detectionType)}</dd></div>
-        <div><dt>Evidence quality</dt><dd>{dataQualityLabel(alert.dataQualityStatus)}</dd></div>
-        <div><dt>Detector version</dt><dd>{alert.detectorVersion ?? "Legacy — not recorded"}</dd></div>
-        <div><dt>First flagged</dt><dd>{timeLabel(alert.firstSeenWatchingAt)}</dd></div>
-        {/* A GTFS case with its start evidence says all of this, better, below. */}
-        {alert.sourceSystem === "spare" || !alert.gtfsEvidence ? (
-          <div>
-            <dt>{alert.sourceSystem === "spare" ? "Pickup arrival evidence" : "First underway evidence"}</dt>
-            <dd>{alert.detectedLateArrivalAt ? timeLabel(alert.detectedLateArrivalAt) : "Not observed"}</dd>
-          </div>
+      {/* What was scheduled, what we saw, what it looks like, whether it is
+          charged - the same four lines for a fixed-route trip and an
+          on-demand request. The rest folds away under Technical details. */}
+      <dl className={`missed-trip-header is-${header.looksLike.tone}`} aria-label="Case summary">
+        <div><dt>{header.scheduledLabel}</dt><dd>{header.scheduled.map((line) => <span key={line}>{line}</span>)}</dd></div>
+        <div><dt>What we saw</dt><dd>{header.seen.map((line) => <span key={line}>{line}</span>)}</dd></div>
+        <div className="missed-trip-looks-like">
+          <dt>Looks like</dt>
+          <dd>
+            <strong>{header.looksLike.text}</strong>
+            {header.looksLike.caution ? <small>{header.looksLike.caution}</small> : null}
+          </dd>
+        </div>
+        {alert.lifecycle === "awaiting_evidence" || alert.lifecycle === "open" ? (
+          <div><dt>Where it stands</dt><dd>{alert.lifecycle === "awaiting_evidence" ? heldReasonLabel(alert.heldReason) : lifecycleLabel(alert)}</dd></div>
         ) : null}
+        {header.counting ? <div><dt>Counting</dt><dd>{header.counting}</dd></div> : null}
       </dl>
+
+      <details className="missed-trip-technical">
+        <summary>Technical details</summary>
+        <dl className="risk-facts">
+          {header.details.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}
+          {alert.sourceSystem === "spare" ? (
+            <>
+              <div><dt>Late pickup rule</dt><dd>{alert.conditionLateStart ? "Met" : "Not met"}</dd></div>
+              <div><dt>Superseded rule</dt><dd>{alert.conditionSuperseded ? "Met" : "Not met"}</dd></div>
+              <div><dt>Late dropoff rule</dt><dd>{alert.conditionLateArrival ? "Met" : "Not met"}</dd></div>
+            </>
+          ) : null}
+        </dl>
+      </details>
 
       {alert.sourceSystem !== "spare" && alert.gtfsEvidence ? (
         <div className="risk-detail-section">
           <h4>Start evidence</h4>
           <dl className="missed-trip-evidence">
-            {startEvidenceFacts(alert.gtfsEvidence, timeLabel).map((fact) => (
+            {startEvidenceFacts(alert.gtfsEvidence, timeLabel, alert.scheduledDepartureAt).map((fact) => (
               <div key={fact.label} className={fact.tone ? `is-${fact.tone}` : undefined}>
                 <dt>{fact.label}</dt>
                 <dd>
@@ -942,19 +969,6 @@ function MissedTripDetail({
                 </dd>
               </div>
             ))}
-          </dl>
-        </div>
-      ) : null}
-
-      {alert.sourceSystem === "spare" ? (
-        <div className="risk-detail-section">
-          <h4>Spare evidence</h4>
-          <dl className="risk-facts">
-            <div><dt>Late start</dt><dd>{alert.conditionLateStart ? "Triggered" : "No"}</dd></div>
-            <div><dt>Same-duty supersession</dt><dd>{alert.conditionSuperseded ? "Triggered" : "No"}</dd></div>
-            <div><dt>Late arrival</dt><dd>{alert.conditionLateArrival ? "Triggered" : "No"}</dd></div>
-            <div><dt>Pickup lateness</dt><dd>{alert.startDelaySeconds === null ? "—" : `${Math.round(alert.startDelaySeconds / 60)} min`}</dd></div>
-            <div><dt>Dropoff lateness</dt><dd>{alert.arrivalDelaySeconds === null ? "—" : `${Math.round(alert.arrivalDelaySeconds / 60)} min`}</dd></div>
           </dl>
         </div>
       ) : null}
@@ -1012,11 +1026,7 @@ function MissedTripDetail({
           <option value="undetermined">Undetermined — leave it for the assessment queue</option>
         </select>
         <p className="risk-unknown">
-          {attributionDraft === "contractor_error"
-            ? `Confirming adds this to the ${formatServiceMonth(alert.serviceDate.slice(0, 6))} performance assessment as a charged occurrence, once its detector is out of Shadow detection.`
-            : attributionDraft === "undetermined"
-              ? "Confirming raises the occurrence but leaves whose error it was to the Performance Assessment module, once its detector is out of Shadow detection."
-              : "Confirming records the occurrence against the month without charging a penalty, once its detector is out of Shadow detection."}
+          {attributionHelp(alert, attributionDraft)}
         </p>
 
         {mode !== "review" ? (
@@ -1128,8 +1138,8 @@ function MissedTripsMonthlyPage({ routesById }: { routesById: Map<string, GtfsRo
           <tr>
             <th>Month</th>
             <th>Route</th>
-            <th>Cancellations</th>
-            <th>No-shows</th>
+            <th>Advance cancellations</th>
+            <th>Suspected no-shows</th>
             <th>Spare candidates</th>
             <th>Confirmed missed</th>
             <th>Timely service</th>

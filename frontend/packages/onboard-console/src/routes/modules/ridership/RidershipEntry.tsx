@@ -20,6 +20,7 @@ import {
   STATE_LABEL,
   STATE_TONE,
 } from "../../../lib/ridership.js";
+import { ScanPanel } from "./ScanPanel.js";
 import { SheetForm } from "./SheetForm.js";
 
 type Load<T> = { state: "loading" } | { state: "ready"; data: T } | { state: "error"; message: string };
@@ -43,7 +44,8 @@ function serviceDateDaysAgo(days: number, now = new Date()): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" }).replace(/-/g, "");
 }
 
-export function RidershipEntry({ canEnter }: { canEnter: boolean }) {
+/** `initialSheet` (a sheet key) opens that sheet straight away: a printed sheet's QR link. */
+export function RidershipEntry({ canEnter, initialSheet = null }: { canEnter: boolean; initialSheet?: string | null }) {
   const [range, setRange] = useState<number>(RANGES[0].days);
   const [worklist, setWorklist] = useState<Load<RidershipWorklist>>({ state: "loading" });
   const [garage, setGarage] = useState<string | null | "all">("all");
@@ -64,6 +66,12 @@ export function RidershipEntry({ canEnter }: { canEnter: boolean }) {
   }, [range]);
 
   useEffect(() => { refreshWorklist(); }, [refreshWorklist]);
+
+  useEffect(() => {
+    if (!initialSheet) return;
+    setQueue([initialSheet]);
+    setOpenKey(initialSheet);
+  }, [initialSheet]);
 
   // The next sheet in the queue is fetched while this one is keyed, so Save
   // opens it at once and the first keystrokes land in it rather than nowhere.
@@ -210,9 +218,12 @@ export function RidershipEntry({ canEnter }: { canEnter: boolean }) {
         {leaveWarned && <div className="ridership-problems" role="alert"><p>This sheet has changes that are not saved. Press Esc again, or choose again, to leave without saving.</p></div>}
         {sheet.state === "loading" && <p className="ridership-dim">Loading block {splitSheetKey(openKey).block}.</p>}
         {sheet.state === "error" && <div className="ridership-paper">{nav}<p className="ridership-problems" role="alert">{sheet.message}</p></div>}
-        {sheet.state === "ready" && <div className="ridership-paper">
-          <SheetForm key={`${openKey}|${sheet.data.version ?? ""}`} sheet={sheet.data} readOnly={!canEnter} nav={nav}
-            onSaved={onSaved} onReload={() => loadOpenSheet(openKey, true)} onDirtyChange={setDirty} />
+        {sheet.state === "ready" && <div className={sheet.data.scan ? "ridership-with-scan" : undefined}>
+          <div className="ridership-paper">
+            <SheetForm key={`${openKey}|${sheet.data.version ?? ""}`} sheet={sheet.data} readOnly={!canEnter} nav={nav}
+              onSaved={onSaved} onReload={() => loadOpenSheet(openKey, true)} onDirtyChange={setDirty} />
+          </div>
+          <ScanPanel key={openKey} sheet={sheet.data} />
         </div>}
         <p className="ridership-dim ridership-keys">
           <kbd>Enter</kbd> next trip, then Save · <kbd>Ctrl/⌘ Enter</kbd> save from anywhere · <kbd>Esc</kbd> back to the worklist ·
@@ -241,6 +252,9 @@ export function RidershipEntry({ canEnter }: { canEnter: boolean }) {
                   trips keyed · {g.open} sheet{g.open === 1 ? "" : "s"} open{g.late > 0 ? ` · ${g.late} late` : ""}
                   {g.not_counted_trips > 0 ? ` · ${g.not_counted_trips} not counted` : ""}
                 </span>
+                {g.scanned_open != null && <span className="ridership-dim">
+                  {g.scanned_open} scanned, to enter{g.not_scanned ? ` · ${g.not_scanned} not scanned` : ""}
+                </span>}
               </button>
             );
           })}
@@ -296,7 +310,11 @@ export function RidershipEntry({ canEnter }: { canEnter: boolean }) {
               return (
                 <tr key={key} className={index === cursor ? "is-cursor" : undefined} aria-selected={index === cursor}
                   onClick={() => open(key)} onMouseEnter={() => setCursor(index)}>
-                  <td><span className={`ridership-pill is-${STATE_TONE[s.state]}`}>{STATE_LABEL[s.state]}</span></td>
+                  <td>
+                    <span className={`ridership-pill is-${STATE_TONE[s.state]}`}>{STATE_LABEL[s.state]}</span>
+                    {s.scan === "scanned" && <span className="ridership-pill is-accent">Scanned</span>}
+                    {s.scan === "not_scanned" && <span className="ridership-pill is-muted">Not scanned</span>}
+                  </td>
                   <td>{formatServiceDate(s.service_date)}</td>
                   <td className="mono"><button type="button" className="ridership-link" onClick={(e) => { e.stopPropagation(); open(key); }}>{s.block}</button></td>
                   <td>{s.garage ?? <span className="ridership-pill is-warn">Unassigned</span>}</td>

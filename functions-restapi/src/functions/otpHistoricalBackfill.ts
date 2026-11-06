@@ -19,12 +19,26 @@
 // progress rather than one opaque multi-minute spinner that eventually
 // 504s with nothing to show for it.
 //
+// ONE PHASE per request as well, for the same reason one level down. The
+// two feeds used to run back to back in a single invocation: OTP Monthly
+// first (13-30 s for a month), then Missed Trips. The 200 carrying the OTP
+// result was not written until both had finished, so a month whose Missed
+// Trips reload outran the gateway reported failure for an OTP half that had
+// been written in full - observed on dev 2026-10-28, where 202605 and
+// 202606 both showed "Request failed (504)" and "0 OTP Monthly rows
+// upserted" against months that had in fact been written completely. A
+// faster Missed Trips reload (availMissedTripsFeed.ts now bulk-loads) makes
+// that less likely; asking for one phase at a time is what makes it
+// impossible, because no phase's result waits on another's work.
+//
 // Idempotent either direction: OTP Monthly upserts by (service_month,
 // route_id, stop_id, day_of_week); Missed Trips deletes+reloads the whole
 // month. Re-running for a month already covered (including the current
 // trailing window) is harmless, just redundant.
 //
-//   POST /otp-historical-backfill  body: {month: "YYYYMM"} - integrations-health.edit
+//   POST /otp-historical-backfill
+//     body: {month: "YYYYMM", phase?: "otp_monthly" | "missed_trips"}
+//     - integrations-health.edit
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { getPool } from "../lib/db";
 import { requireAccess } from "../lib/access/require";
@@ -41,6 +55,11 @@ import {
   type OtpMonthlyCandidate,
 } from "../lib/otpMonthlyFeed";
 import { readParametersInForce } from "../lib/otpMeasurementParameters";
+import {
+  describeRetiredKey,
+  retireVanishedMonthlyKeys,
+  retirementArchiveReady,
+} from "../lib/otpMonthlyRetirement";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 
 function monthToDate(yyyymm: string): Date {
@@ -72,12 +91,21 @@ app.http("otpHistoricalBackfill", {
     if (errors.length > 0) {
       return { status: 400, jsonBody: { error: "Validation failed", details: errors } };
     }
-    const { month } = raw as { month: string };
+    const { month, phase } = raw as { month: string; phase?: "otp_monthly" | "missed_trips" };
+    const runOtp = phase === undefined || phase === "otp_monthly";
+    const runMissedTrips = phase === undefined || phase === "missed_trips";
 
+    // Only the feed being asked for has to be configured - a request for one
+    // phase must not fail over the other phase's settings.
     const otp = availConfig("otp_monthly");
     const missed = availConfig("missed_trips");
-    if (!otp.config || !missed.config) {
-      const unset = [...new Set([...(otp.missing ?? []), ...(missed.missing ?? [])])];
+    if ((runOtp && !otp.config) || (runMissedTrips && !missed.config)) {
+      const unset = [
+        ...new Set([
+          ...(runOtp && !otp.config ? (otp.missing ?? []) : []),
+          ...(runMissedTrips && !missed.config ? (missed.missing ?? []) : []),
+        ]),
+      ];
       return {
         status: 500,
         jsonBody: { error: `${unset.join("/")} not configured.` },
@@ -85,14 +113,6 @@ app.http("otpHistoricalBackfill", {
     }
 
     const pool = await getPool();
-    const ledgerReady = await restatementLedgerReady(pool);
-    const stampReady = await measurementStampReady(pool);
-    const currentServiceMonth = serviceMonthOf(new Date());
-    // This is the one action that restates a closed month on purpose, which is
-    // why ADR 0042 leaves re-pulling to a human rather than doing it on a
-    // declaration: the month comes back measured at whatever is in force now,
-    // and that is what the rows will say they were measured at.
-    const parameters = await readParametersInForce(pool);
 
     let otpResult: {
       reports_seen: number;
@@ -100,78 +120,130 @@ app.http("otpHistoricalBackfill", {
       duplicate_keys?: number;
       duplicate_key_detail?: string[];
       measurement_parameters?: string;
+      retired_keys?: number;
+      retired_key_detail?: string[];
+      retirement_note?: string;
       error?: string;
-    };
-    try {
-      const reports = await fetchAvail("otp_monthly", { month: monthToDate(month), parameters: parameters.segments }, otp.config);
-      const candidates: OtpMonthlyCandidate[] = [];
-      for (const report of reports) {
-        const mapped = mapOtpMonthlyReport(report, month);
-        if (!mapped) continue;
-        candidates.push({ mapped, source: report });
+    } | undefined;
+    if (runOtp) {
+      // Read only by the phase that needs it: a Missed Trips request has no
+      // business reading the measurement register.
+      const ledgerReady = await restatementLedgerReady(pool);
+      const stampReady = await measurementStampReady(pool);
+      const archiveReady = await retirementArchiveReady(pool);
+      const currentServiceMonth = serviceMonthOf(new Date());
+      // This is the one action that restates a closed month on purpose, which
+      // is why ADR 0042 leaves re-pulling to a human rather than doing it on a
+      // declaration: the month comes back measured at whatever is in force
+      // now, and that is what the rows will say they were measured at.
+      const parameters = await readParametersInForce(pool);
+      try {
+        const reports = await fetchAvail("otp_monthly", { month: monthToDate(month), parameters: parameters.segments }, otp.config!);
+        const candidates: OtpMonthlyCandidate[] = [];
+        for (const report of reports) {
+          const mapped = mapOtpMonthlyReport(report, month);
+          if (!mapped) continue;
+          candidates.push({ mapped, source: report });
+        }
+        // A month that holds two schedule patterns comes back as two records on
+        // one key. Summing them before the upsert is the only way the backfill
+        // stores the month Avail published rather than whichever half of it the
+        // MERGE happened to write last - 2026-03 lost 855 departures this way.
+        const { rows, collisions } = collapseOtpMonthlyReports(candidates);
+        const duplicateKeyDetail = collisions.map((collision) => describeOtpMonthlyCollision(collision));
+        for (const line of duplicateKeyDetail) context.warn(`OTP Monthly backfill: ${line}`);
+        let upserted = 0;
+        for (const { row } of rows) {
+          // A backfill that changes an already-ingested past month is a
+          // restatement like any other, and is recorded as one.
+          await upsertOtpMonthlyReport(pool, row, {
+            ledgerReady,
+            currentServiceMonth,
+            measurementParameters: parameters.segments,
+            stampReady,
+          });
+          upserted++;
+        }
+        // This is the button ADR 0042 points a re-pull at, so it is where a key
+        // Avail has stopped returning has to go: without this, re-pulling a month
+        // leaves the dead key unstamped and the month on the list the re-pull was
+        // meant to clear. Same gate as the nightly poll - near-total coverage,
+        // and every upsert landed.
+        const retirement =
+          upserted === rows.length
+            ? await retireVanishedMonthlyKeys(pool, {
+                serviceMonth: month,
+                returned: rows.map(({ row }) => row),
+                retiredBy: `otpHistoricalBackfill (${authResult.principal.userDetails || "system"})`,
+                archiveReady,
+              })
+            : null;
+        if (retirement && retirement.absent > 0) {
+          const line = `OTP Monthly backfill: ${month} - ${retirement.reason}.`;
+          if (retirement.retire) context.log(line);
+          else context.warn(line);
+        }
+        const retiredKeyDetail = (retirement?.retired ?? []).map((key) => describeRetiredKey(month, key));
+        for (const line of retiredKeyDetail) context.log(`OTP Monthly backfill: ${line}`);
+
+        otpResult = {
+          reports_seen: reports.length,
+          upserted,
+          duplicate_keys: collisions.length,
+          // Returned, not only logged: the console's backfill panel is where an
+          // admin watches a month come back, and "1,108 records became 1,081
+          // rows" is a fact about that month worth seeing there.
+          duplicate_key_detail: duplicateKeyDetail,
+          measurement_parameters: parameters.segments,
+          retired_keys: retirement?.retired.length ?? 0,
+          retired_key_detail: retiredKeyDetail,
+          // Returned when a month lost keys and they were NOT retired, which is
+          // the case somebody has to look at: the admin watching this panel is
+          // the only person who will know the re-pull did not finish the job.
+          retirement_note:
+            retirement && retirement.absent > 0 && !retirement.retire ? retirement.reason : undefined,
+        };
+        context.log(
+          `OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}` +
+            `${collisions.length > 0 ? ` (${collisions.length} keys carried more than one record)` : ""}` +
+            `${retiredKeyDetail.length > 0 ? `, ${retiredKeyDetail.length} keys retired` : ""}.`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        otpResult = { reports_seen: 0, upserted: 0, error: message };
+        context.error(`OTP Monthly backfill failed for ${month}:`, err);
       }
-      // A month that holds two schedule patterns comes back as two records on
-      // one key. Summing them before the upsert is the only way the backfill
-      // stores the month Avail published rather than whichever half of it the
-      // MERGE happened to write last - 2026-03 lost 855 departures this way.
-      const { rows, collisions } = collapseOtpMonthlyReports(candidates);
-      const duplicateKeyDetail = collisions.map((collision) => describeOtpMonthlyCollision(collision));
-      for (const line of duplicateKeyDetail) context.warn(`OTP Monthly backfill: ${line}`);
-      let upserted = 0;
-      for (const { row } of rows) {
-        // A backfill that changes an already-ingested past month is a
-        // restatement like any other, and is recorded as one.
-        await upsertOtpMonthlyReport(pool, row, {
-          ledgerReady,
-          currentServiceMonth,
-          measurementParameters: parameters.segments,
-          stampReady,
-        });
-        upserted++;
-      }
-      otpResult = {
-        reports_seen: reports.length,
-        upserted,
-        duplicate_keys: collisions.length,
-        // Returned, not only logged: the console's backfill panel is where an
-        // admin watches a month come back, and "1,108 records became 1,081
-        // rows" is a fact about that month worth seeing there.
-        duplicate_key_detail: duplicateKeyDetail,
-        measurement_parameters: parameters.segments,
-      };
-      context.log(
-        `OTP Monthly backfill: ${reports.length} reports seen, ${upserted} rows upserted for ${month}` +
-          `${collisions.length > 0 ? ` (${collisions.length} keys carried more than one record)` : ""}.`,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      otpResult = { reports_seen: 0, upserted: 0, error: message };
-      context.error(`OTP Monthly backfill failed for ${month}:`, err);
     }
 
-    let missedTripsResult: { reports_seen: number; rows_inserted: number; error?: string };
-    try {
-      const windowStart = monthToDate(month);
-      const now = new Date();
-      const windowEndCandidate = lastDayOfMonth(month);
-      const windowEnd = windowEndCandidate.getTime() < now.getTime() ? windowEndCandidate : now;
+    let missedTripsResult: { reports_seen: number; rows_inserted: number; error?: string } | undefined;
+    if (runMissedTrips) {
+      try {
+        const windowStart = monthToDate(month);
+        const now = new Date();
+        const windowEndCandidate = lastDayOfMonth(month);
+        const windowEnd = windowEndCandidate.getTime() < now.getTime() ? windowEndCandidate : now;
 
-      const reports = await fetchAvail("missed_trips", { start: windowStart, end: windowEnd }, missed.config);
-      const mapped = reports
-        .map((report) => mapMissedTripReport(report))
-        .filter((m): m is NonNullable<typeof m> => m !== null);
-      await replaceMissedTripsForMonths(pool, [month], mapped);
-      missedTripsResult = { reports_seen: reports.length, rows_inserted: mapped.length };
-      context.log(`Missed Trips backfill: ${reports.length} reports seen, ${mapped.length} rows reloaded for ${month}.`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      missedTripsResult = { reports_seen: 0, rows_inserted: 0, error: message };
-      context.error(`Missed Trips backfill failed for ${month}:`, err);
+        const reports = await fetchAvail("missed_trips", { start: windowStart, end: windowEnd }, missed.config!);
+        const mapped = reports
+          .map((report) => mapMissedTripReport(report))
+          .filter((m): m is NonNullable<typeof m> => m !== null);
+        await replaceMissedTripsForMonths(pool, [month], mapped);
+        missedTripsResult = { reports_seen: reports.length, rows_inserted: mapped.length };
+        context.log(`Missed Trips backfill: ${reports.length} reports seen, ${mapped.length} rows reloaded for ${month}.`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        missedTripsResult = { reports_seen: 0, rows_inserted: 0, error: message };
+        context.error(`Missed Trips backfill failed for ${month}:`, err);
+      }
     }
 
     return {
       status: 200,
-      jsonBody: { service_month: month, otp_monthly: otpResult, missed_trips: missedTripsResult },
+      jsonBody: {
+        service_month: month,
+        ...(otpResult ? { otp_monthly: otpResult } : {}),
+        ...(missedTripsResult ? { missed_trips: missedTripsResult } : {}),
+      },
     };
   },
 });

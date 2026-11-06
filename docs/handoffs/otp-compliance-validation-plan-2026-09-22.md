@@ -79,11 +79,20 @@ successful upsert. No feed check, restatement or console figure could have shown
 | 497 | 31780 | 34 and 54 | 88 | 31860 (same split): 88 |
 
 Across all 27 keys the two values sum to the neighbouring stop's own total, day by day. The
-split follows the count of each weekday before and after about **18 March** — three Mondays
-and two, three Tuesdays and two, two Wednesdays and two, two Thursdays and two — which is
-what a mid-month schedule change looks like through a per-day-of-week aggregate. Routes
-affected: **425** (5 keys), **442** (7), **497** (15), at stops 30435, 31768, 31780 and
-31860.
+split follows the count of each weekday before and from **Monday 16 March** — two Mondays
+and three, two Tuesdays and three, two Wednesdays and two — which is what a **mid-month stop
+rename** looks like through a per-day-of-week aggregate. Routes affected: **425** (5 keys),
+**442** (7), **497** (15), at stops 30435, 31768, 31780 and 31860.
+
+**The cause is the rename, not a schedule change.** The two records differ in exactly one
+field that is not a measurement: `StopInternetName`. February returns only the old spelling
+and April onward only the new, which is what fixes the direction — the record carrying the
+old spelling is the *smaller* of the pair, holding the first two occurrences of each
+weekday. Fitting all 27 pairs against every candidate date in March 2026 leaves exactly one
+answer: the 16th is consistent with all 27, the 15th fails one, the 17th fails five and the
+18th fails ten. An earlier reading of this table dated the change to 18 March and called it
+a service pattern change; the arithmetic had the halves the wrong way round. The weekday
+counts date *a* change; only the names say *what* changed.
 
 **The correction.** +855 departures and +805 on-time departures, all 27 keys:
 
@@ -108,13 +117,42 @@ carries same-run pairs for 2026-03 alone. **2026-08 — the Tier 1 control month
 as is 2026-09, the month compared against Avail BI, so neither of those results is in
 question.
 
-**Separately found and deliberately not fixed: 11 rows across three months that Avail no
-longer reports.** 2026-05 holds 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 holds
-912 against 910; 2026-09 holds 860 against 859. The upsert never deletes, so a route/stop/day
-Avail has stopped reporting keeps its last figure indefinitely. The effect on a month's total
-is small but it is in the wrong direction (it inflates), and whether OnBoard may delete a
-figure because a feed stopped mentioning it is a decision for Ty rather than a bug fix.
-Worth raising at Tier 4.
+**11 rows across three months that Avail no longer reports — decided and fixed 2026-10-30
+(1.6.73, ADR 0044).** 2026-05 held 999 rows where its 2026-10-29 re-pull saw 991; 2026-08 held
+912 against 910; 2026-09 held 860 against 859. The upsert never deleted, so a route/stop/day
+Avail has stopped reporting kept its last figure indefinitely — and, after 1.6.43, a figure
+nothing could ever stamp, which would have held all three months on the re-pull list for good.
+Such a key is now archived to `OtpMonthlyRetiredKeys` and removed from the month, but only by a
+response that accounted for at least 90% of what the month already held; a shorter response is
+reported and removes nothing. Migration 152 retires the 11 already stranded.
+
+**What that does to these figures: less than the comparison can resolve, and not all one
+way.** The direction depends on the rows, which is why the archive exists —
+`vw_OtpMonthlyRetiredKeys` is where a figure that moved for this reason is explained.
+
+**Migration 152 was applied to dev on 2026-11-02, and the figures either side were recorded
+as this plan asks (Tier 1, not Tier 4):**
+
+| Service month | Rows before → after | Departures before → after | Figure before | Figure after |
+|---|---|---|---|---|
+| 2026-05 | 999 → 991 | 67,532 → 67,465 | 87.560% | **87.574%** |
+| 2026-06 | 910 → 910 | 65,284 | 85.925% | **85.925%** (held no stranded rows) |
+| 2026-08 | 912 → 910 | 62,748 → 62,746 | 85.305% | **85.304%** |
+| 2026-09 | 860 → 859 | 62,538 → 62,521 | 81.200% | **81.195%** |
+
+2026-05 rose because its eight retired rows sat below the month's average. Every move is
+smaller than the Avail comparison can resolve, and they are not all in one direction, so no
+Tier 1 or Tier 4 result above is disturbed by them.
+
+The 11 archived rows cluster by day of week rather than by stop, which is what a feed that
+stops publishing a series looks like: 2026-05's eight are all **Mon**, last written
+2026-08-06; 2026-08's two are both **Tues**, last written 2026-09-22; 2026-09's one is
+**Thur** (route 499 at Shakopee Walmart, 17 departures, all on time), last written
+2026-10-28. All 11 are readable in `vw_OtpMonthlyRetiredKeys` with the date and reason.
+
+After the migration no month holds an unstamped row: every month from 2026-01 to 2026-11
+reads `2/5/10/60/0/1/1`, so the re-pull list is empty. Re-running the migration retired
+nothing further and changed no figure, as it is written to.
 
 **What is now guarded.** Both the poll and the backfill count distinct keys, add records that
 share one together, and report any key that carried more than one — in the log, and in the
@@ -208,10 +246,12 @@ change. That is exactly the bite the design wanted. 2026-05 is now the stable co
 
 All three now sit above 85, which weakens the spread: the test no longer exercises the
 80–85 band at all. If a warning-band month is wanted, **2026-09 raw (81.20%)** is the
-candidate — but use its **raw** figure only. September's assessable figure (85.27%) is an
-artefact of test data: 178 stop exclusions were approved by one reviewer inside a 3½-minute
-window on 2026-10-15, removing 14,813 departures. Clear those back before using September
-for anything, and see the explainer's section 8 for the control question it raises.
+candidate. **Its assessable figure is usable again as of 2026-11-01:** the 361 test
+decisions of 2026-10-15 — 178 approvals inside a 3½-minute window, removing 14,813
+departures and inflating the figure to 85.27% — were cleared through the Review Queue's own
+reset, so assessable equals raw at 81.20%. What they evidence about the control around the
+number is recorded as T4.4, and in `otp-baseline-checklist-2026-11-01.md`, item 1b. See the
+explainer's section 8 for the control question it raises.
 
 2026-09 is deliberately excluded: the feed covers only 1–20 September, so it is not a whole
 month to compare.
@@ -220,13 +260,17 @@ month to compare.
 
 ## Can the system be baselined today? No — and the blocker is not OnBoard
 
+*The closeout — every open question, who answers it, and the order — is in
+`otp-system-of-record-closeout-2026-10-31.md`. This section states the gate; that
+document states the path.*
+
 As of 2026-10-28, **do not freeze a baseline. Proceed and confirm by test.**
 
 | Gate | State |
 | --- | --- |
 | **A0 — the two manual artifacts agree with each other** | **Not done.** This is the gate. There is nothing to baseline against until it is. |
-| Tier 1 — OnBoard holds what Avail published | **Passed for 2026-08 and 2026-09; failed for 2026-03** until it is re-pulled — see "What changed on 2026-10-30" |
-| Tier 2 — rule correctness | Passed 2026-09-22, except T2.4 |
+| Tier 1 — OnBoard holds what Avail published | **Passed** for 2026-08 and 2026-09; 2026-03 failed and was **repaired by the 2026-10-30 re-pull** (90.46% → 90.50%, 67,330 departures) |
+| Tier 2 — rule correctness | **Passed in full.** T2.4, the last open case, proven on live data 2026-11-01 |
 | Months measured consistently | **Yes** — all backfilled 2026-10-29 |
 | Acceptance standard still valid | **No** — needs restating against corrected figures |
 
@@ -285,7 +329,7 @@ Then:
    comparison above is most of this evidence already.
 4. **Work Tier 3** with whoever runs the OCC review day to day, and bring **Tier 4** to Ty.
 
-**Tier 2 is already done** — run against dev on 2026-09-22, every case passing except T2.4.
+**Tier 2 is already done** — run against dev on 2026-09-22, and T2.4, the one case left open, proven on live data 2026-11-01.
 Each case is stamped with its result. Do not repeat it.
 
 **What to send back:** the Tier A comparison table filled in, an explanation for every
@@ -363,7 +407,7 @@ Rob is **Tier 1's external comparison** — the part only he can do — and Tier
 | T2.1 Raw − Excluded = Assessable | **Pass** | All 9 months reconcile exactly, agency and route level |
 | T2.2 view reproduces the app rule | **Pass** | 197 route-months compared, **0 mismatches** |
 | T2.3 only approved exclusions subtract | **Pass** | 6 approved → 6 rows excluded; 3 rejected → 0 excluded; no orphaned decisions |
-| T2.4 classification filter | **Untested by real data** | See F2 below |
+| T2.4 classification filter | **Pass (2026-11-01)** | Route 490 classified temporarily: assessable 85.3047% → 86.0963% → 85.3047%. See F2 below |
 | T2.5 exclusion arithmetic | **Pass** | 202607 excluded exactly 175 departures / 119 on-time; 202609 exactly 79 / 34 — matching the approved stops precisely |
 | T2.6 target provenance | **Pass** | 202601 and 202608 read a frozen period rule set; all other months read the catalog. Every path resolves to 0.85. |
 
@@ -383,11 +427,20 @@ no record that it changed.
 that is already over is recorded in `vw_OtpRestatement` with both figures and both deltas
 (ADR 0039, migration 141, applied). See T1.4 for how to read it.
 
-**F2 — Subtraction A has never fired.** All 13 classified routes (8 SpecialEvent, 4
-NonRevenue, 1 OnDemand) carry **zero** OTP rows, so the fixed-route filter has never actually
-removed anything. Every route in the feed is FixedRoute. The rule is correct and tested in
-CI, but it has no production evidence. Rob should classify one live route temporarily,
-confirm it leaves the official figure, and remove the classification.
+**F2 — Subtraction A had never fired. CLOSED 2026-11-01.** All 13 classified routes (8
+SpecialEvent, 4 NonRevenue, 1 OnDemand) carry **zero** OTP rows, so the fixed-route filter
+had never actually removed anything and the rule had no production evidence outside CI.
+
+Done rather than handed to Rob: route 490 was classified `SpecialEvent` temporarily, and
+2026-08's assessable figure moved **85.3047% → 86.0963%** — exactly route 490's own 2,239
+departures and 1,431 on time — while raw did not move. Removing the classification returned
+it. Both halves of T2.4 are now evidenced. Full figures in
+`otp-baseline-checklist-2026-11-01.md`, item 1a.
+
+*What the run turned up:* `RouteClassificationHistory` recorded neither the create nor the
+delete — the PUT copies the *existing* row into history before overwriting, so a new
+classification writes nothing, and the DELETE writes nothing at all. A classification is
+worth 0.79 points on August and is untraceable. That is a T4.5 question, not a T2.4 failure.
 
 **F3 — A one-record variance in the nightly ledger, unexplained.** The 2026-09-22 run
 recorded 2,672 records stored; the three trailing months hold 2,673 rows, all stamped by
@@ -546,9 +599,16 @@ The whole system rests on this. Nothing downstream can be right if it fails.
 
 **T1.1 — Agency totals match Avail, month 2026-08**
 Compare OnBoard's raw agency figure to Avail's own report for the same month.
-*Expected (restated 2026-10-28):* **62,748 total departures, 53,527 on time, 85.30% raw.**
-The pre-restatement expectation was 65,278 / 54,588 / 83.62% — if an export matches those
-instead, it was run before Avail's month-boundary fix.
+*Expected (2026-11-02 onward):* **62,746 total departures, 53,525 on time, 85.30% raw.**
+It read 62,748 / 53,527 until migration 152 retired two keys Avail had stopped returning
+(routes 477 and 480, one row each) — quote the smaller figure, or an export will seem to
+disagree by two departures for no reason. The pre-restatement expectation was
+65,278 / 54,588 / 83.62% — if an export matches those instead, it was run before Avail's
+month-boundary fix.
+
+> **Run 2026-11-01 and passing**, against the then-stored 62,748 / 53,527 / 85.30%, with
+> 912 rows over 912 distinct keys and every row stamped `2/5/10/60/0/1/1`. The external
+> half — Avail's own August export — is still outstanding and is Rob's.
 *Watch for:* any difference at all. A small one is not rounding — it means the poll caught
 the month at a different moment than Rob's export, so re-pull both and compare again.
 
@@ -598,9 +658,9 @@ run (it is an upsert of identical data).
 
 ## Tier 2 — Rule correctness: are the two subtractions doing exactly what is documented?
 
-**This whole tier has already been run against dev and passed, apart from T2.4.** Each case
+**This whole tier has been run against dev and passed, T2.4 included.** Each case
 is stamped with its result. They are kept in full so you can see what was checked, and
-re-run anything you want to see for yourself — but the only one that needs you is **T2.4**.
+re-run anything you want to see for yourself — but none of them needs you now.
 
 **T2.1 — Raw − Excluded = Assessable**
 > **Already run 2026-09-22 against dev: PASS.** All nine months reconcile exactly, agency
@@ -646,10 +706,19 @@ appear as `IsStopExcluded = 1`; the rejected stops still carry their full depart
 the assessable figure.
 
 **T2.4 — Classification filter**
-> **Already run 2026-09-22 against dev: NOT PROVEN — this one is yours.** All 13 classified
-> routes carry zero OTP rows, so the fixed-route filter has never actually removed anything.
-> The rule is correct and covered in CI, but it has no production evidence. Do the temporary
-> classification below.
+> **PASS — proven on live data 2026-11-01.** See
+> `otp-baseline-checklist-2026-11-01.md`, item 1a, for the figures and the method.
+> Route 490 was classified `SpecialEvent` temporarily: 2026-08's assessable figure moved
+> 62,748 / 53,527 = **85.3047%** to 60,509 / 52,096 = **86.0963%** — a subtraction of
+> exactly route 490's own 2,239 departures and 1,431 on time, **+0.7916 points** — while the
+> raw figure did not move, and routes below target went 9 to 8. Removing the classification
+> returned 85.3047% and 9, which evidences the other half: an unclassified route counts as
+> fixed route and is assessable. Classification state was restored.
+>
+> **Nothing to repeat.** The note below is kept for the method.
+>
+> *Raised by the run, not a failure of this case:* `RouteClassificationHistory` recorded
+> neither the create nor the delete, so the act is untraceable. Take it to T4.5.
 
 Confirm every SpecialEvent / OnDemand / NonRevenue route is `IsAssessable = 0`, and that an
 unclassified route is assessable.

@@ -71,6 +71,9 @@ app.http("missedTripsList", {
             limit: query.limit,
             offset: query.offset,
             returned_count: cases.length,
+            // The page lists without its start evidence; the console says so
+            // rather than showing the absence as evidence.
+            case_evidence_unavailable: read.evidenceError !== undefined,
             view_count: viewCount(query.view, totals),
             total_count: totals?.total_count ?? 0,
             active_count: totals?.active_count ?? 0,

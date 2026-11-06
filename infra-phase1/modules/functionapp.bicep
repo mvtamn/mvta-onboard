@@ -7,6 +7,8 @@ param appInsightsConnectionString string
 param storageAccountName string
 param subnetId string
 param keyVaultName string
+@description('SQL_CONNECTION_STRING: a Key Vault reference to the password string, or a passwordless managed-identity string. Chosen by sqlAuthentication in main-phase1.bicep.')
+param sqlConnectionString string
 param planSku string = 'B1'
 param planTier string = 'Basic'
 param includeSpareApiKey bool = false
@@ -21,6 +23,8 @@ param assessmentMonthBoundaryEnabled bool = false
 param spareMissedTripServiceIds string = ''
 param spareContractorFaultValues string = ''
 param complianceReportsStorageAccountName string = ''
+@description('Blob account for scanned Count Sheets (REST app only). Empty leaves scan upload answering 503.')
+param ridershipScansStorageAccountName string = ''
 @description('Blob account the prediction capture writes to (REST app only). Empty leaves the capture off.')
 param predictionCaptureStorageAccountName string = ''
 param manageRoleAssignments bool = false
@@ -53,6 +57,9 @@ param acsEmailFrom string = ''
 
 @description('ACS SMS sender number in E.164, e.g. +18005550100. Must be toll-free verified before carriers will deliver. Empty leaves SMS sending unconfigured.')
 param acsSmsFrom string = ''
+
+@description('Name of the Communication Services resource (same resource group) this app sends through. With manageRoleAssignments, the app identity is granted Contributor on it - the identity-based EmailClient/SmsClient get 403 without a role there. Empty grants nothing.')
+param acsResourceName string = ''
 
 @description('Public base URL of the rider app, used to build confirmation links. No trailing slash. Empty leaves confirmation emails with a relative link.')
 param riderAppBaseUrl string = ''
@@ -199,9 +206,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         // pilot set compiled into the importer; set it to adopt a third zone or
         // an upstream location-id rename without a code change.
         { name: 'ON_DEMAND_OPERATIONAL_ZONE_IDS', value: onDemandOperationalZoneIds }
-        // Key Vault reference, not a raw value - fixes the same class of
-        // "wiped on redeploy" bug for the connection string specifically.
-        { name: 'SQL_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/sql-connection-string/)' }
+        // Declared here so a redeploy cannot wipe it: either the Key Vault
+        // reference to the password string or the managed-identity string,
+        // per sqlAuthentication in main-phase1.bicep.
+        { name: 'SQL_CONNECTION_STRING', value: sqlConnectionString }
         // Same Key Vault reference pattern - powers Compose's optional
         // rider-friendly summary drafting (messagesDraftSummary.ts). The
         // secret itself (anthropic-api-key) must be created in Key Vault
@@ -218,6 +226,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'TEAMS_EVENT_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-event-webhook-url/)' }
         // Detour communications posted to Teams (migration 092 send path). Its own channel/secret so detours need not share the event channel.
         { name: 'TEAMS_DETOUR_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-detour-webhook-url/)' }
+        // Announcements posted to Teams by the dispatch app, one Workflows webhook per
+        // audience the compose form offers (lib/teamsAnnouncements.ts). Unresolved
+        // until the secret exists, which the code reads as "no channel set up".
+        { name: 'TEAMS_OPERATIONS_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-operations-webhook-url/)' }
+        { name: 'TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/teams-customer-service-webhook-url/)' }
       ], !empty(serviceBusNamespace) ? [
         // Azure Functions resolves this identity-based connection using the
         // app's system-assigned managed identity; no SAS secret is used.
@@ -296,6 +309,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'DECISION_MATRIX_HEALTH_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=https://${keyVaultName}.vault.azure.net/secrets/decision-matrix-health-client-secret/)' }
       ] : [], !empty(complianceReportsStorageAccountName) ? [
         { name: 'COMPLIANCE_REPORTS_STORAGE_ACCOUNT', value: complianceReportsStorageAccountName }
+      ] : [], !empty(ridershipScansStorageAccountName) ? [
+        { name: 'RIDERSHIP_SCANS_STORAGE_ACCOUNT', value: ridershipScansStorageAccountName }
       ] : [], !empty(predictionCaptureStorageAccountName) ? [
         { name: 'PREDICTION_CAPTURE_STORAGE_ACCOUNT', value: predictionCaptureStorageAccountName }
       ] : [], includeSpareApiKey ? [
@@ -355,6 +370,29 @@ resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   scope: keyVault
   properties: {
     roleDefinitionId: keyVaultSecretsUserRole.id
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// The ACS senders sign in as this identity (lib/acs.ts, DefaultAzureCredential),
+// so the identity needs a role on the Communication Services resource. Dev's
+// was granted by hand; prod's was missing (found 2026-11-01), which would have
+// failed every send. Contributor, matching dev.
+resource contributorRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: 'b24988ac-6180-42a0-ab88-20f7382dd24c' // Contributor
+}
+
+resource communicationServices 'Microsoft.Communication/communicationServices@2023-04-01' existing = if (!empty(acsResourceName)) {
+  name: empty(acsResourceName) ? 'unused' : acsResourceName
+}
+
+resource acsRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments && !empty(acsResourceName)) {
+  name: guid(functionApp.id, contributorRole.id, acsResourceName)
+  scope: communicationServices
+  properties: {
+    roleDefinitionId: contributorRole.id
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }

@@ -2,13 +2,10 @@ import { randomUUID } from "node:crypto";
 import { app, type HttpRequest, type InvocationContext } from "@azure/functions";
 import { requireAccess } from "../lib/access/require";
 import { getPool, sql } from "../lib/db";
+import { ACTION_KINDS, CRITERION_KINDS, SEVERITIES } from "../lib/decisionMatrixGuidance";
 import type { LibraryItemReader } from "../lib/sharepointLibrary";
 import { prepareSupportingDocumentReferences, ReferenceRefusal, type PreparedReferences } from "../lib/supportingDocumentReferences";
 import { approvedLibraryItems } from "./decisionMatrixLibrary";
-
-const SEVERITIES = new Set(["Stop service", "Restrict service", "Routine / no escalation"]);
-const CRITERION_KINDS = new Set(["applies", "excludes"]);
-const ACTION_KINDS = new Set(["required", "conditional", "informational"]);
 
 type CriterionInput = { id?: string; kind: string; text: string };
 type ActionInput = { id?: string; kind: string; instruction: string };

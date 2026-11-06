@@ -34,6 +34,7 @@ import {
   loadLoggedTrips,
   loadPulloutRuns,
   loadSheets,
+  sheetChangeReady,
   writeBlockGarages,
   writeSheet,
   type StoredSheet,
@@ -45,6 +46,7 @@ import type {
   LoggedTrip,
   PulloutRun,
   PulloutRunView,
+  SheetChange,
   SheetDetail,
   SheetTrip,
   Worklist,
@@ -53,7 +55,8 @@ import type {
 
 export * from "./types";
 export { addDays, daysBetween, isServiceDate, normalizeBlock, sheetDeadline, type SaveProblem } from "./rules";
-export { ridershipTablesReady } from "./store";
+export { printLogReady, ridershipTablesReady } from "./store";
+export { linkBaseFor, loadPrintStatus, printCountSheets, type GarageChoice, type PrintRequest, type PrintResult, type PrintStatus } from "./print";
 
 const sheetKey = (serviceDate: string, block: string) => `${serviceDate}|${block}`;
 
@@ -67,6 +70,8 @@ function sheetTrips(trips: readonly LoggedTrip[], confirmed: ReadonlySet<string>
     return {
       trip_id: trip.trip_id,
       route_short_name: trip.route_short_name,
+      route_label: trip.route_label,
+      trip_number: trip.trip_number,
       direction_label: trip.direction_label,
       scheduled_start_seconds: trip.scheduled_start_seconds,
       scheduled_end_seconds: trip.scheduled_end_seconds,
@@ -212,6 +217,7 @@ export async function loadSheet(executor: Executor, serviceDate: string, block: 
           operator_name: stored.operator_name,
           operator_id: stored.operator_id,
           bus: stored.bus,
+          change: stored.change,
           prefill_run: stored.prefill_run,
           operator_overridden: stored.operator_overridden,
           reconstructed: stored.reconstructed,
@@ -233,14 +239,20 @@ export async function loadSheet(executor: Executor, serviceDate: string, block: 
 
 export type SaveSheetResult =
   | { kind: "saved"; sheet: SheetDetail; changes: number }
+  | { kind: "change_not_ready" }
   | { kind: "invalid"; problems: SaveProblem[] }
   | { kind: "not_found" }
   | { kind: "conflict"; version: string | null };
 
-const headerFields = (h: { operator_name: string | null; operator_id: string | null; bus: string | null; prefill_run: number | null; operator_overridden: boolean; reconstructed: boolean }) => ({
+// The change is flattened so the history says which part of it moved.
+const headerFields = (h: { operator_name: string | null; operator_id: string | null; bus: string | null; change: SheetChange | null; prefill_run: number | null; operator_overridden: boolean; reconstructed: boolean }) => ({
   operator_name: h.operator_name,
   operator_id: h.operator_id,
   bus: h.bus,
+  change_from_trip_id: h.change?.from_trip_id ?? null,
+  change_operator_name: h.change?.operator_name ?? null,
+  change_operator_id: h.change?.operator_id ?? null,
+  change_bus: h.change?.bus ?? null,
   prefill_run: h.prefill_run,
   operator_overridden: h.operator_overridden,
   reconstructed: h.reconstructed,
@@ -293,11 +305,18 @@ export async function saveSheet(
       return { kind: "invalid", problems };
     }
 
+    const changeColumns = await sheetChangeReady(tx);
+    if (save.change && !changeColumns) {
+      await tx.rollback();
+      return { kind: "change_not_ready" };
+    }
+
     const prefill = orderPulloutRuns(await loadPulloutRuns(tx, serviceDate, block))[0] ?? null;
     const header = {
       operator_name: save.operator_name,
       operator_id: save.operator_id,
       bus: save.bus,
+      change: save.change,
       prefill_run: prefill?.run ?? null,
       operator_overridden: isOperatorOverridden(save, prefill),
       reconstructed: save.reconstructed,
@@ -344,7 +363,7 @@ export async function saveSheet(
     let written = 0;
     if (changes.length > 0 || insertAdded.length > 0) {
       written = (await writeSheet(tx, {
-        service_date: serviceDate, block, header, entered, exists: Boolean(stored),
+        service_date: serviceDate, block, header, changeColumns, entered, exists: Boolean(stored),
         upsertCounts, deleteCounts, insertAdded, updateAdded, removeAdded, changes,
       }, actor, now)).length;
     }

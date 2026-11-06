@@ -14,6 +14,7 @@ import {
   type ExcusedReason,
   type LoggedTrip,
   type PulloutRun,
+  type SheetChange,
   type SheetProgress,
   type SheetSave,
   type SheetState,
@@ -35,6 +36,36 @@ export function normalizeBlock(value: string): string | null {
   const trimmed = value.trim();
   if (!/^\d{1,3}$/.test(trimmed)) return null;
   return trimmed.padStart(3, "0");
+}
+
+/**
+ * The route as MVTA's guide names it (the paper sheet, Access, the totals):
+ * its number. GTFS gives some routes a name for a short name - Orange LINK is
+ * route 425 - so a short name that is not a number falls back to the route_id
+ * when that one is.
+ */
+export function guideRoute(shortName: string | null, routeId: string | null): string | null {
+  const short = shortName?.trim() || null;
+  const id = routeId?.trim() || null;
+  if (short && /^\d+$/.test(short)) return short;
+  if (id && /^\d+$/.test(id)) return id;
+  return short ?? id;
+}
+
+/**
+ * The trip as Avail and dispatch name it: "320-E", the trip number and the
+ * direction letter. MVTA's GTFS trip_id carries that number in hexadecimal as
+ * its first part - "t140-b1F5-sl1B-v64" is trip 320, and the number is the
+ * scheduled start as H:MM (3:20 AM) - as the block part carries the block (1F5
+ * is 501). Checked against every Dispatch Log trip on 2026-11-01/02 (847 of
+ * 847). Null for an id not in that form, so the sheet falls back to the id.
+ */
+export function availTripNumber(tripId: string, directionLabel: string | null): string | null {
+  const match = tripId.match(/^t([0-9A-Fa-f]{1,4})-b[0-9A-Fa-f]+-/);
+  if (!match) return null;
+  const number = parseInt(match[1], 16);
+  const letter = directionLabel?.trim().toUpperCase().match(/^([NSEW])(B|BOUND)?$/)?.[1];
+  return letter ? `${number}-${letter}` : String(number);
 }
 
 /** "20261201" -> "2026-12-01", the DATE form RidershipBlockGarages keys on. */
@@ -214,14 +245,14 @@ export interface SaveProblem {
 
 const TEXT_LIMITS = { operator_name: 200, operator_id: 20, bus: 20 } as const;
 
-function optionalText(value: unknown, field: keyof typeof TEXT_LIMITS, problems: SaveProblem[]): string | null {
+function optionalText(value: unknown, kind: keyof typeof TEXT_LIMITS, problems: SaveProblem[], field: string = kind): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") {
     problems.push({ field, message: "must be text" });
     return null;
   }
   const trimmed = value.trim();
-  if (trimmed.length > TEXT_LIMITS[field]) problems.push({ field, message: `must be at most ${TEXT_LIMITS[field]} characters` });
+  if (trimmed.length > TEXT_LIMITS[kind]) problems.push({ field, message: `must be at most ${TEXT_LIMITS[kind]} characters` });
   return trimmed === "" ? null : trimmed;
 }
 
@@ -235,6 +266,27 @@ function boardingsFor(status: string, value: unknown, field: string, problems: S
     return null;
   }
   return value;
+}
+
+/** The relief or bus change line. Which trip it may start from is checkSheetSave's job. */
+function parseChange(value: unknown, problems: SaveProblem[]): SheetChange | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    problems.push({ field: "change", message: "must be an object, or null when nothing changed" });
+    return null;
+  }
+  const c = value as Record<string, unknown>;
+  const fromTrip = typeof c.from_trip_id === "string" ? c.from_trip_id.trim() : "";
+  if (fromTrip === "") problems.push({ field: "change.from_trip_id", message: "is required: the trip the change applies from" });
+  const named = {
+    operator_name: optionalText(c.operator_name, "operator_name", problems, "change.operator_name"),
+    operator_id: optionalText(c.operator_id, "operator_id", problems, "change.operator_id"),
+    bus: optionalText(c.bus, "bus", problems, "change.bus"),
+  };
+  if (named.operator_name === null && named.operator_id === null && named.bus === null) {
+    problems.push({ field: "change", message: "must name the operator or the bus that took over" });
+  }
+  return fromTrip === "" ? null : { from_trip_id: fromTrip, ...named };
 }
 
 /** Shape-checks a PUT body. Whether its trips belong to the sheet is checkSheetSave's job. */
@@ -310,6 +362,7 @@ export function parseSheetSave(raw: unknown): { save: SheetSave | null; problems
     operator_name: optionalText(body.operator_name, "operator_name", problems),
     operator_id: optionalText(body.operator_id, "operator_id", problems),
     bus: optionalText(body.bus, "bus", problems),
+    change: parseChange(body.change, problems),
   };
   if (problems.length > 0) return { save: null, problems };
   return {
@@ -340,6 +393,12 @@ export function checkSheetSave(
   }
   for (const added of save.added_trips) {
     if (added.id && !savedAddedIds.has(added.id)) problems.push({ field: "added_trips", message: `${added.id} is not an unscheduled trip on this sheet` });
+  }
+  // The sheet's trips arrive in run order; a change from the first trip is just a different header.
+  if (save.change) {
+    const at = sheetTrips.findIndex((t) => t.trip_id === save.change!.from_trip_id);
+    if (at < 0) problems.push({ field: "change.from_trip_id", message: `${save.change.from_trip_id} is not on this sheet` });
+    else if (at === 0) problems.push({ field: "change.from_trip_id", message: "is the first trip: put that operator and bus in the header instead" });
   }
   return problems;
 }

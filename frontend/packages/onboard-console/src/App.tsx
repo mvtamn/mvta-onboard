@@ -42,7 +42,7 @@ import { EventWorkspaceProvider } from "./context/EventWorkspaceContext.js";
 import { AppDialogProvider } from "./components/AppDialog.js";
 import { Compliance } from "./routes/Compliance.js";
 import { ScheduleReview } from "./routes/ScheduleReview.js";
-import { Ridership } from "./routes/Ridership.js";
+import { Ridership, SheetLink } from "./routes/Ridership.js";
 import { RidershipSetupAdmin } from "./routes/RidershipSetupAdmin.js";
 import { PerformanceAssessment } from "./routes/PerformanceAssessment.js";
 import { Detours } from "./routes/Detours.js";
@@ -84,7 +84,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
   { match: (p) => p === "/subscribers", title: "Subscribers", sub: "Opt-in totals and recent signups" },
   { match: (p) => p === "/audit", title: "Audit Log", sub: "Search every message ever posted" },
   { match: (p) => p === "/detours", title: "Detours & Closures", sub: "Work active and upcoming detours — communications, Avail build, conflicts" },
-  { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Create and review the complete operational Detour record" },
+  { match: (p) => p === "/detour-intake", title: "Detour Intake", sub: "Report a closure or detour for OCC review" },
   { match: (p) => p === "/detour-reports", title: "Detour Register", sub: "Every detour, active and past — search, filter and export, read-only" },
   { match: (p) => p === "/admin" || p.startsWith("/admin/"), title: "Administration", sub: "Manage access, resources, configuration, integrations, and governance" },
   {
@@ -98,7 +98,7 @@ const PAGE_META: { match: (path: string) => boolean; title: string; sub: string 
     title: "OCC Tools",
     sub: "Service-risk prediction, procedure guidance, and vehicle monitoring",
   },
-  { match: (p) => p === "/ridership", title: "Ridership", sub: "Key Count Sheets from the garages, with completeness by garage and the deadline in front" },
+  { match: (p) => p === "/ridership", title: "Ridership", sub: "Print, scan and key Count Sheets, with completeness by garage and the deadline in front" },
   {
     match: (p) => p === "/schedule-review",
     title: "Schedule Review",
@@ -291,7 +291,8 @@ function AuthenticatedApp({ account, signOut }: {
   const canSeeCompliance = can("compliance-review.view");
   const canSeePerformanceAssessment = can("performance-assessment.view");
   const canSeeDetours = can("detours.view");
-  const canSeeRidership = can("ridership.view");
+  // The garage check-in desk holds print only, and opens Ridership on Print sheets.
+  const canSeeRidership = canAny(["ridership.view", "ridership.print", "ridership.scan"]);
   const canSeeDetourIntake = can("detours.intake");
   // Detour requests waiting on OCC. Nothing notifies them when one arrives, so
   // the number has to be visible from wherever they are.
@@ -382,7 +383,7 @@ function AuthenticatedApp({ account, signOut }: {
       name: "Specialist Operations",
       entries: navEntries(
         canSeeDetours && { to: "/detours", label: "Detours & Closures", desc: "Work active and upcoming detours — communications, Avail build, conflicts", icon: <IconDetour /> },
-        canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Create and review the complete operational Detour record", icon: <IconDetour />, count: pendingIntakeCount },
+        canSeeDetourIntake && { to: "/detour-intake", label: "Detour Intake", desc: "Report a closure or detour for OCC review", icon: <IconDetour />, count: pendingIntakeCount },
         canSeeDetours && { to: "/detour-reports", label: "Detour Register", desc: "Every detour, active and past — search, filter and export, read-only", icon: <IconClock /> },
         canSeeOccTools && { to: "/occ", label: "OCC Tools", desc: "Service-risk prediction, procedure guidance, and vehicle monitoring", icon: <IconWrench /> },
         canSeeRidership && { to: "/ridership", label: "Ridership", desc: "Key Count Sheets, with completeness by garage", icon: <IconBus /> },
@@ -652,7 +653,8 @@ function AuthenticatedApp({ account, signOut }: {
               <Route path="/audit" element={<RequireAccess action="governance-audit.view"><AuditLog /></RequireAccess>} />
               <Route path="/changelog" element={<Changelog />} />
               <Route path="/schedule-review" element={<ScheduleReview />} />
-              <Route path="/ridership" element={<RequireAccess action="ridership.view"><Ridership /></RequireAccess>} />
+              <Route path="/ridership" element={<RequireAccess anyOf={["ridership.view", "ridership.print", "ridership.scan"]}><Ridership /></RequireAccess>} />
+              <Route path="/r/:date/:block" element={<SheetLink />} />
               <Route path="/admin/access-management" element={<CompatibilityRedirect to="/admin/access" />} />
               <Route path="/admin" element={<RequireAccess anyOf={[...ADMIN_ACTIONS]}><AdminLayout /></RequireAccess>}>
                 <Route index element={<AdminHome />} />

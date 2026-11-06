@@ -431,6 +431,48 @@ export interface ProcedureDraft extends Omit<ProcedureDraftInput, "document_refe
   concurrency_token: string;
 }
 
+/** What a QRG was asked to seed, as the author chose it. */
+/** Where the SOP watch points, after an Admin chose it. */
+export interface SopFolderChoice {
+  folder: string;
+  whole_library: boolean;
+  documents_in_folder: number;
+  folders_in_folder: number;
+  walked: false;
+}
+
+export interface QrgSeedChosenDocument {
+  item_id: string;
+  seen_version: string;
+  document_code: string;
+}
+
+export interface QrgSeedInput {
+  procedure_id: string;
+  condition_key: string;
+  condition: string;
+  qrg: QrgSeedChosenDocument;
+  /** The governing document. A QRG can never be a Procedure's primary one. */
+  primary: QrgSeedChosenDocument & { document_type: "SOP" | "Reference" };
+}
+
+export interface QrgSeedResult {
+  procedure_id: string;
+  revision: number;
+  lifecycle_state: "Draft";
+  /** Whether the author is reviewing proposed guidance or filling in an empty
+   *  Draft, and why if it is empty. */
+  seeded_from: {
+    name: string;
+    outcome: "proposed" | "empty";
+    reason: string | null;
+    pages_read: number;
+    criteria: number;
+    immediate_actions: number;
+  };
+  reviewed: false;
+}
+
 export interface ProcedureDraftSaveResult {
   procedure_id: string;
   revision: number;
@@ -637,6 +679,21 @@ export interface MissedTrip {
   // lib/missedTripCase/caseEvidence.ts). Null on a Spare case and where the
   // evidence could not be read; absent from an API older than 1.6.27.
   gtfs_evidence?: GtfsCaseEvidence | null;
+  /** Whether the case's detector had left Shadow detection on its service date. Absent before 1.6.66. */
+  detector_promoted?: boolean;
+  /** A Spare case's promised, last-scheduled and actual times. Null on GTFS; absent before 1.6.66. */
+  spare_times?: SpareCaseTimes | null;
+}
+
+export interface SpareCaseTimes {
+  /** Promised at booking. */
+  original_pickup_at: string | null;
+  /** Spare's last schedule, after any re-plan. */
+  scheduled_pickup_at: string | null;
+  pickup_arrived_at: string | null;
+  original_dropoff_at: string | null;
+  scheduled_dropoff_at: string | null;
+  dropoff_arrived_at: string | null;
 }
 
 // Why a Dispatch Log time is or is not the trip's departure. Only "departed"
@@ -718,6 +775,8 @@ export interface MissedTripsDiagnostics {
   limit: number;
   offset: number;
   returned_count: number;
+  /** The page's start evidence could not be read; absent from an API older than 1.6.66. */
+  case_evidence_unavailable?: boolean;
   view_count: number;
   total_count: number;
   active_count: number;
@@ -1238,11 +1297,70 @@ export interface DetourHistoricalImportRow {
   imported_at: string;
 }
 
+// Display words for the workflow state. The stored values keep the glossary's
+// precise terms (CONTEXT.md, "Workflow state"); the screens use these. Only an
+// Avail Detour can wait for or fail an Avail entry, so those two name Avail.
+// "fulfilled" depends on the mode - built in Avail, or running manually - and
+// reads "In place" only where the mode is not known (detourLifecycleLabel).
 export const DETOUR_LIFECYCLE_LABELS: Record<DetourLifecycleState, string> = {
-  awaiting_fulfillment: "Awaiting fulfillment",
-  fulfilled: "Fulfilled",
-  fulfillment_failed: "Fulfillment failed",
+  awaiting_fulfillment: "Waiting for Avail entry",
+  fulfilled: "In place",
+  fulfillment_failed: "Avail entry failed",
   closed: "Closed",
+};
+
+// One name per fulfillment mode, everywhere it is shown (CONTEXT.md,
+// "Fulfillment mode").
+export const DETOUR_FULFILLMENT_MODE_LABELS: Record<DetourFulfillmentMode, string> = {
+  avail: "Build in Avail",
+  fixed_route_manual: "Fixed route, run manually",
+  mobility_manual: "Mobility, run manually",
+};
+
+/** The workflow state in plain words, naming the mode when it decides them. */
+export function detourLifecycleLabel(state: DetourLifecycleState, mode?: DetourFulfillmentMode | null): string {
+  if (state === "fulfilled") {
+    if (mode === "avail") return "Built in Avail";
+    if (mode === "fixed_route_manual" || mode === "mobility_manual") return "Running manually";
+  }
+  return DETOUR_LIFECYCLE_LABELS[state];
+}
+
+/** A recorded Avail entry result, as the buttons that record it say it. */
+export const DETOUR_AVAIL_RESULT_LABELS: Record<"entered" | "conflict" | "not_entered", string> = {
+  entered: "Built in Avail",
+  conflict: "Avail refused it",
+  not_entered: "Not built yet",
+};
+
+// The server's channel names (functions-restapi detourCommunication/channels.ts),
+// mirrored for screens that render a stored channel before the server's
+// channel list has loaded. Keep the two in step.
+export const DETOUR_CHANNEL_LABELS: Record<DetourChannel, string> = {
+  email: "Email",
+  sms: "Text message",
+  teams: "Teams",
+  digital_signage: "Digital signage",
+  avl_messaging: "AVL messaging",
+};
+
+/** A stored channel string in plain words; an unknown one is shown as stored. */
+export function detourChannelLabel(channel: string): string {
+  return (DETOUR_CHANNEL_LABELS as Record<string, string>)[channel.trim().toLowerCase()] ?? channel;
+}
+
+// The operating window's certainty. "Pending" alone read like the queue state
+// "Pending OCC review" beside it.
+export const DETOUR_TIME_WINDOW_LABELS: Record<"pending" | "estimated" | "confirmed", string> = {
+  pending: "Times unconfirmed",
+  estimated: "Times estimated",
+  confirmed: "Times confirmed",
+};
+
+export const DETOUR_COMMUNICATION_STATUS_LABELS: Record<DetourCommunicationStatus, string> = {
+  draft: "Draft",
+  published: "Published",
+  failed: "Send failed",
 };
 
 export const DETOUR_STATUS_LABELS: Record<DetourStatus, string> = {
@@ -2008,13 +2126,28 @@ export interface OtpMonthlyTrendPoint {
 // request, not a range - CONFIRMED live 2026-08-06: a 5-month range in a
 // single request hit a 504 gateway timeout. The console loops one request
 // per month (see OtpModule.tsx's OtpHistoricalBackfillPanel) instead.
+//
+// ONE PHASE per request too, for the same reason: the two feeds used to run
+// back to back inside a single request, and the response carrying the OTP
+// result was never written until Missed Trips had finished as well. A month
+// whose Missed Trips reload outran the gateway reported "Request failed
+// (504)" and "0 rows upserted" for an OTP half that had in fact been
+// written completely (observed on dev 2026-10-28 for 202605 and 202606).
+// Each phase now answers for itself. `phase` is optional so the endpoint
+// still does both when nothing asks for one, but the console always asks.
+export type OtpHistoricalBackfillPhase = "otp_monthly" | "missed_trips";
+
 export interface OtpHistoricalBackfillInput {
   month: string; // YYYYMM
+  phase?: OtpHistoricalBackfillPhase;
 }
 
+// A phase that was not asked for is absent, never a zero: "0 rows upserted"
+// and "not run" are different facts, and reporting the first for the second
+// is the bug this shape exists to make unrepresentable.
 export interface OtpHistoricalBackfillResponse {
   service_month: string;
-  otp_monthly: {
+  otp_monthly?: {
     reports_seen: number;
     upserted: number;
     // Keys Avail sent more than one record for. A month holding two schedule
@@ -2024,9 +2157,19 @@ export interface OtpHistoricalBackfillResponse {
     // duplicate_keys is the rows the month has.
     duplicate_keys?: number;
     duplicate_key_detail?: string[];
+    // Keys the month held that Avail did not return, archived to
+    // OtpMonthlyRetiredKeys and removed from the figure (ADR 0044). Before
+    // 1.6.73 they stayed, unreachable by any poll and - since the measurement
+    // stamp - unstampable, which kept their month on the re-pull list for good.
+    retired_keys?: number;
+    retired_key_detail?: string[];
+    // Set only when the month lost keys and they were NOT retired, because the
+    // payload was too short to tell a shrunken month from a bad delivery. The
+    // one case an admin has to look at rather than read.
+    retirement_note?: string;
     error?: string;
   };
-  missed_trips: { reports_seen: number; rows_inserted: number; error?: string };
+  missed_trips?: { reports_seen: number; rows_inserted: number; error?: string };
 }
 
 // GET /maps/token - short-lived Azure AD token scoped to Azure Maps, for
@@ -2602,6 +2745,9 @@ export interface RidershipWorklistSheet {
   entered_by: string | null;
   reconstructed: boolean;
   progress: RidershipSheetProgress;
+  /** Migration 163: "scanned", "not_scanned" for a garage that scans, else null; absent before the migration. */
+  scan?: "scanned" | "not_scanned" | null;
+  first_scanned_at?: string | null;
 }
 
 export interface RidershipGarageCompleteness {
@@ -2615,6 +2761,9 @@ export interface RidershipGarageCompleteness {
   required_trips: number;
   missing_trips: number;
   not_counted_trips: number;
+  /** Scanned but not entered, and not scanned (migration 163); null for a garage that does not scan. */
+  scanned_open?: number | null;
+  not_scanned?: number | null;
 }
 
 export interface RidershipWorklist {
@@ -2630,6 +2779,10 @@ export interface RidershipWorklist {
 export interface RidershipSheetTrip {
   trip_id: string;
   route_short_name: string | null;
+  /** The route as the guide prints it: 425, not "Orange LINK". */
+  route_label: string | null;
+  /** The trip as Avail and dispatch name it: "320-E"; null when the GTFS id is not in MVTA's form. */
+  trip_number: string | null;
   direction_label: string | null;
   scheduled_start_seconds: number;
   scheduled_end_seconds: number | null;
@@ -2678,6 +2831,7 @@ export interface RidershipSheet {
     operator_name: string | null;
     operator_id: string | null;
     bus: string | null;
+    change: RidershipSheetChange | null;
     prefill_run: number | null;
     operator_overridden: boolean;
     reconstructed: boolean;
@@ -2692,6 +2846,69 @@ export interface RidershipSheet {
   added_trips: RidershipAddedTrip[];
   progress: RidershipSheetProgress;
   history: RidershipSheetHistoryEntry[];
+  /** Migration 163: the sheet's scanned pages. Null before the migration; absent on a save's response. */
+  scan?: { pages: RidershipScanPage[]; can_view_images: boolean } | null;
+}
+
+// ---------------------------------------------------------------- Count Sheet scans (migration 163)
+
+export type RidershipScanPageState = "pending" | "matched" | "blank" | "duplicate" | "superseded" | "unreadable" | "ignored";
+
+export interface RidershipScanPage {
+  page_id: string;
+  /** 1-based page of the uploaded file. */
+  page_number: number;
+  state: RidershipScanPageState;
+  /** Why a page is unreadable: marks_missing, not_identified, processing_failed, ... */
+  reason: string | null;
+  service_date: string | null;
+  block: string | null;
+  sheet_page: number | null;
+  identified_by: "qr" | "printed_text" | "person" | null;
+  straightened: boolean;
+  /** When the copy was printed; null when the print run is not known. */
+  printed_at: string | null;
+  /** The sheet's date is more than two days from the upload. */
+  date_flag: boolean;
+  processed_at: string | null;
+  assigned_by: string | null;
+}
+
+export interface RidershipScanUpload {
+  upload_id: string;
+  garage: string | null;
+  file_name: string;
+  status: "awaiting" | "queued" | "splitting" | "processing" | "done" | "failed";
+  status_detail: string | null;
+  page_count: number | null;
+  created_at: string;
+  created_by: string;
+  pages: RidershipScanPage[];
+}
+
+export interface RidershipScanDesk {
+  service_date: string;
+  garage: string | null;
+  uploads: RidershipScanUpload[];
+  expected: { block: string; pages: number; scanned_pages: number }[];
+  unassigned: number;
+}
+
+export type RidershipScanPageAction =
+  | { action: "assign"; service_date: string; block: string; sheet_page?: number }
+  | { action: "ignore" }
+  | { action: "blank" };
+
+/**
+ * A relief operator or bus change part way through the block (migration 162):
+ * from this trip on, the named operator and bus ran it. A null field carries
+ * on from the header - a bus swap names no operator.
+ */
+export interface RidershipSheetChange {
+  from_trip_id: string;
+  operator_name: string | null;
+  operator_id: string | null;
+  bus: string | null;
 }
 
 export interface RidershipSheetSave {
@@ -2699,6 +2916,8 @@ export interface RidershipSheetSave {
   operator_name: string | null;
   operator_id: string | null;
   bus: string | null;
+  /** Null when nobody took over and the bus stayed. */
+  change: RidershipSheetChange | null;
   reconstructed: boolean;
   trips: { trip_id: string; count_status: RidershipCountStatus; boardings: number | null }[];
   /** The whole list. A saved row whose id is missing here is removed. */
@@ -2732,4 +2951,59 @@ export interface RidershipBlockGarageList {
 export interface RidershipBlockGarageSave {
   effective_from: string;
   rows: { block: string; garage: string | null }[];
+}
+
+// ---------------------------------------------------------------- ridership printing (PR 4)
+
+/** Where a Count Sheet stands against the print log. */
+export type RidershipPrintState = "not_printed" | "printed" | "changed";
+/** What one print covered: a garage's whole stack, or a reprint of some of its blocks. */
+export type RidershipPrintScope = "garage" | "blocks";
+
+export interface RidershipPrintStatusSheet {
+  block: string;
+  garage: string | null;
+  /** Place in the garage's stack, pull-out order. */
+  order: number;
+  first_start_seconds: number;
+  trips: number;
+  pages: number;
+  state: RidershipPrintState;
+  printed_at: string | null;
+  printed_by: string | null;
+}
+
+export interface RidershipPrintRun {
+  printed_at: string;
+  printed_by: string;
+  scope: RidershipPrintScope;
+  sheets: number;
+  pages: number;
+  blank_backs: boolean;
+}
+
+export interface RidershipPrintStatus {
+  service_date: string;
+  garage?: string | null;
+  /** Garages with sheets on the date; null is Unassigned. */
+  garages: (string | null)[];
+  sheets: RidershipPrintStatusSheet[];
+  last_print: RidershipPrintRun | null;
+  prints: RidershipPrintRun[];
+  not_printed: number;
+  changed: number;
+  /** Blocks this garage printed that the Dispatch Log no longer runs on the date. */
+  dropped: { block: string; printed_at: string; printed_by: string }[];
+}
+
+export interface RidershipPrintRequest {
+  /** YYYYMMDD. */
+  date: string;
+  /** null is the Unassigned blocks. */
+  garage: string | null;
+  /** Reprint just these; absent prints the garage's whole stack. */
+  blocks?: string[];
+  blank_backs: boolean;
+  /** Where the QR link points until the operator app has its own address. */
+  link_base: string;
 }

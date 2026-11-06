@@ -8,6 +8,9 @@ import {
   type RidershipCountStatus,
   type RidershipExcusedReason,
   type RidershipGarageCompleteness,
+  type RidershipPrintState,
+  type RidershipPrintStatus,
+  type RidershipPrintStatusSheet,
   type RidershipPulloutRun,
   type RidershipSheet,
   type RidershipSheetSave,
@@ -81,23 +84,57 @@ export function dueLabel(serviceDate: string): string {
   return `end of ${DATE_FORMAT.format(next)}`;
 }
 
-/** GTFS seconds past the service day's midnight, as the sheet's clock prints them. */
+/**
+ * GTFS seconds past the service day's midnight as the current guide shows a
+ * time (the paper sheet's "Ride Detail" and Access): "3:20 AM". The service
+ * day runs past midnight, so 24:40 shows as 12:40 AM.
+ */
 export function clock(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const h = Math.floor(minutes / 60) % 24;
-  return `${String(h).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60) % (24 * 60);
+  const h = Math.floor(minutes / 60);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(minutes % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** A trip as the guide names it: its scheduled start and end, "5:20 AM – 6:40 AM". */
+export function timeSpan(start: number, end: number | null): string {
+  return end === null ? clock(start) : `${clock(start)} – ${clock(end)}`;
+}
+
+/** GTFS "EB"/"NB" as the guide writes it: E, N, S, W. Anything else as it is. */
+export function directionLetter(label: string | null): string {
+  if (!label) return "-";
+  const match = label.trim().toUpperCase().match(/^([NSEW])(B|BOUND)?$/);
+  return match ? match[1] : label;
 }
 
 /**
- * A start time typed from the sheet: "7:30", "0730" or "730". After midnight
- * the service day runs on, so 00:40 that night is typed 24:40.
+ * A start time as an unscheduled row shows it for editing. Past midnight it
+ * stays 24:40, because "12:40 AM" would read back as the start of the day.
+ */
+export function editableClock(seconds: number): string {
+  if (seconds < 24 * 3600) return clock(seconds);
+  const minutes = Math.floor(seconds / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/**
+ * A start time typed from the sheet: "7:30 PM", "7:30", "0730" or "730".
+ * Without AM or PM it is the 24-hour clock. After midnight the service day
+ * runs on, so 00:40 that night is typed 24:40.
  */
 export function parseClock(text: string): number | null {
-  const match = text.trim().match(/^(\d{1,2}):?(\d{2})$/);
+  const match = text.trim().match(/^(\d{1,2}):?(\d{2})\s*(?:([ap])\.?\s*m?\.?)?$/i);
   if (!match) return null;
-  const h = Number(match[1]);
+  let h = Number(match[1]);
   const m = Number(match[2]);
-  if (h > 29 || m > 59) return null;
+  const half = match[3]?.toLowerCase();
+  if (m > 59) return null;
+  if (half) {
+    if (h < 1 || h > 12) return null;
+    h = (h % 12) + (half === "p" ? 12 : 0);
+  } else if (h > 29) {
+    return null;
+  }
   return h * 3600 + m * 60;
 }
 
@@ -156,10 +193,20 @@ export interface AddedDraft {
   cell: Cell;
 }
 
+/** The sheet's "Relief or bus change" line, as typed. Blank text carries on from the header. */
+export interface ChangeDraft {
+  from_trip_id: string;
+  operator_name: string;
+  operator_id: string;
+  bus: string;
+}
+
 export interface SheetDraft {
   operator_name: string;
   operator_id: string;
   bus: string;
+  /** Null: the sheet's relief line is blank. */
+  change: ChangeDraft | null;
   reconstructed: boolean;
   cells: Record<string, Cell>;
   added: AddedDraft[];
@@ -172,6 +219,14 @@ export function draftFromSheet(sheet: RidershipSheet): SheetDraft {
     operator_name: who?.operator_name ?? "",
     operator_id: who?.operator_id ?? "",
     bus: who?.bus ?? "",
+    change: sheet.header?.change
+      ? {
+          from_trip_id: sheet.header.change.from_trip_id,
+          operator_name: sheet.header.change.operator_name ?? "",
+          operator_id: sheet.header.change.operator_id ?? "",
+          bus: sheet.header.change.bus ?? "",
+        }
+      : null,
     reconstructed: sheet.header?.reconstructed ?? false,
     cells: Object.fromEntries(sheet.trips.map((trip) => [trip.trip_id, cellFromEntry(trip.entry)])),
     added: sheet.added_trips.map((trip) => ({
@@ -179,7 +234,7 @@ export function draftFromSheet(sheet: RidershipSheet): SheetDraft {
       id: trip.id,
       route: trip.route_short_name,
       direction: trip.direction_label,
-      start: clock(trip.scheduled_start_seconds),
+      start: editableClock(trip.scheduled_start_seconds),
       reason: trip.reason,
       cell: cellFromEntry(trip),
     })),
@@ -199,6 +254,16 @@ export function isOverridden(draft: Pick<SheetDraft, "operator_name" | "operator
   return !sameText(draft.operator_name, prefill.operator_name)
     || !sameText(draft.operator_id, prefill.operator_id)
     || !sameText(draft.bus, prefill.bus);
+}
+
+/**
+ * A new relief line, pre-filled from Avail's next run when it has one: Avail
+ * knows who relieved and on which bus, but not from which trip - that comes
+ * from the sheet ("From trip #", the row number).
+ */
+export function newChange(sheet: RidershipSheet): ChangeDraft {
+  const relief = sheet.pullout.other_runs[0];
+  return { from_trip_id: "", operator_name: relief?.operator_name ?? "", operator_id: relief?.operator_id ?? "", bus: relief?.bus ?? "" };
 }
 
 /** Trips that need a count and have nothing yet, in sheet order. */
@@ -234,7 +299,7 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
     const start = parseClock(row.start);
     const entry = entryFromCell(row.cell);
     if (!row.route.trim()) problems.push({ target, message: "An unscheduled trip needs its route." });
-    if (start === null) problems.push({ target, message: "An unscheduled trip's start time is HH:MM (after midnight, 24:40)." });
+    if (start === null) problems.push({ target, message: "An unscheduled trip's start time is like 7:30 PM (after midnight, 24:40)." });
     if (!entry || entry.count_status === "did_not_operate") problems.push({ target, message: "An unscheduled trip takes a number or N (not counted)." });
     if (start !== null && entry && entry.count_status !== "did_not_operate" && row.route.trim()) {
       added.push({
@@ -248,6 +313,14 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
       });
     }
   }
+  let change: RidershipSheetSave["change"] = null;
+  if (draft.change) {
+    const c = draft.change;
+    const named = { operator_name: blankToNull(c.operator_name), operator_id: blankToNull(c.operator_id), bus: blankToNull(c.bus) };
+    if (!c.from_trip_id) problems.push({ target: "change", message: "The relief or bus change needs the trip it starts from: the sheet's \"From trip #\"." });
+    if (!named.operator_name && !named.operator_id && !named.bus) problems.push({ target: "change", message: "The relief or bus change names the operator or the bus that took over. Remove it if the line is blank." });
+    if (c.from_trip_id) change = { from_trip_id: c.from_trip_id, ...named };
+  }
   if (problems.length > 0) return { save: null, problems };
   return {
     save: {
@@ -255,6 +328,7 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
       operator_name: blankToNull(draft.operator_name),
       operator_id: blankToNull(draft.operator_id),
       bus: blankToNull(draft.bus),
+      change,
       reconstructed: draft.reconstructed,
       trips,
       added_trips: added,
@@ -266,6 +340,12 @@ export function saveFromDraft(sheet: RidershipSheet, draft: SheetDraft): { save:
 // ---------------------------------------------------------------- worklist
 
 export const sheetKey = (serviceDate: string, block: string) => `${serviceDate}|${block}`;
+
+/** "7" -> "007": a block as the sheet prints it, or null when it is not up to three digits. */
+export function normalizeBlock(value: string): string | null {
+  const trimmed = value.trim();
+  return /^\d{1,3}$/.test(trimmed) ? trimmed.padStart(3, "0") : null;
+}
 
 export function splitSheetKey(key: string): { serviceDate: string; block: string } {
   const [serviceDate, block] = key.split("|");
@@ -297,6 +377,36 @@ export function parseSheetScan(raw: string): { serviceDate: string | null; block
 
 type GarageRow = { block: string; effective_from: string; garage: string | null };
 
+/**
+ * MVTA's garages. The setup page picks from these rather than taking free
+ * text, so a typo can't start a third print stack. A name already saved that
+ * is not here (an older list) still shows, so nothing is hidden.
+ */
+export const RIDERSHIP_GARAGES = ["Burnsville", "Eagan"] as const;
+
+export function garageOptions(inUse: readonly string[]): string[] {
+  return [...new Set([...RIDERSHIP_GARAGES, ...inUse])];
+}
+
+/**
+ * Block numbers typed as a list of numbers and ranges ("1-69, 306, 309") as
+ * the three-digit blocks they name, or null when any part is not a number or
+ * range. A range runs low to high whichever way it is typed.
+ */
+export function parseBlockSelection(raw: string): string[] | null {
+  const parts = raw.split(/[,\s]+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  const blocks = new Set<string>();
+  for (const part of parts) {
+    const m = part.match(/^(\d{1,3})(?:[-\u2013](\d{1,3}))?$/);
+    if (!m) return null;
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? a : Number(m[2]);
+    for (let n = Math.min(a, b); n <= Math.max(a, b); n++) blocks.add(String(n).padStart(3, "0"));
+  }
+  return [...blocks].sort();
+}
+
 /** The row in force for a block on a day (YYYY-MM-DD): the latest on or before it. None is Unassigned. */
 export function rowInForce<T extends GarageRow>(rows: readonly T[], block: string, day: string): T | null {
   let best: T | null = null;
@@ -322,3 +432,63 @@ export function garageChanges(
     .filter(({ block, garage }) => (rowInForce(rows, block, day)?.garage ?? null) !== garage)
     .sort((a, b) => a.block.localeCompare(b.block));
 }
+
+// ---------------------------------------------------------------- printing
+
+/** A Central calendar day as YYYY-MM-DD, `offset` days from today; tomorrow is the sheets the desk prints tonight. */
+export function centralDay(offset: number, now: Date = new Date()): string {
+  return new Date(now.getTime() + offset * 86_400_000).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+}
+
+export const PRINT_STATE_LABEL: Record<RidershipPrintState, string> = {
+  not_printed: "Not printed",
+  printed: "Printed",
+  changed: "Changed since printed",
+};
+
+export const PRINT_STATE_TONE: Record<RidershipPrintState, "ok" | "warn" | "muted"> = {
+  not_printed: "muted",
+  printed: "ok",
+  changed: "warn",
+};
+
+/** When a sheet was printed, in Central: "Tue, Dec 1 21:05". */
+export function printedTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).replace(/,(?= \d{2}:)/, "");
+}
+
+/** The blocks a desk still needs to print: never printed, or changed since. */
+export function blocksToPrint(sheets: readonly RidershipPrintStatusSheet[]): string[] {
+  return sheets.filter((s) => s.state !== "printed").map((s) => s.block);
+}
+
+/**
+ * What the morning desk reprints before pull-out: the 03:30 Dispatch Log run
+ * can change a block printed the evening before. A changed sheet, a block new
+ * since its garage printed (a garage with no print yet is not a reprint), and a
+ * printed block that no longer runs. Works on one garage's status or on every
+ * garage's, which is how the Ridership tab counts them.
+ */
+export function reprintsAfterPrinting(status: RidershipPrintStatus): { changed: string[]; added: string[]; dropped: string[]; total: number } {
+  const printedGarages = new Set(status.sheets.filter((s) => s.state !== "not_printed").map((s) => s.garage));
+  const changed = status.sheets.filter((s) => s.state === "changed").map((s) => s.block);
+  const added = status.sheets.filter((s) => s.state === "not_printed" && printedGarages.has(s.garage)).map((s) => s.block);
+  const dropped = status.dropped.map((d) => d.block);
+  return { changed, added, dropped, total: changed.length + added.length + dropped.length };
+}
+
+/**
+ * Where the printed QR link points until the operator app has an address of
+ * its own (spec §15): this console, whose /r/<date>/<block> route opens the
+ * sheet after sign-in. The API swaps in RIDERSHIP_SHEET_LINK_BASE when it is set.
+ */
+export function sheetLinkBase(origin: string, basePath: string): string {
+  return new URL(basePath, origin).href.replace(/\/+$/, "");
+}
+
+/** Select values for a garage, where null (Unassigned) needs a string of its own. */
+export const UNASSIGNED_VALUE = "\u0000unassigned";
+export const garageValue = (garage: string | null) => garage ?? UNASSIGNED_VALUE;
+export const garageFromValue = (value: string) => (value === UNASSIGNED_VALUE ? null : value);

@@ -95,6 +95,8 @@ test("requireAccess", async (t) => {
 
   await t.test("describeAction reads as the Roles page does", () => {
     assert.equal(describeAction("performance-assessment.decide"), "Finalize, reopen, issue and decide exceptions on Performance Assessment");
+    // An action with a dot of its own: the module is everything before the first dot.
+    assert.equal(describeAction("ridership.scans.view"), "Open Count Sheet scan images on Ridership");
     assert.equal(describeAction("dashboard.view"), "View on Dashboard");
   });
 });

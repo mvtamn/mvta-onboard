@@ -49,8 +49,8 @@ export function lifecycleLabel(alert: Pick<MissedTripAlert, "lifecycle" | "valid
   switch (alert.lifecycle) {
     case "open": return "Watching";
     case "awaiting_evidence": return "Awaiting evidence";
-    case "ready_for_review": return "Potential missed";
-    case "closed_by_evidence": return "Operated within window";
+    case "ready_for_review": return "Ready for review";
+    case "closed_by_evidence": return "Closed by evidence";
     case "reviewed": return alert.validationStatus === "confirmed" ? "Missed" : outcomeLabel(alert.validationStatus);
     case "legacy": return "Legacy record";
   }
@@ -130,6 +130,26 @@ export function buildReviewRequest(
   };
 }
 
+// What confirming with this attribution does, stated as the fact it is: a
+// detector still in Shadow detection charges nothing, whatever is chosen. An
+// API older than 1.6.66 does not say, so the condition is named instead.
+export function attributionHelp(
+  alert: Pick<MissedTripAlert, "serviceDate" | "detectorPromoted">,
+  attribution: OccurrenceAttribution,
+): string {
+  if (alert.detectorPromoted === false) {
+    return "This detector is in Shadow detection: confirming records the outcome, and nothing is charged.";
+  }
+  const pending = alert.detectorPromoted === undefined ? ", once its detector is out of Shadow detection" : "";
+  if (attribution === "contractor_error") {
+    return `Confirming adds this to the ${formatServiceMonth(alert.serviceDate.slice(0, 6))} performance assessment as a charged occurrence${pending}.`;
+  }
+  if (attribution === "undetermined") {
+    return `Confirming raises the occurrence but leaves whose error it was to the Performance Assessment module${pending}.`;
+  }
+  return `Confirming records the occurrence against the month without charging a penalty${pending}.`;
+}
+
 // The monthly table's rows, summed from what the server classified.
 //
 // Every bucket here is a column the Missed-trip case module emits
@@ -197,23 +217,30 @@ export function pivotMonthlySummary(summary: MissedTripsMonthlySummaryRow[]): Mi
 // migration-023. Rows flagged before that migration ran read back null;
 // shown honestly rather than guessed.
 export function detectionTypeLabel(type: MissedTripAlert["detectionType"]): string {
-  if (type === "explicit_cancellation") return "Explicit cancellation (GTFS-RT)";
-  if (type === "silent_no_show") return "Scheduled no-show (never observed)";
-  if (type === "spare_late_start") return "Spare pickup started over 30 minutes late";
-  if (type === "spare_superseded") return "Spare request superseded by the next same-duty pickup";
-  if (type === "spare_late_arrival") return "Spare dropoff arrived at least 30 minutes late";
-  if (type === "spare_multiple") return "Multiple Spare missed-trip conditions";
+  // Why the case was raised, in the glossary's names (CONTEXT.md): a
+  // Suspected no-show is raised from absence by the deadline, and says so
+  // rather than claiming the trip was never seen - it may start late after.
+  if (type === "explicit_cancellation") return "Advance cancellation: cancelled in the realtime feed";
+  if (type === "silent_no_show") return "Suspected no-show: no start seen by the 30-minute deadline";
+  if (type === "spare_late_start") return "Late pickup: more than 30 minutes late";
+  if (type === "spare_superseded") return "Superseded by the next pickup on the same duty";
+  if (type === "spare_late_arrival") return "Late dropoff: 30 minutes or more";
+  if (type === "spare_multiple") return "More than one on-demand failure";
   return "Unknown — flagged before detection tracking was added";
 }
 
 export function dataQualityLabel(status: MissedTripAlert["dataQualityStatus"]): string {
-  if (status === "source_verified") return "Source verified";
-  if (status === "experimental") return "Experimental detector";
+  // How the case was raised, not how sure anyone is of it: "experimental" is
+  // stamped on every case from a detector that infers from absence, and is not
+  // the detector's promotion stage (that is Shadow detection, said elsewhere).
+  if (status === "source_verified") return "From the source's own records";
+  if (status === "experimental") return "Inferred from missing evidence";
+  if (status === "unknown_data_gap") return "Raised while the vehicle data had a gap";
   return "Legacy — unverified";
 }
 
 export function sourceLabel(source: MissedTripAlert["sourceSystem"]): string {
-  return source === "spare" ? "Spare" : "GTFS-Realtime";
+  return source === "spare" ? "Spare" : "GTFS-realtime";
 }
 
 export function routeLabel(routeId: string, routesById: Map<string, GtfsRouteOption>, sourceSystem: "gtfs" | "spare" = "gtfs"): string {
@@ -245,6 +272,22 @@ export function tripCode(scheduledDepartureAt: string | null, direction: string 
       : null;
   if (timePart && direction) return `${timePart}-${direction}`;
   return timePart ?? direction ?? "—";
+}
+
+// The trip as Avail and dispatch name it: "1019-N", the trip number and the
+// direction letter, so a reviewer can find the same trip in Avail. MVTA's GTFS
+// trip_id carries that number in hexadecimal as its first part ("t3FB-b3E-..."
+// is trip 1019) - the same rule as availTripNumber in functions-restapi's
+// ridership/rules.ts, which was checked against every Dispatch Log trip on
+// 2026-11-01/02 (847 of 847). The console does not import backend code, so it
+// keeps this copy. Null for an id not in that form (a Spare request, or a feed
+// that changed shape), so the caller shows the raw id instead.
+export function availTripRef(tripId: string, direction: string | null): string | null {
+  const match = tripId.match(/^t([0-9A-Fa-f]{1,4})-b[0-9A-Fa-f]+-/);
+  if (!match) return null;
+  const number = parseInt(match[1], 16);
+  const letter = direction?.trim().toUpperCase().match(/^([NSEW])(B|BOUND)?$/)?.[1];
+  return letter ? `${number}-${letter}` : String(number);
 }
 
 // "YYYYMM" -> "MM/YYYY" - a small local duplicate of the same helper OTP's
@@ -381,8 +424,16 @@ export function conflictBlocksAssessment(
 export interface EvidenceFact {
   label: string;
   value: string;
-  tone?: "good" | "warn";
+  tone?: "good" | "warn" | "info";
   note?: string;
+}
+
+function signInRelative(scheduledAt: string | null, reportedAt: string): string {
+  if (!scheduledAt) return "";
+  const minutes = Math.trunc((new Date(reportedAt).getTime() - new Date(scheduledAt).getTime()) / 60_000);
+  if (Number.isNaN(minutes)) return "";
+  if (minutes === 0) return " (at the scheduled start)";
+  return minutes > 0 ? ` (${minutes} min after the scheduled start)` : ` (${-minutes} min before the scheduled start)`;
 }
 
 function lateness(minutes: number): string {
@@ -396,12 +447,12 @@ function dispatchDepartureLabel(departure: GtfsCaseEvidence["departure"], time: 
     case "schedule_repeated": return `Not a departure: only the schedule (${time(departure.at)}) was repeated`;
     case "prediction_only": return `Not a departure: only a prediction (${time(departure.at)}) was kept`;
     case "no_vehicle": return `Not a departure: ${time(departure.at)} was logged, but no bus reported on the trip`;
-    case "position_fallback": return "Not recorded from the trip update";
+    case "position_fallback": return "Not a departure: the Dispatch Log time came from bus positions, not the departure feed";
     default: return "Not recorded";
   }
 }
 
-export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: string | null) => string): EvidenceFact[] {
+export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: string | null) => string, scheduledAt: string | null = null): EvidenceFact[] {
   const facts: EvidenceFact[] = [];
 
   if (evidence.started_at && evidence.started_late_minutes !== null) {
@@ -419,9 +470,11 @@ export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: strin
 
   const { vehicle } = evidence;
   if (vehicle.reported_at) {
+    // "Under way" read as "moving" to a dispatcher; the reading means the bus
+    // was seen past the trip's first stop (First observed progress).
     const bus = vehicle.vehicle_id ? `Bus ${vehicle.vehicle_id}` : "A bus";
-    const moving = vehicle.underway_at ? `under way ${time(vehicle.underway_at)}` : "never shown under way";
-    facts.push({ label: "Bus on this trip", value: `${bus} reported from ${time(vehicle.reported_at)}, ${moving}` });
+    const moving = vehicle.underway_at ? `passed the first stop ${time(vehicle.underway_at)}` : "never seen past the first stop";
+    facts.push({ label: "Bus on this trip", value: `${bus} signed in ${time(vehicle.reported_at)}${signInRelative(scheduledAt, vehicle.reported_at)}, ${moving}` });
   } else {
     facts.push({ label: "Bus on this trip", value: "No bus reported on this trip" });
   }
@@ -445,9 +498,11 @@ export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: strin
       label: "First stop",
       value: stop.other_cases === 0
         ? `${name} · no other no-shows here`
-        : `${name} · ${stop.other_cases_ran} of ${stop.other_cases} other no-shows here turned out to have run`,
+        : `${name} · ${stop.other_cases_ran} of the ${stop.other_cases} other no-shows here ran (${Math.round((stop.other_cases_ran / stop.other_cases) * 100)}%)`,
+      // A note about the data, not a mark against the contractor: its own
+      // tone, so it does not read like "No start observed".
       ...(stop.likely_dead_zone
-        ? { tone: "warn" as const, note: "Likely GPS dead zone — buses here often go quiet without missing the trip." }
+        ? { tone: "info" as const, note: "Likely GPS dead zone — buses here often go quiet without missing the trip." }
         : {}),
     });
   }

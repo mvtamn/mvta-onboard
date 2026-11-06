@@ -78,6 +78,11 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     breaks: "The static sync cannot keep the schedule's prediction-risk review",
   },
   {
+    migration: "144",
+    table: "TeamsDeliveryLog",
+    breaks: "Announcement posts to Teams go unrecorded, and a redelivered announcement can post twice",
+  },
+  {
     migration: "145",
     table: "GtfsScheduleReviewRoutes",
     breaks: "The schedule review keeps no evidence per route, so a route's detail cannot be opened",
@@ -123,6 +128,57 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     table: "TripStartLog",
     column: "scheduled_end_seconds",
     breaks: "Count Sheets show no scheduled end time for their trips",
+  },
+  {
+    migration: "162",
+    table: "RidershipSheets",
+    column: "change_from_trip_id",
+    breaks: "Ridership: a Count Sheet with a relief operator or bus change cannot be saved",
+  },
+  {
+    migration: "157",
+    table: "RidershipPrintRuns",
+    breaks: "Ridership: Count Sheets cannot be printed, and nobody can see whether a garage has printed",
+  },
+  {
+    migration: "157",
+    table: "RidershipPrintedSheets",
+    breaks: "Ridership: a block changed in the Dispatch Log since printing is not flagged for reprint",
+  },
+  {
+    migration: "161",
+    table: "RidershipPrintedSheets",
+    column: "trip_ids",
+    breaks: "Ridership: printed Count Sheets do not record which trips were on each row, so a scanned sheet cannot be matched row by row",
+  },
+  // Both of these were missing from an environment for days with nothing
+  // saying so, which is what earned them a place here (2026-11-04). The
+  // retirement degrades silently by design, and QRG seeding answers 503 only
+  // to whoever happens to press the button.
+  {
+    migration: "152",
+    table: "OtpMonthlyRetiredKeys",
+    breaks: "OTP: a route/stop/day Avail has stopped returning is never retired, so it keeps its last figure and holds its month on the re-pull list for good",
+  },
+  {
+    migration: "158",
+    table: "DecisionMatrixQrgSeedings",
+    breaks: "Decision Matrix: a Draft cannot be seeded from a QRG - the endpoint answers 503",
+  },
+  {
+    migration: "163",
+    table: "RidershipScanUploads",
+    breaks: "Ridership: the garage desk cannot upload scanned Count Sheets",
+  },
+  {
+    migration: "163",
+    table: "RidershipScanPages",
+    breaks: "Ridership: scanned pages are not identified, and the worklist shows no Scanned / Not scanned marker",
+  },
+  {
+    migration: "163",
+    table: "RidershipScanViews",
+    breaks: "Ridership: Count Sheet scan images cannot be opened, because each open must be logged",
   },
 ];
 

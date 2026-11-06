@@ -5,6 +5,8 @@ import {
   checkSheetSave,
   excusedReason,
   garageOn,
+  availTripNumber,
+  guideRoute,
   isOperatorOverridden,
   normalizeBlock,
   orderPulloutRuns,
@@ -205,6 +207,27 @@ test("a trip from another sheet, or an unknown unscheduled row, is refused", () 
   ]);
 });
 
+test("a relief or bus change names its trip and who or what took over; a bus-only swap is enough", () => {
+  assert.equal(parseSheetSave(validSave()).save!.change, null, "absent is no change");
+  const bus = parseSheetSave({ ...validSave(), change: { from_trip_id: "t2", operator_name: " ", operator_id: null, bus: " 4402 " } });
+  assert.deepEqual(bus.problems, []);
+  assert.deepEqual(bus.save!.change, { from_trip_id: "t2", operator_name: null, operator_id: null, bus: "4402" });
+
+  const empty = parseSheetSave({ ...validSave(), change: { from_trip_id: "", operator_name: null, operator_id: null, bus: null } });
+  assert.equal(empty.save, null);
+  assert.deepEqual(empty.problems.map((p) => p.field), ["change.from_trip_id", "change"]);
+  const long = parseSheetSave({ ...validSave(), change: { from_trip_id: "t2", operator_id: "123456789012345678901" } });
+  assert.deepEqual(long.problems.map((p) => p.field), ["change.operator_id"]);
+});
+
+test("a change starts after the first trip, from a trip on this sheet", () => {
+  const trips = [{ trip_id: "t1", required: true }, { trip_id: "t2", required: true }, { trip_id: "t3", required: false }];
+  const at = (from: string) => checkSheetSave(parseSheetSave({ ...validSave(), change: { from_trip_id: from, operator_id: "9002" } }).save!, trips, new Set());
+  assert.deepEqual(at("t2"), []);
+  assert.deepEqual(at("t1").map((p) => p.field), ["change.from_trip_id"], "the first trip is the header");
+  assert.deepEqual(at("t9").map((p) => p.message), ["t9 is not on this sheet"]);
+});
+
 // --- block garages ------------------------------------------------------------------
 
 test("block -> garage rows: blocks padded, blank garage is Unassigned, duplicates refused", () => {
@@ -233,4 +256,24 @@ test("history records only what changed, and a first save records what it sets",
     [{ subject: "trip", subject_ref: "t2", field: "count_status", previous_value: null, new_value: "not_counted" }],
   );
   assert.deepEqual(changesBetween("sheet", null, { reconstructed: false }, { reconstructed: false }), []);
+});
+
+// --- the route as the guide names it -----------------------------------------------
+
+test("a trip prints as Avail numbers it: the GTFS id's first part, read as hexadecimal, and the direction", () => {
+  assert.equal(availTripNumber("t140-b1F5-sl1B-v64", "EB"), "320-E", "block 501's 3:20 AM trip");
+  assert.equal(availTripNumber("t20E-b9-sl1C-v65", "NB"), "526-N");
+  assert.equal(availTripNumber("t4D3-b12D-sl1C-v65", "N"), "1235-N");
+  assert.equal(availTripNumber("t140-b1F5-sl1B-v64", null), "320", "no direction, no letter");
+  assert.equal(availTripNumber("t140-b1F5-sl1B-v64", "Loop"), "320");
+  assert.equal(availTripNumber("1436999", "EB"), null, "not MVTA's form: the sheet prints the id");
+  assert.equal(availTripNumber("105-1", "N"), null);
+});
+
+test("a route prints as its number: Orange LINK is route 425", () => {
+  assert.equal(guideRoute("460", "460"), "460");
+  assert.equal(guideRoute("Orange LINK", "425"), "425");
+  assert.equal(guideRoute("Orange LINK", "ORANGE"), "Orange LINK", "no number to fall back on");
+  assert.equal(guideRoute(null, "425"), "425");
+  assert.equal(guideRoute(null, null), null);
 });

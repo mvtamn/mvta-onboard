@@ -86,3 +86,31 @@ export function mapVehiclePositionEntity(entity: GtfsRtVehiclePositionEntity): M
         : null,
   };
 }
+
+/**
+ * How far ahead of our fetch a vehicle's own timestamp may run before its
+ * clock is wrong rather than a little fast.
+ */
+export const VEHICLE_CLOCK_TOLERANCE_SECONDS = 120;
+
+/**
+ * When a position was observed: the vehicle's own timestamp, unless it claims
+ * a time after we fetched it.
+ *
+ * A reading cannot have happened after the poll that received it, so a stamp
+ * in the future is a wrong clock on the bus. When daylight saving ended on
+ * 2026-11-01, units still on CDT stamped positions an hour ahead (22 vehicles
+ * on 11-01, 54 on 11-02, 3 on 11-03). The poller stored those stamps as
+ * first_underway_at, so buses that left on time looked an hour late to the
+ * missed-trip detector. The fetch time is never more than a poll's latency
+ * after the real observation, so it stands in. A stamp in the past is left
+ * alone: a stale position is a real thing the feed can carry, and an hour-
+ * behind clock (spring forward) cannot be told apart from one.
+ */
+export function vehicleObservedAt(sourceTimestampAt: Date | null, fetchedAt: Date): { at: Date; futureStamped: boolean } {
+  if (!sourceTimestampAt) return { at: fetchedAt, futureStamped: false };
+  if (sourceTimestampAt.getTime() > fetchedAt.getTime() + VEHICLE_CLOCK_TOLERANCE_SECONDS * 1000) {
+    return { at: fetchedAt, futureStamped: true };
+  }
+  return { at: sourceTimestampAt, futureStamped: false };
+}

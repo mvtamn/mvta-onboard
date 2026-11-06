@@ -26,6 +26,7 @@ const COMPLIANCE_ANALYST = [
   "performance-assessment.work",
   "detours.view",
   "dispatch-log.view",
+  "ridership.scans.view",
 ];
 
 // System Administrator holds everything outside Access & Identity.
@@ -60,9 +61,12 @@ const ADMINISTRATOR = [
   "ridership.enter",
   "ridership.print",
   "ridership.configure",
+  "ridership.scan",
+  "ridership.scans.view",
 ];
 
-const RIDERSHIP_RECORDER = ["ridership.view", "ridership.enter", "ridership.print"];
+// Migration 163: uploading scans, and opening their images (seeds.ts).
+const RIDERSHIP_RECORDER = ["ridership.view", "ridership.enter", "ridership.print", "ridership.scan", "ridership.scans.view"];
 
 export const MOCK_ROLE_ACTIONS: Record<string, { name: string; actions: string[] }> = {
   "system-administrator": { name: "System Administrator", actions: ADMINISTRATOR },
@@ -77,6 +81,7 @@ export const MOCK_ROLE_ACTIONS: Record<string, { name: string; actions: string[]
   "trip-start-verifier": { name: "Trip Start Verifier", actions: ["dispatch-log.view", "dispatch-log.verify"] },
   "ridership-recorder": { name: "Ridership Recorder", actions: RIDERSHIP_RECORDER },
   "ridership-manager": { name: "Ridership Manager", actions: [...RIDERSHIP_RECORDER, "ridership.configure"] },
+  "ridership-printer": { name: "Ridership Printer", actions: ["ridership.print", "ridership.scan"] },
   "access-administrator": {
     name: "Access Administrator",
     actions: ["access-identity.view", "access-identity.manage", "access-identity.approve", "subscribers.view", "governance-audit.view"],

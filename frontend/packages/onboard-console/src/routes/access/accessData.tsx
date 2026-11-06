@@ -129,10 +129,7 @@ export function withRoleLabels(text: string): string {
   return text.replace(/\b(OCC\.[A-Za-z]+|System\.Ingestion)\b/g, (role) => roleLabel(role));
 }
 
-export function spreadsheetSafeText(value: unknown): string {
-  const text = String(value ?? "");
-  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-}
+export { spreadsheetSafeText } from "../../lib/spreadsheetSafeText.js";
 
 export function initials(name: string): string {
   return name.split(/[\s._@-]+/).filter(Boolean).slice(0, 2).map((word) => word[0]!.toUpperCase()).join("") || "?";

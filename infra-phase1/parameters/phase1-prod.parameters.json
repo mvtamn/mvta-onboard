@@ -86,7 +86,8 @@
         "gtfsVehiclePositionsPoll",
         "gtfsMissedTripsPoll",
         "tripStartLogMaterialize",
-        "tripStartActualsPoll"
+        "tripStartActualsPoll",
+        "fixedRouteDeparturesPoll"
       ]
     }
   }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { channelRequested, teamsTargets } from "./deliveryChannels";
+import { channelRequested, deliveryLogStatus, teamsTargets } from "./deliveryChannels";
 
 test("legacy null channels enable subscriber delivery", () => {
   assert.strictEqual(channelRequested(null, "SMS"), true);
@@ -18,9 +18,15 @@ test("Teams-only alerts do not request SMS or email", () => {
   assert.strictEqual(channelRequested(channels, "Email"), false);
 });
 
-test("Teams targets are extracted for the future connector", () => {
+test("Teams audiences are read from the channels the console saved", () => {
   assert.deepStrictEqual(
     teamsTargets(["Website", "Teams: Operations", "teams: Customer Service"]),
     ["Operations", "Customer Service"],
   );
+});
+
+test("an unconfigured sender is logged as skipped, not failed", () => {
+  assert.strictEqual(deliveryLogStatus({ sent: true }), "sent");
+  assert.strictEqual(deliveryLogStatus({ sent: false, skipped: "acs_not_configured" }), "skipped");
+  assert.strictEqual(deliveryLogStatus({ sent: false }), "failed");
 });

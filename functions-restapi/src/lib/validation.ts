@@ -1015,10 +1015,20 @@ export function validateOtpSettings(body: UnknownBody): string[] {
 // availMissedTripsPoll.ts's own comment). The console loops one request
 // per month instead, so each request stays bounded and the UI can show
 // real per-month progress instead of one opaque multi-minute spinner.
+export const OTP_BACKFILL_PHASES = ["otp_monthly", "missed_trips"] as const;
+
 export function validateOtpHistoricalBackfill(body: UnknownBody): string[] {
   const errors: string[] = [];
   if (typeof body.month !== "string" || !SERVICE_MONTH_RE.test(body.month)) {
     errors.push("month is required and must be a YYYYMM string");
+  }
+  // Omitted means both phases, which is what the endpoint did before it
+  // could be asked for one.
+  if (
+    body.phase !== undefined &&
+    !OTP_BACKFILL_PHASES.includes(body.phase as (typeof OTP_BACKFILL_PHASES)[number])
+  ) {
+    errors.push(`phase must be one of ${OTP_BACKFILL_PHASES.join(", ")} if provided`);
   }
   return errors;
 }

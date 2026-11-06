@@ -18,6 +18,14 @@ param allowPublicNetworkAccess bool = false
 @description('Public IPs allowed through the firewall when allowPublicNetworkAccess is true. Comes from the SQL_FIREWALL_ALLOWED_IPS GitHub environment variable, not a parameter file, because the repository is public.')
 param sqlFirewallAllowedIps array = []
 
+@description('Entra principal that administers the server: its display name (a user principal name or group name) and object id. Both empty leaves the existing admin alone. An Entra admin is what lets the Function Apps\' managed identities be created as database users.')
+param sqlEntraAdminLogin string = ''
+param sqlEntraAdminObjectId string = ''
+
+@description('Standard-tier DTUs: 20 is S1, 50 is S2, 100 is S3. Prod runs S1 until it cuts over and carries dev\'s load; set it back to 100 then.')
+@allowed([20, 50, 100])
+param sqlDtu int = 100
+
 var sqlServerName = 'sql-mvta-${environment}-${uniqueSuffix}'
 var sqlDatabaseName = 'sqldb-mvta-onboard-${environment}'
 
@@ -43,17 +51,30 @@ resource firewallRules 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' 
   }
 }]
 
+// Declared here so prod gets one and an infra deploy cannot drop it. Only the
+// Entra admin can run CREATE USER ... FROM EXTERNAL PROVIDER.
+resource entraAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (!empty(sqlEntraAdminLogin) && !empty(sqlEntraAdminObjectId)) {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: sqlEntraAdminLogin
+    sid: sqlEntraAdminObjectId
+    tenantId: tenant().tenantId
+  }
+}
+
 resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
-  // Standard S3 (100 DTU) rather than serverless: the timers query the
-  // database every few minutes, so serverless never auto-paused and billed
-  // ~$254/mo of compute. 250 GB is S3's included storage.
+  // Standard (DTU) rather than serverless: the timers query the database
+  // every few minutes, so serverless never auto-paused and billed ~$254/mo
+  // of compute. 250 GB is S1-S3's included storage.
   sku: {
     name: 'Standard'
     tier: 'Standard'
-    capacity: 100
+    capacity: sqlDtu
   }
   properties: {
     maxSizeBytes: 268435456000
