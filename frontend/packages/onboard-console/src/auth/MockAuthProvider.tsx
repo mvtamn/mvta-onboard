@@ -34,7 +34,7 @@ const ROLE_PRESETS: { label: string; keys: string[] }[] = [
   // which also keeps the block -> garage list (an Administration page).
   { label: "Ridership", keys: ["ridership-recorder"] },
   { label: "Planning", keys: ["ridership-manager"] },
-  // Garage check-in desk: prints Count Sheets and sees nothing else of Ridership.
+  // Garage check-in desk: prints Count Sheets and uploads their scans, and sees nothing else of Ridership.
   { label: "Desk", keys: ["ridership-printer"] },
   { label: "Access Admin", keys: ["access-administrator"] },
   { label: "No roles", keys: [] },

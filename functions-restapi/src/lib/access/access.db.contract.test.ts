@@ -21,7 +21,7 @@ import { archiveRole, createRole, restoreRole, roleHistory, updateRole } from ".
 // assessmentLifecycle.db.contract.test.ts).
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 const DATABASE = "mvta_access_roles_contract";
-const MIGRATIONS = ["129-app-owned-roles", "130-access-role-history", "154-ridership-roles", "159-ridership-printer-role"];
+const MIGRATIONS = ["129-app-owned-roles", "130-access-role-history", "154-ridership-roles", "159-ridership-printer-role", "164-ridership-scan-actions"];
 
 const OID = "11111111-1111-4111-8111-111111111111";
 const OTHER_OID = "22222222-2222-4222-8222-222222222222";
