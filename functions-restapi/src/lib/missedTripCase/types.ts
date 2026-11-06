@@ -58,7 +58,13 @@ export type RunFact =
   | { kind: "retrospective_missed" }
   // Avail: the run operated but missed a scheduled stop - a Partial-service
   // failure, not a whole missed trip.
-  | { kind: "retrospective_partial"; missedDeparture: boolean; missedArrival: boolean };
+  | { kind: "retrospective_partial"; missedDeparture: boolean; missedArrival: boolean }
+  // Avail OTP Daily: at the run's origin stop, in its local scheduled hour, on
+  // its route, Avail called no departure missed and saw at least as many as
+  // trips were scheduled to start there. Hour-level, so it is a Departure observed at origin, never a Trip
+  // start: it contradicts a case that says the run never started and decides
+  // nothing (ADR-0046).
+  | { kind: "origin_departures_observed"; departures: number; scheduled: number; originStopName: string; localHour: number };
 
 export type SpareDetectionType = "spare_late_start" | "spare_superseded" | "spare_late_arrival" | "spare_multiple";
 

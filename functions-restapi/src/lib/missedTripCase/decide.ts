@@ -105,6 +105,31 @@ function concludedMissed(state: CaseState): boolean {
   return state.validation_status === "confirmed";
 }
 
+// The case says the run never left: a no-show the detector escalated and no
+// one has reviewed yet, or a Confirmed missed trip, with no start observed at
+// all. A run that left past its deadline is a missed trip that did depart, so a
+// departure in its hour agrees with it.
+function concludedNeverStarted(state: CaseState): boolean {
+  if (state.detected_late_arrival_at !== null) return false;
+  return concludedMissed(state) || (state.validation_status === "unreviewed" && state.status === "escalated");
+}
+
+const ORIGIN_EVIDENCE_KEY = "avail_otp_origin";
+
+function hasSourceEvidence(existing: string | null, source: string): boolean {
+  if (!existing) return false;
+  try {
+    const parsed: unknown = JSON.parse(existing);
+    return Boolean(parsed && typeof parsed === "object" && !Array.isArray(parsed) && source in parsed);
+  } catch {
+    return false;
+  }
+}
+
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 function isHeld(state: CaseState): boolean {
   return state.undecided_reason !== null || state.data_quality_status === "unknown_data_gap";
 }
@@ -202,6 +227,20 @@ function applyEvidence(state: CaseState, observations: RunObservation[], now: Da
             ? "Avail reports this run as operated with a missed stop; the case is a Confirmed missed trip."
             : null;
       if (contradiction && next.evidence_conflict_at === null) {
+        next = { ...next, evidence_conflict_at: now, evidence_conflict_reason: contradiction.slice(0, CONFLICT_REASON_MAX) };
+      }
+    } else if (fact.kind === "origin_departures_observed" && next.source_system === "gtfs") {
+      // ADR-0046: kept on every fixed-route case it speaks about; a conflict
+      // only against a case that says the run never started, and only the
+      // first time it arrives - Avail restates the same hour nightly, and a
+      // reviewer who settled the conflict had this evidence in front of them.
+      const firstArrival = !hasSourceEvidence(next.evidence_json, ORIGIN_EVIDENCE_KEY);
+      next = { ...next, evidence_json: withSourceEvidence(next.evidence_json, ORIGIN_EVIDENCE_KEY, evidence ?? { fact }) };
+      if (firstArrival && concludedNeverStarted(next) && next.evidence_conflict_at === null) {
+        const contradiction =
+          `Avail OTP Daily saw ${plural(fact.departures, "departure")} and none missed from ${fact.originStopName} on route ${next.route_id} ` +
+          `in the ${fact.localHour}:00 hour, where ${plural(fact.scheduled, "trip")} ${fact.scheduled === 1 ? "was" : "were"} scheduled to start; ` +
+          "the case says this run never started.";
         next = { ...next, evidence_conflict_at: now, evidence_conflict_reason: contradiction.slice(0, CONFLICT_REASON_MAX) };
       }
     }

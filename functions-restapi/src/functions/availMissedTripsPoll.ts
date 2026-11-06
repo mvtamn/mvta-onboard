@@ -19,18 +19,33 @@ import { availConfig, fetchAvail } from "../lib/availClient";
 import { mapMissedTripReport, replaceMissedTripsForMonths } from "../lib/availMissedTripsFeed";
 import { serviceMonthOf, subtractMonths } from "../lib/otpMonthlyFeed";
 import { runFeedIngestion } from "../lib/feedRun";
-import { observeMissedTrips } from "../lib/missedTripCase";
+import { observeMissedTrips, type RunObservation } from "../lib/missedTripCase";
 import { availObservations, DEFAULT_LOOKBACK_DAYS } from "../lib/missedTripCase/adapters/avail";
 import { availLinksReady, linksFrom, recordAvailLinks } from "../lib/missedTripCase/adapters/availLinks";
+import { availOriginDepartureObservations } from "../lib/missedTripCase/adapters/availOriginDepartures";
 
 const TRAILING_MONTHS = 3; // current + prior 2
 
 async function reconcileAvailAgainstCases(context: InvocationContext): Promise<void> {
   try {
     const { observations, tally, matches } = await availObservations();
-    const report = observations.length === 0
+    // OTP Daily at each case's origin hour (ADR-0046). Its own failure leaves
+    // the missed-trips report's reconciliation to run without it.
+    let originObservations: RunObservation[] = [];
+    try {
+      const origin = await availOriginDepartureObservations();
+      originObservations = origin.observations;
+      context.log(
+        `Avail OTP Daily at case origins: ${origin.tally.cases} case(s) read, ${origin.tally.departed} with every scheduled departure seen, ` +
+          `${origin.tally.short} short, ${origin.tally.noRow} with no OTP row (nothing said).`,
+      );
+    } catch (err) {
+      context.error("Reading OTP Daily departures at case origins failed; reconciling without them:", err);
+    }
+    const all = [...observations, ...originObservations];
+    const report = all.length === 0
       ? null
-      : await observeMissedTrips(await getPool(), observations);
+      : await observeMissedTrips(await getPool(), all);
     for (const failure of report?.failed ?? []) {
       context.error(`Failed to record Avail evidence for ${failure.runId} on ${failure.serviceDate}:`, failure.error);
     }
@@ -110,7 +125,8 @@ app.timer("availMissedTripsPoll", {
         context.log(
           `Avail Missed Trips poll: ${reports.length} reports seen, ${mapped.length} rows reloaded across ${targetMonths.join(", ")}.`,
         );
-        // Retrospective reconciliation (ADR-0035). Runs on the rows just
+        // Retrospective reconciliation (ADR-0035, and OTP Daily origin
+        // departures per ADR-0046). Runs on the rows just
         // reloaded, and only corroborates: it opens no case, reopens none, and
         // rewrites no review. A contradiction becomes an Evidence conflict for
         // a reviewer to settle.

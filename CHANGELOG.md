@@ -5,11 +5,35 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.65] - 2026-11-06
+## [1.7.67] - 2026-11-06
 
 - **Integrations & Data Health showed every applied migration as Empty.** A schema row for a migration that is applied reports success and counts no records, and the connection table read "no records" as Empty (amber). Prod's export of 2026-11-05 carried fourteen amber "Database schema · migration N" rows while every one of those migrations was in fact applied. A check that counts nothing now reads **Passed**; a feed that answered with zero records still reads Empty, and a missing migration still reads Failed with the file to run.
 - **The Avail OTP Daily check asked for a day Avail had not published.** `feedChecks` probed the UTC calendar's yesterday, which all Central evening is the service day still running, so the row read Empty (0) while `otpDailyFeedPoll` was upserting about 2,000 rows a day. The probe now sends the poll's own request, the last three completed Central service days (`otpDailyWindow`), the same fix the poll took when it moved to 12:00 UTC.
 - Found in the prod data-integration review of 2026-11-06. Neither change touches what is ingested; both only change what the page says.
+
+## [1.7.66] - 2026-11-06
+
+Avail OTP Daily departures at a case's origin become contradicting evidence (option d of `docs/research/avail-vs-gtfs-rt-missed-trip-detection-2026-11-04.md`, ADR 0046).
+
+- **The fact.** `lib/missedTripCase/adapters/availOriginDepartures.ts` reads, for every fixed-route case in the 95-day window, the trips scheduled from its origin stop (TripStartLog `origin_stop_id`, which is Avail's `stop_id`) on its route in the Central calendar date and hour of its Published Trip start, and OTP Daily's `actual_departures` and `missed` there. When Avail called none missed and saw at least as many departures as trips were scheduled to start, the case gets a new `origin_departures_observed` fact: a Departure observed at origin.
+- **What it does.** `decide.ts` keeps the counts on the case under `evidence_json.avail_otp_origin`, and records an Evidence conflict on a case that says the run never started (an unreviewed escalated case, or a Confirmed missed trip, with no late start seen). It is raised only the first time the evidence arrives, so a reviewer who settled it does not see it come back with Avail's nightly restatement. It never opens, closes, reopens or rewrites a case.
+- **What says nothing.** A shortfall, any departure Avail called missed (OTP counts trips that only pass through the stop too), and an origin hour with no OTP row (Burnsville Center: 776 of 776 origin-hours in October).
+- **Where it runs.** The nightly `availMissedTripsPoll` reconciliation (03:00 UTC). OTP Daily lands at 12:00 UTC, so a service day is contradicted on the second night after it.
+- **Measured on dev 2026-11-06** with the shipped read: 47 v4 cases are escalated and unreviewed. 12 would get a conflict, 10 more (late starts) get the evidence without one, 2 are short, 23 have no OTP row. No case has been opened since #504 and #506 deployed (the last on 2026-11-05 00:00 UTC; the Dispatch Log saw all 606 trips start on 2026-11-05), so none of the 12 is from after those fixes.
+- Tests: `decide.test.ts` (which cases conflict, first arrival only, Spare untouched), `availOriginDepartures.test.ts`, and `availOriginDepartures.db.contract.test.ts` (DST, the after-midnight calendar day, direction rows summed, no row is not zero) in CI's SQL Server job.
+
+**Restarts the REST app on merge.**
+
+## [1.7.64] - 2026-11-06
+
+Architecture review candidate 1: one module owns the stored schedule review.
+
+- **`lib/scheduleReview/store.ts` owns every read and write of a stored review.** `history.ts` is folded in. The interface is `saveReview`, `latestReview`, `routeDetail`, `latestSegments` and `compareReviews({from?, to?})`. The module reads the check list itself, so handlers no longer pass `PREDICTION_RISK_CHECKS` in. Choosing which two reviews to compare (by default the newest against the one before, put in time order) moved out of the REST handler.
+- **Retired checks are handled the same way on every read.** A stored result for a check that no longer exists is dropped when the row is decoded, and `flag_count` is recounted without it. Previously the route detail and the latest summary kept the stored `flag_count`, and a review snapshot kept the retired result. Route detail now also returns `fixable_flag_count` and `structural_flag_count`.
+- **The module assumes migrations 143 and 145 are applied**, as they are on dev and on the prod copy. The "migration missing" states, the 503s that named the migration files, and the console's matching messages are removed. The health page's schema check (`lib/schemaDrift.ts`) is now the one place that says a migration is missing.
+- **Migration 146 removes repeated review rows** left from before 145, when the sync stored an identical review every day. It keeps the newest row of each run, with `reviewed_at` set to when the run was first seen and `confirmed_at` set to when it was last seen. History is now a plain read with no window-function fold.
+- **First database contract test for the review** (`scheduleReview.db.contract.test.ts`, in the CI contract job). It covers stored, unchanged and evidence-refreshed saves, retired-check recounts, comparing two reviews, and migration 146. It replaces `store.test.ts`.
+- The re-export modules `lib/gtfsPredictionRisk.ts` and `lib/gtfsPredictionRiskStore.ts` are deleted, and `gtfsPredictionRisk.test.ts` now imports `lib/scheduleReview`.
 
 ## [1.7.62] - 2026-11-06
 

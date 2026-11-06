@@ -1249,6 +1249,14 @@ after its first public stop. Position movement may corroborate but is not
 required.
 _Avoid_: feed presence, vehicle assignment
 
+**Departure observed at origin**:
+Avail OTP Daily's account that, on a run's route, at its first public stop and
+in the local hour of its Published Trip start, no departure was missed and at
+least as many left as runs were scheduled to start there. Hour-level, so it is
+never a Trip start and never closes a case; it contradicts a case that says the
+run never started, as an Evidence conflict (ADR-0046).
+_Avoid_: trip start, OTP departure count
+
 **Decision coverage**:
 Reliable trip-observation coverage from Published Trip start through its
 30-minute deadline, with no observation-system gap longer than 10 minutes.

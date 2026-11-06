@@ -167,11 +167,11 @@ describe("ScheduleRouteView", () => {
     expect(getGtfsPredictionRiskRouteObserved).not.toHaveBeenCalled();
   });
 
-  it("names migration 145 and offers Try again when the route's detail cannot be read", async () => {
-    getGtfsPredictionRiskRoute.mockRejectedValueOnce(new ApiError(503, "missing")).mockResolvedValue(DETAIL);
+  it("offers Try again when the route's detail cannot be read", async () => {
+    getGtfsPredictionRiskRoute.mockRejectedValueOnce(new ApiError(500, "Internal server error")).mockResolvedValue(DETAIL);
     getGtfsPredictionRiskRouteObserved.mockResolvedValue(OBSERVED);
     view(<ScheduleRouteView routeId="420" routeLabel="420" />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("migration-145-schedule-review-route-detail.sql");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The schedule review could not be loaded.");
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("heading", { level: 2, name: /Apple Valley-Rosemount-DCTC/ })).toBeInTheDocument();
   });
