@@ -23,7 +23,11 @@ function checkState(check: FeedCheck): { label: string; tone: "success" | "warni
   if (check.freshness === "current") return { label: "Current", tone: "success" };
   if (check.freshness === "stale") return { label: "Stale", tone: "warning" };
   if (check.error || !check.status || check.status >= 400) return { label: "Failed", tone: "danger" };
-  if ((check.records ?? 0) === 0) return { label: "Empty", tone: "warning" };
+  // A check that counts nothing - the schema rows, one per migration - has no
+  // records to be empty of. Reading it as Empty put fourteen amber rows on
+  // every environment whose schema was in fact complete.
+  if (check.records === undefined) return { label: "Passed", tone: "success" };
+  if (check.records === 0) return { label: "Empty", tone: "warning" };
   return { label: "Live", tone: "success" };
 }
 

@@ -115,6 +115,7 @@ describe("IntegrationsHealth", () => {
         { name: "Avail AVL", configured: true, status: 401 },
         { name: "Spare missed-trip Slots ingestion", configured: true, records: 24, freshness: "current", last_success_at: "2026-09-06T14:40:00Z" },
         { name: "Spare Requests", configured: false },
+        { name: "Database schema · migration 121", configured: true, status: 200 },
       ],
     });
     render(<IntegrationsHealth />);
@@ -128,11 +129,14 @@ describe("IntegrationsHealth", () => {
     expect(within(table).getByText("Failed")).toBeInTheDocument();
     expect(within(table).getByText("Current")).toBeInTheDocument();
     expect(within(table).getByText("Not configured")).toBeInTheDocument();
+    // An applied migration counts nothing, so it is not "Empty".
+    expect(within(table).getByText("Passed")).toBeInTheDocument();
+    expect(within(table).getAllByText("Empty")).toHaveLength(1);
     expect(within(table).getByText("HTTP 401 from the source.")).toBeInTheDocument();
 
     // Reachability counts configured sources only, and names what failed.
     const summary = screen.getByLabelText("Data health summary");
-    expect(within(summary).getByText("3 of 4")).toBeInTheDocument();
+    expect(within(summary).getByText("4 of 5")).toBeInTheDocument();
     expect(within(summary).getByText("Avail AVL failed")).toBeInTheDocument();
     expect(getFeedChecks).toHaveBeenCalledOnce();
     // Trust is refreshed with the check so both halves describe one moment.

@@ -5,6 +5,12 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.57] - 2026-11-06
+
+- **Integrations & Data Health showed every applied migration as Empty.** A schema row for a migration that is applied reports success and counts no records, and the connection table read "no records" as Empty (amber). Prod's export of 2026-11-05 carried fourteen amber "Database schema · migration N" rows while every one of those migrations was in fact applied. A check that counts nothing now reads **Passed**; a feed that answered with zero records still reads Empty, and a missing migration still reads Failed with the file to run.
+- **The Avail OTP Daily check asked for a day Avail had not published.** `feedChecks` probed the UTC calendar's yesterday, which all Central evening is the service day still running, so the row read Empty (0) while `otpDailyFeedPoll` was upserting about 2,000 rows a day. The probe now sends the poll's own request, the last three completed Central service days (`otpDailyWindow`), the same fix the poll took when it moved to 12:00 UTC.
+- Found in the prod data-integration review of 2026-11-06. Neither change touches what is ingested; both only change what the page says.
+
 ## [1.7.53] - 2026-11-05
 
 - **The Detour Register's CSV could carry a live formula.** `lib/detourSearch.ts`'s `csvCell` quoted every field but did nothing about a leading `=`, `+`, `-` or `@`, so a closure, note or location typed as `=HYPERLINK(...)` ran as a formula in the Excel workbook the export is pasted into. The Access inventory export already guarded against this with `spreadsheetSafeText`; the detour export did not.
