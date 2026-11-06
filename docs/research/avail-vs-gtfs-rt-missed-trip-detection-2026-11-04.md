@@ -210,6 +210,69 @@ period under ADR-0036.
    six stations.
 4. Consider widening ADR-0035's match tolerance for partials. 865 of 2,018 are 1–5 minutes off.
 
+## Addendum 2026-11-06: what Avail's start time is, and whether GPS or mobile data is the cause
+
+### Avail's start time is the actual departure
+
+Follow-up 4 above proposed widening the minute-exact match for partial records. Measuring first
+showed that the 1–5 minute offsets are not schedule noise. `DepartureTripStartTime` is the minute
+the bus actually left, truncated to the minute (P1–P3):
+
+| Offset from the nearest scheduled start | Records | Within 1 min of the Dispatch Log's actual start |
+|---|---:|---:|
+| 0 min | 1,039 | 988 (95%) |
+| 1–5 min | 865 | 775 (90%) |
+| over 5 min | 114 | 94 |
+
+The offsets skew late (+1 min: 390, +2: 172, −1: 75), and a bus logged leaving at 15:31:08 is
+reported as 15:31. So the fix is to match on the departure, not to widen a tolerance:
+[ADR-0047](../adr/0047-place-an-avail-record-by-the-trip-that-left-that-minute.md). On the 95-day
+window that takes exact links on covered route-days from 57 to 69, and catches one link that named
+the wrong trip (I1–I6). It also turned up a Dispatch Log fault: every 2026-09-09 reading on dev
+sits 24 hours late (605 of 605, I5).
+
+### GPS or mobile data at the stations: no. Trip changeover at turnaround terminals: yes.
+
+§1 showed that Avail records no origin departure at a handful of stations. Is that the buses' GPS,
+or mobile data dropping out there? GTFS-RT gives an independent view through
+`GtfsTripOperationalEvidence`: whether a trip's vehicle reported a position before departure, and
+how long after departure it was first seen underway (G1–G5, 2026-10-06 to 2026-11-02).
+
+Split by where the trip sits in its block (G2), the stations look healthy for a bus starting its
+day there, and broken only for a bus turning around there:
+
+| Origin | Position in block | Trips | Position before departure | Seconds to first "underway" |
+|---|---|---:|---:|---:|
+| Burnsville Center | first of block | 64 | 76.6% | 173 |
+| Burnsville Center | later in block | 712 | **2.1%** | **625** |
+| Savage Park & Ride | first | 124 | 70.2% | 223 |
+| Savage Park & Ride | later | 436 | **5.7%** | **715** |
+| MSP Terminal 1 | first | 48 | 47.9% | 259 |
+| MSP Terminal 1 | later | 484 | **7.4%** | 418 |
+| Marschall Road TS | first | 156 | 84.6% | 316 |
+| Marschall Road TS | later | 596 | **22.0%** | 496 |
+| Mall of America Gate F (comparison) | later | 1,088 | 70.2% | 282 |
+
+- **Not GPS or cell coverage at the station.** The same kerb, served by the same fleet (45
+  different vehicles at Burnsville Center), reports normally when a bus starts its day there. A
+  radio or GPS dead spot would affect both.
+- **Not a few faulty buses.** Trips seen late or never (over 10 minutes after departure) are 18.5%
+  of the fleet's 12,734. The worst 10% of vehicles hold 27% of them, and the worst individual
+  vehicles owe about half of theirs to these same stations, because they run those routes (G4–G5).
+- **Not Avail's stop location.** Avail's coordinates for all eight stations match GTFS to the
+  metre (G3), and OTP Daily does record these stops when buses arrive (976 rows at Burnsville
+  Center).
+- **What fits: trip changeover.** A bus that arrives on one trip and leaves on the next is still
+  carried on the arriving trip when it pulls out. The new trip's origin departure is never
+  recorded, and the bus only appears on the new trip several minutes down the road. That is a
+  setting or behaviour in Avail's trip auto-advance at layover terminals, so it is a question for
+  Avail, not a fleet hardware problem. It is consistent with Burnsville Center being 100% missed:
+  nearly all of its trips (712 of 776) are mid-block.
+
+This sharpens item 2 of "What Avail would have to send": ask Avail how its CAD/AVL changes a
+vehicle onto its next trip at a turnaround terminal, and why departures at Burnsville Center,
+Savage P&R, MSP Terminal 1 and Marschall Road are not recorded for buses already in service.
+
 ## Appendix: SQL run (dev, read-only)
 
 Numbering matches the references above. Each block is one `sqlcmd -i` file, run as written.
@@ -463,4 +526,222 @@ SELECT COUNT(*) strong_miss_candidates,
   SUM(CASE WHEN m.trip_id IS NOT NULL THEN 1 ELSE 0 END) with_any_case,
   SUM(CASE WHEN m.status='escalated' THEN 1 ELSE 0 END) escalated
 FROM cand LEFT JOIN MonitoredMissedTrips m ON m.service_date=cand.d AND m.trip_id=cand.trip_id;
+```
+```sql
+SET NOCOUNT ON;
+SELECT @@SERVERNAME srv, DB_NAME() db;
+DECLARE @f CHAR(8)='20261006', @t CHAR(8)='20261102';
+-- P1 For each partial record, the nearest scheduled trip on that route-day, and its offset to both scheduled and actual start
+WITH p AS (SELECT id, calendar_date d, CAST(route_id AS varchar(20)) r, departure_trip_start_time st, departure_stop_name ds FROM AvailMissedTripsRouteStopDay WHERE entire_trip_missed=0 AND calendar_date BETWEEN @f AND @t),
+j AS (SELECT p.id, p.ds, p.st, t.scheduled_start_at, t.actual_start_at, t.origin_stop_name,
+        ROW_NUMBER() OVER (PARTITION BY p.id ORDER BY ABS(DATEDIFF(SECOND,t.scheduled_start_at,p.st))) rn,
+        COUNT(*) OVER (PARTITION BY p.id) trips_route_day
+      FROM p JOIN TripStartLog t ON t.service_date=p.d AND t.route_id=p.r),
+n AS (SELECT * FROM j WHERE rn=1)
+SELECT CASE WHEN DATEDIFF(MINUTE,scheduled_start_at,st)=0 THEN 'a 0' WHEN ABS(DATEDIFF(MINUTE,scheduled_start_at,st))<=5 THEN 'b 1-5' ELSE 'c >5' END sched_off,
+  COUNT(*) n,
+  SUM(CASE WHEN actual_start_at IS NOT NULL AND ABS(DATEDIFF(SECOND,actual_start_at,st))<60 THEN 1 ELSE 0 END) within_1min_of_actual,
+  AVG(DATEDIFF(SECOND,scheduled_start_at,st)) avg_sec_vs_sched,
+  SUM(CASE WHEN DATEPART(SECOND,st)=0 THEN 1 ELSE 0 END) whole_minute,
+  SUM(CASE WHEN ds <> origin_stop_name THEN 1 ELSE 0 END) dep_stop_not_origin_name
+FROM n GROUP BY CASE WHEN DATEDIFF(MINUTE,scheduled_start_at,st)=0 THEN 'a 0' WHEN ABS(DATEDIFF(MINUTE,scheduled_start_at,st))<=5 THEN 'b 1-5' ELSE 'c >5' END ORDER BY 1;
+-- P2 signed offset histogram for 1-5 min
+WITH p AS (SELECT id, calendar_date d, CAST(route_id AS varchar(20)) r, departure_trip_start_time st FROM AvailMissedTripsRouteStopDay WHERE entire_trip_missed=0 AND calendar_date BETWEEN @f AND @t),
+j AS (SELECT p.id, DATEDIFF(MINUTE,t.scheduled_start_at,p.st) offmin, ROW_NUMBER() OVER (PARTITION BY p.id ORDER BY ABS(DATEDIFF(SECOND,t.scheduled_start_at,p.st))) rn FROM p JOIN TripStartLog t ON t.service_date=p.d AND t.route_id=p.r)
+SELECT offmin, COUNT(*) n FROM j WHERE rn=1 AND ABS(offmin) BETWEEN 1 AND 6 GROUP BY offmin ORDER BY offmin;
+-- P3 sample
+WITH p AS (SELECT id, calendar_date d, CAST(route_id AS varchar(20)) r, departure_trip_start_time st, departure_stop_name ds, arrival_stop_name a FROM AvailMissedTripsRouteStopDay WHERE entire_trip_missed=0 AND calendar_date BETWEEN @f AND @t),
+j AS (SELECT p.*, t.trip_id, t.scheduled_start_at, t.actual_start_at, t.origin_stop_name, ROW_NUMBER() OVER (PARTITION BY p.id ORDER BY ABS(DATEDIFF(SECOND,t.scheduled_start_at,p.st))) rn FROM p JOIN TripStartLog t ON t.service_date=p.d AND t.route_id=p.r)
+SELECT TOP 8 d, r, ds, a, st, scheduled_start_at, actual_start_at, origin_stop_name FROM j WHERE rn=1 AND ABS(DATEDIFF(MINUTE,scheduled_start_at,st)) BETWEEN 1 AND 5 ORDER BY NEWID();
+```
+
+```sql
+SET NOCOUNT ON;
+DECLARE @f CHAR(8)='20261006', @t CHAR(8)='20261102';
+-- G1 per origin stop: did the vehicle report positions before departure, and how long after the departure was it first seen underway?
+WITH x AS (
+  SELECT t.origin_stop_name o, t.trip_id, t.service_date, t.actual_start_at, e.vehicle_id, e.first_vehicle_position_at, e.first_underway_at
+  FROM TripStartLog t LEFT JOIN GtfsTripOperationalEvidence e ON e.service_date=t.service_date AND e.trip_id=t.trip_id
+  WHERE t.service_date BETWEEN @f AND @t)
+SELECT TOP 14 o, COUNT(*) trips,
+  CAST(100.0*SUM(CASE WHEN vehicle_id IS NOT NULL THEN 1 ELSE 0 END)/COUNT(*) AS decimal(5,1)) pct_with_vehicle,
+  CAST(100.0*SUM(CASE WHEN first_vehicle_position_at <= actual_start_at THEN 1 ELSE 0 END)/COUNT(*) AS decimal(5,1)) pct_position_before_departure,
+  CAST(100.0*SUM(CASE WHEN first_underway_at IS NOT NULL THEN 1 ELSE 0 END)/COUNT(*) AS decimal(5,1)) pct_seen_underway,
+  AVG(CASE WHEN first_underway_at IS NOT NULL AND actual_start_at IS NOT NULL THEN DATEDIFF(SECOND, actual_start_at, first_underway_at) END) avg_sec_departure_to_underway,
+  COUNT(DISTINCT vehicle_id) vehicles
+FROM x GROUP BY o ORDER BY trips DESC;
+```
+
+```sql
+SET NOCOUNT ON;
+DECLARE @f CHAR(8)='20261006', @t CHAR(8)='20261102';
+-- G2 is the trip the first of its block? (a bus starting its day logs on near departure, so no earlier positions)
+WITH b AS (SELECT t.*, ROW_NUMBER() OVER (PARTITION BY service_date, block_id ORDER BY scheduled_start_at) k FROM TripStartLog t WHERE service_date BETWEEN @f AND @t AND block_id IS NOT NULL),
+x AS (SELECT b.origin_stop_name o, b.k, e.first_vehicle_position_at, e.first_underway_at, b.actual_start_at FROM b LEFT JOIN GtfsTripOperationalEvidence e ON e.service_date=b.service_date AND e.trip_id=b.trip_id)
+SELECT o, CASE WHEN k=1 THEN 'first of block' ELSE 'later in block' END pos, COUNT(*) trips,
+  CAST(100.0*SUM(CASE WHEN first_vehicle_position_at <= actual_start_at THEN 1 ELSE 0 END)/COUNT(*) AS decimal(5,1)) pct_position_before_departure,
+  AVG(CASE WHEN first_underway_at IS NOT NULL AND actual_start_at IS NOT NULL THEN DATEDIFF(SECOND, actual_start_at, first_underway_at) END) avg_sec_to_underway
+FROM x WHERE o IN ('Burnsville Center','Mystic Lake Casino','Marschall Road Transit Station','Savage Park & Ride','MSP Terminal 1 Transit Station','Apple Valley Transit Station NB','Mall of America Transit Station Gate F','Eagan Transit Station','Gateway Ramp')
+GROUP BY o, CASE WHEN k=1 THEN 'first of block' ELSE 'later in block' END ORDER BY o, pos;
+-- G3 Avail's stop coordinates (OTP Daily) vs GTFS stop coordinates, metres apart
+SELECT s.stop_id, s.stop_name, COUNT(o.id) otp_rows_any_hour,
+  CAST(MAX(geography::Point(s.stop_lat, s.stop_lon, 4326).STDistance(geography::Point(o.latitude, o.longitude, 4326))) AS int) max_m_apart
+FROM GtfsStops s LEFT JOIN OtpDailyRouteStopHour o ON CAST(o.stop_id AS varchar(40))=s.stop_id AND o.calendar_date BETWEEN @f AND @t AND o.latitude IS NOT NULL
+WHERE s.stop_name IN ('Burnsville Center','Mystic Lake Casino','Marschall Road Transit Station','Savage Park & Ride','MSP Terminal 1 Transit Station','Apple Valley Transit Station NB','Mall of America Transit Station Gate F','Eagan Transit Station')
+GROUP BY s.stop_id, s.stop_name;
+```
+
+```sql
+SET NOCOUNT ON;
+DECLARE @f CHAR(8)='20261006', @t CHAR(8)='20261102';
+-- G4 slow-to-be-seen trips (underway > 10 min after departure, or never): concentrated in a few vehicles (bad modem/GPS) or spread across the fleet?
+WITH x AS (
+  SELECT e.vehicle_id v, CASE WHEN e.first_underway_at IS NULL OR DATEDIFF(SECOND, t.actual_start_at, e.first_underway_at) > 600 THEN 1 ELSE 0 END slow
+  FROM TripStartLog t JOIN GtfsTripOperationalEvidence e ON e.service_date=t.service_date AND e.trip_id=t.trip_id
+  WHERE t.service_date BETWEEN @f AND @t AND t.actual_start_at IS NOT NULL AND e.vehicle_id IS NOT NULL),
+v AS (SELECT v, COUNT(*) trips, SUM(slow) slow FROM x GROUP BY v),
+r AS (SELECT v, trips, slow, ROW_NUMBER() OVER (ORDER BY slow DESC) rk, COUNT(*) OVER () nveh, SUM(slow) OVER () total_slow FROM v)
+SELECT MAX(nveh) vehicles, MAX(total_slow) slow_trips, SUM(trips) trips,
+  SUM(CASE WHEN rk <= CEILING(nveh*0.1) THEN slow END) slow_in_worst_10pct_vehicles,
+  CAST(100.0*SUM(CASE WHEN rk <= CEILING(nveh*0.1) THEN slow END)/MAX(total_slow) AS decimal(5,1)) pct_in_worst_10pct,
+  MAX(CAST(100.0*slow/trips AS decimal(5,1))) worst_vehicle_slow_pct
+FROM r;
+```
+
+```sql
+SET NOCOUNT ON;
+DECLARE @f CHAR(8)='20261006', @t CHAR(8)='20261102';
+-- G5 worst vehicles by share of slow-to-be-seen trips (>= 50 trips), and how much of it is at the turnaround stations
+WITH x AS (
+  SELECT e.vehicle_id v, t.origin_stop_name o, CASE WHEN e.first_underway_at IS NULL OR DATEDIFF(SECOND, t.actual_start_at, e.first_underway_at) > 600 THEN 1 ELSE 0 END slow
+  FROM TripStartLog t JOIN GtfsTripOperationalEvidence e ON e.service_date=t.service_date AND e.trip_id=t.trip_id
+  WHERE t.service_date BETWEEN @f AND @t AND t.actual_start_at IS NOT NULL AND e.vehicle_id IS NOT NULL)
+SELECT TOP 6 v, COUNT(*) trips, SUM(slow) slow, CAST(100.0*SUM(slow)/COUNT(*) AS decimal(5,1)) pct,
+  SUM(CASE WHEN slow=1 AND o IN ('Burnsville Center','Savage Park & Ride','Marschall Road Transit Station','MSP Terminal 1 Transit Station','Scott County Government Center SB') THEN 1 ELSE 0 END) slow_at_turnaround_stations
+FROM x GROUP BY v HAVING COUNT(*)>=50 ORDER BY 1.0*SUM(slow)/COUNT(*) DESC;
+```
+
+```sql
+SET NOCOUNT ON;
+SELECT @@SERVERNAME srv, DB_NAME() db;
+-- I1 the new rule over the adapter's 95-day window, records with a start time
+WITH r AS (SELECT id, calendar_date d, CAST(route_id AS varchar(20)) rt, departure_trip_start_time st
+           FROM AvailMissedTripsRouteStopDay
+           WHERE calendar_date >= CONVERT(CHAR(8), DATEADD(DAY, -95, SYSUTCDATETIME()), 112)
+             AND departure_trip_start_time IS NOT NULL AND (departure_missed=1 OR arrival_missed=1 OR entire_trip_missed=1)),
+covered AS (SELECT r.id, CASE WHEN EXISTS (SELECT 1 FROM TripStartLog t WHERE t.service_date=r.d AND t.route_id=r.rt) THEN 1 ELSE 0 END has_trips FROM r),
+left_ AS (SELECT r.id, t.trip_id, t.service_date FROM r JOIN TripStartLog t ON t.service_date=r.d AND t.route_id=r.rt
+          AND DATEDIFF(MINUTE, 0, ISNULL(t.actual_start_at, t.scheduled_start_at)) = DATEDIFF(MINUTE, 0, r.st)),
+n AS (SELECT id, COUNT(*) k, MIN(trip_id) trip_id, MIN(service_date) sd FROM left_ GROUP BY id),
+res AS (SELECT c.id, c.has_trips, ISNULL(n.k,0) k, n.trip_id,
+          CASE WHEN EXISTS (SELECT 1 FROM MonitoredMissedTrips m WHERE m.service_date=n.sd AND m.trip_id=n.trip_id AND ISNULL(m.source_system,'gtfs')<>'spare') THEN 1 ELSE 0 END has_case
+        FROM covered c LEFT JOIN n ON n.id=c.id)
+SELECT CASE WHEN has_trips=0 THEN 'z not covered (old rule)'
+            WHEN k=0 THEN 'unmatched: no trip left that minute'
+            WHEN k>1 THEN 'probable: several trips that minute'
+            WHEN has_case=1 THEN 'EXACT: one trip, has a case'
+            ELSE 'unmatched: one trip, no case' END outcome, COUNT(*) n
+FROM res GROUP BY CASE WHEN has_trips=0 THEN 'z not covered (old rule)'
+            WHEN k=0 THEN 'unmatched: no trip left that minute'
+            WHEN k>1 THEN 'probable: several trips that minute'
+            WHEN has_case=1 THEN 'EXACT: one trip, has a case'
+            ELSE 'unmatched: one trip, no case' END ORDER BY 1;
+-- I2 today's exact links: does the new rule agree on the case?
+SELECT COUNT(*) old_exact,
+  SUM(CASE WHEN x.k=1 AND x.trip_id=l.trip_id THEN 1 ELSE 0 END) same_trip_under_new_rule,
+  SUM(CASE WHEN x.k=1 AND x.trip_id<>l.trip_id THEN 1 ELSE 0 END) different_trip_left_that_minute,
+  SUM(CASE WHEN ISNULL(x.k,0)<>1 THEN 1 ELSE 0 END) not_single_under_new_rule
+FROM AvailEvidenceLinks l
+OUTER APPLY (SELECT COUNT(*) k, MIN(t.trip_id) trip_id FROM TripStartLog t WHERE t.service_date=l.calendar_date AND t.route_id=CAST(l.route_id AS varchar(20))
+             AND DATEDIFF(MINUTE,0,ISNULL(t.actual_start_at,t.scheduled_start_at))=DATEDIFF(MINUTE,0,l.departure_trip_start_time)) x
+WHERE l.match_confidence='exact' AND l.retracted_at IS NULL;
+```
+
+```sql
+SET NOCOUNT ON;
+-- I3 today's exact links that the new rule does not resolve to one trip: covered? and where did the case's own bus leave?
+WITH l AS (SELECT * FROM AvailEvidenceLinks WHERE match_confidence='exact' AND retracted_at IS NULL),
+y AS (
+  SELECT l.id,
+    (SELECT COUNT(*) FROM TripStartLog t WHERE t.service_date=l.calendar_date AND t.route_id=CAST(l.route_id AS varchar(20))) day_trips,
+    (SELECT COUNT(*) FROM TripStartLog t WHERE t.service_date=l.calendar_date AND t.route_id=CAST(l.route_id AS varchar(20))
+       AND DATEDIFF(MINUTE,0,ISNULL(t.actual_start_at,t.scheduled_start_at))=DATEDIFF(MINUTE,0,l.departure_trip_start_time)) k,
+    DATEDIFF(MINUTE, l.departure_trip_start_time, c.actual_start_at) case_left_min_after,
+    c.trip_id case_in_log
+  FROM l LEFT JOIN TripStartLog c ON c.service_date=l.service_date AND c.trip_id=l.trip_id)
+SELECT CASE WHEN day_trips=0 THEN 'route-day not covered' WHEN case_in_log IS NULL THEN 'case trip not in log'
+            WHEN case_left_min_after IS NULL THEN 'case trip: no actual'
+            ELSE 'case bus left ' + CAST(case_left_min_after AS varchar) + ' min after Avail time' END why, k trips_that_minute, COUNT(*) n
+FROM y GROUP BY CASE WHEN day_trips=0 THEN 'route-day not covered' WHEN case_in_log IS NULL THEN 'case trip not in log'
+            WHEN case_left_min_after IS NULL THEN 'case trip: no actual'
+            ELSE 'case bus left ' + CAST(case_left_min_after AS varchar) + ' min after Avail time' END, k
+ORDER BY n DESC;
+```
+
+```sql
+SET NOCOUNT ON;
+-- I5 Dispatch Log readings far from their schedule, by service date
+SELECT service_date, COUNT(*) readings,
+  SUM(CASE WHEN DATEDIFF(MINUTE, scheduled_start_at, actual_start_at) > 180 THEN 1 ELSE 0 END) over_3h_late,
+  SUM(CASE WHEN DATEDIFF(MINUTE, scheduled_start_at, actual_start_at) < -30 THEN 1 ELSE 0 END) over_30m_early
+FROM TripStartLog WHERE actual_start_at IS NOT NULL
+GROUP BY service_date HAVING SUM(CASE WHEN DATEDIFF(MINUTE, scheduled_start_at, actual_start_at) > 180 OR DATEDIFF(MINUTE, scheduled_start_at, actual_start_at) < -30 THEN 1 ELSE 0 END) > 0
+ORDER BY service_date;
+-- how late do real departures run? (to pick the plausibility window)
+SELECT SUM(CASE WHEN d BETWEEN 30 AND 60 THEN 1 ELSE 0 END) m30_60, SUM(CASE WHEN d BETWEEN 61 AND 120 THEN 1 ELSE 0 END) m61_120, SUM(CASE WHEN d BETWEEN 121 AND 180 THEN 1 ELSE 0 END) m121_180,
+       SUM(CASE WHEN d BETWEEN -30 AND -6 THEN 1 ELSE 0 END) early_6_30
+FROM (SELECT DATEDIFF(MINUTE, scheduled_start_at, actual_start_at) d FROM TripStartLog WHERE actual_start_at IS NOT NULL) q;
+```
+
+```sql
+SET NOCOUNT ON;
+SELECT @@SERVERNAME srv, DB_NAME() db;
+-- I1 (with the plausibility guard) the new rule over the adapter's 95-day window, records with a start time
+WITH r AS (SELECT id, calendar_date d, CAST(route_id AS varchar(20)) rt, departure_trip_start_time st
+           FROM AvailMissedTripsRouteStopDay
+           WHERE calendar_date >= CONVERT(CHAR(8), DATEADD(DAY, -95, SYSUTCDATETIME()), 112)
+             AND departure_trip_start_time IS NOT NULL AND (departure_missed=1 OR arrival_missed=1 OR entire_trip_missed=1)),
+covered AS (SELECT r.id, CASE WHEN EXISTS (SELECT 1 FROM TripStartLog t WHERE t.service_date=r.d AND t.route_id=r.rt) THEN 1 ELSE 0 END has_trips FROM r),
+left_ AS (SELECT r.id, t.trip_id, t.service_date FROM r JOIN TripStartLog t ON t.service_date=r.d AND t.route_id=r.rt
+          AND DATEDIFF(MINUTE, 0, CASE WHEN t.actual_start_at IS NOT NULL AND DATEDIFF(MINUTE,t.scheduled_start_at,t.actual_start_at) BETWEEN -30 AND 180 THEN t.actual_start_at ELSE t.scheduled_start_at END) = DATEDIFF(MINUTE, 0, r.st)),
+n AS (SELECT id, COUNT(*) k, MIN(trip_id) trip_id, MIN(service_date) sd FROM left_ GROUP BY id),
+res AS (SELECT c.id, c.has_trips, ISNULL(n.k,0) k, n.trip_id,
+          CASE WHEN EXISTS (SELECT 1 FROM MonitoredMissedTrips m WHERE m.service_date=n.sd AND m.trip_id=n.trip_id AND ISNULL(m.source_system,'gtfs')<>'spare') THEN 1 ELSE 0 END has_case
+        FROM covered c LEFT JOIN n ON n.id=c.id)
+SELECT CASE WHEN has_trips=0 THEN 'z not covered (old rule)'
+            WHEN k=0 THEN 'unmatched: no trip left that minute'
+            WHEN k>1 THEN 'probable: several trips that minute'
+            WHEN has_case=1 THEN 'EXACT: one trip, has a case'
+            ELSE 'unmatched: one trip, no case' END outcome, COUNT(*) n
+FROM res GROUP BY CASE WHEN has_trips=0 THEN 'z not covered (old rule)'
+            WHEN k=0 THEN 'unmatched: no trip left that minute'
+            WHEN k>1 THEN 'probable: several trips that minute'
+            WHEN has_case=1 THEN 'EXACT: one trip, has a case'
+            ELSE 'unmatched: one trip, no case' END ORDER BY 1;
+-- I2 today's exact links: does the new rule agree on the case?
+SELECT COUNT(*) old_exact,
+  SUM(CASE WHEN x.k=1 AND x.trip_id=l.trip_id THEN 1 ELSE 0 END) same_trip_under_new_rule,
+  SUM(CASE WHEN x.k=1 AND x.trip_id<>l.trip_id THEN 1 ELSE 0 END) different_trip_left_that_minute,
+  SUM(CASE WHEN ISNULL(x.k,0)<>1 THEN 1 ELSE 0 END) not_single_under_new_rule
+FROM AvailEvidenceLinks l
+OUTER APPLY (SELECT COUNT(*) k, MIN(t.trip_id) trip_id FROM TripStartLog t WHERE t.service_date=l.calendar_date AND t.route_id=CAST(l.route_id AS varchar(20))
+             AND DATEDIFF(MINUTE,0,CASE WHEN t.actual_start_at IS NOT NULL AND DATEDIFF(MINUTE,t.scheduled_start_at,t.actual_start_at) BETWEEN -30 AND 180 THEN t.actual_start_at ELSE t.scheduled_start_at END)=DATEDIFF(MINUTE,0,l.departure_trip_start_time)) x
+WHERE l.match_confidence='exact' AND l.retracted_at IS NULL;
+```
+
+```sql
+SET NOCOUNT ON;
+-- I6 records no trip left in Avail's minute: signed seconds from Avail's minute to the nearest plausible departure on that route-day
+WITH r AS (SELECT id, calendar_date d, CAST(route_id AS varchar(20)) rt, departure_trip_start_time st
+           FROM AvailMissedTripsRouteStopDay
+           WHERE calendar_date >= CONVERT(CHAR(8), DATEADD(DAY, -95, SYSUTCDATETIME()), 112)
+             AND departure_trip_start_time IS NOT NULL AND (departure_missed=1 OR arrival_missed=1 OR entire_trip_missed=1)),
+t AS (SELECT service_date, route_id, CASE WHEN actual_start_at IS NOT NULL AND DATEDIFF(MINUTE,scheduled_start_at,actual_start_at) BETWEEN -30 AND 180 THEN actual_start_at ELSE scheduled_start_at END dep FROM TripStartLog),
+j AS (SELECT r.id, DATEDIFF(SECOND, r.st, t.dep) s,
+        ROW_NUMBER() OVER (PARTITION BY r.id ORDER BY ABS(DATEDIFF(SECOND, r.st, t.dep))) rn,
+        SUM(CASE WHEN DATEDIFF(MINUTE,0,t.dep)=DATEDIFF(MINUTE,0,r.st) THEN 1 ELSE 0 END) OVER (PARTITION BY r.id) in_minute
+      FROM r JOIN t ON t.service_date=r.d AND t.route_id=r.rt)
+SELECT CASE WHEN s < -120 THEN 'a < -2m' WHEN s < -60 THEN 'b -2m..-1m' WHEN s < 0 THEN 'c -1m..0' WHEN s < 120 THEN 'd +1m..+2m' WHEN s < 600 THEN 'e +2m..+10m' ELSE 'f > +10m' END nearest, COUNT(*) n
+FROM j WHERE rn=1 AND in_minute=0
+GROUP BY CASE WHEN s < -120 THEN 'a < -2m' WHEN s < -60 THEN 'b -2m..-1m' WHEN s < 0 THEN 'c -1m..0' WHEN s < 120 THEN 'd +1m..+2m' WHEN s < 600 THEN 'e +2m..+10m' ELSE 'f > +10m' END ORDER BY 1;
 ```
