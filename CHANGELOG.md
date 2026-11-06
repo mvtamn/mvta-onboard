@@ -5,6 +5,19 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.66] - 2026-11-06
+
+Avail OTP Daily departures at a case's origin become contradicting evidence (option d of `docs/research/avail-vs-gtfs-rt-missed-trip-detection-2026-11-04.md`, ADR 0046).
+
+- **The fact.** `lib/missedTripCase/adapters/availOriginDepartures.ts` reads, for every fixed-route case in the 95-day window, the trips scheduled from its origin stop (TripStartLog `origin_stop_id`, which is Avail's `stop_id`) on its route in the Central calendar date and hour of its Published Trip start, and OTP Daily's `actual_departures` and `missed` there. When Avail called none missed and saw at least as many departures as trips were scheduled to start, the case gets a new `origin_departures_observed` fact: a Departure observed at origin.
+- **What it does.** `decide.ts` keeps the counts on the case under `evidence_json.avail_otp_origin`, and records an Evidence conflict on a case that says the run never started (an unreviewed escalated case, or a Confirmed missed trip, with no late start seen). It is raised only the first time the evidence arrives, so a reviewer who settled it does not see it come back with Avail's nightly restatement. It never opens, closes, reopens or rewrites a case.
+- **What says nothing.** A shortfall, any departure Avail called missed (OTP counts trips that only pass through the stop too), and an origin hour with no OTP row (Burnsville Center: 776 of 776 origin-hours in October).
+- **Where it runs.** The nightly `availMissedTripsPoll` reconciliation (03:00 UTC). OTP Daily lands at 12:00 UTC, so a service day is contradicted on the second night after it.
+- **Measured on dev 2026-11-06** with the shipped read: 47 v4 cases are escalated and unreviewed. 12 would get a conflict, 10 more (late starts) get the evidence without one, 2 are short, 23 have no OTP row. No case has been opened since #504 and #506 deployed (the last on 2026-11-05 00:00 UTC; the Dispatch Log saw all 606 trips start on 2026-11-05), so none of the 12 is from after those fixes.
+- Tests: `decide.test.ts` (which cases conflict, first arrival only, Spare untouched), `availOriginDepartures.test.ts`, and `availOriginDepartures.db.contract.test.ts` (DST, the after-midnight calendar day, direction rows summed, no row is not zero) in CI's SQL Server job.
+
+**Restarts the REST app on merge.**
+
 ## [1.7.64] - 2026-11-06
 
 Architecture review candidate 1: one module owns the stored schedule review.
