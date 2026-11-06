@@ -100,6 +100,8 @@ describe("the case header, fixed route", () => {
     expect(caseHeader(gtfs(null), time, { evidenceUnavailable: true }).seen)
       .toEqual(["The start evidence could not be read just now. Reload before deciding."]);
     expect(caseHeader(gtfs(null), time).seen).toEqual(["Not seen past the first stop."]);
+    const failedAtReview = { ...gtfs(null), reviewEvidence: { read_at: "2026-10-31T22:00:00.000Z", reviewed_by: "occ@example.com", outcome: "confirmed", read_failed: "The evidence read failed: timeout" } };
+    expect(caseHeader(failedAtReview, time).seen).toEqual(["The start evidence could not be read when this was reviewed, so none was kept."]);
   });
 
   it("calls an advance cancellation what it is", () => {

@@ -5,6 +5,37 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
+## [1.7.70] - 2026-11-06
+
+Step 0.5 of the missed-trips production plan: the evidence a reviewer decided on is kept with the review (CONTEXT.md, *Retained missed-trip evidence*).
+
+- **A review keeps a snapshot.** `actOnMissedTripCase` reads the case's start evidence (`caseEvidence.ts`: Dispatch Log reading, vehicle, block, origin stop, OTP Daily at the origin hour) before its transaction. It then writes the evidence into `evidence_json.review_evidence` in the same transaction as the review. Each snapshot is keyed to its `MissedTripReviewHistory.review_id` and records who reviewed, the outcome and when the evidence was read. A superseding review appends its own snapshot, and other `evidence_json` keys (`avail`, `avail_otp_origin`) are untouched. The write is self-contained in `lib/missedTripCase/reviewEvidence.ts`.
+- **Reads use it.** `GET /missed-trips` returns a reviewed case's latest snapshot as `gtfs_evidence`, so it survives the Dispatch Log pruning and the 90-day OTP Daily purge, plus a new `review_evidence` summary. Only the rest of the page is read live.
+- **A failed read is said, not hidden** (item 8 of `docs/reviews/evidence-and-detours-review.md`). If the evidence can't be read at review, the review still records, and the snapshot carries `read_failed`. The console's Start evidence section says so, and so does the case header. A page whose live read failed now shows the section with "could not be read just now" instead of dropping it.
+- **A nightly pass can't overwrite a snapshot.** A run decision that replaces `evidence_json` now expects the `evidence_json` it was decided from (`decide.ts`, `store.ts`), so a review landing between the pass's read and its write is never lost.
+- Tests: `reviewEvidence.test.ts`, a `decide.test.ts` case, console `missedTripReview.test.ts` and `missedTripCaseHeader.test.ts`. A new `reviewEvidence.db.contract.test.ts` is in CI's contract job. It covers the snapshot keyed to its history row, the case still showing evidence after its source rows are deleted, a supersede appending, a failed read recorded, and the stale pass refused.
+
+No migration. Reviews recorded before this release have no snapshot and still read live. **Restarts the REST app on merge.**
+
+## [1.7.69] - 2026-11-06
+
+### Added
+
+- **A fixed-route missed trip's Start evidence now shows what Avail's OTP Daily feed counted at the trip's first stop, in the local hour it was due to leave.**
+  - `caseEvidence.ts` reads `OtpDailyRouteStopHour` for the trip's route, origin stop, Central calendar date and hour. It adds `avail_otp: { hour, trips_starting, departed, missed, all_left }` to `GET /missed-trips`.
+  - `trips_starting` counts the Dispatch Log trips on the route scheduled to start at that stop in that hour. A trip after midnight is looked up on the next calendar day, which is where Avail files it.
+- **`all_left` is ADR-0046's "Departure observed at origin" rule:** Avail called none of the hour's departures missed, and saw at least as many as trips start there.
+  - Both halves are needed, because OTP Daily also counts trips that only pass through the stop.
+  - It is the same rule `availOriginDepartures.ts` applies nightly, so the row never says "all left" on a case the nightly check leaves alone, or the reverse.
+- **The console shows it as an "Avail on-time data" row:**
+  - green when `all_left`;
+  - a warning with the counts otherwise;
+  - "Nothing recorded" when Avail has no row.
+- **Evidence for the reviewer only.** The row never opens, closes or decides a case.
+- **Live check:** on dev on 2026-11-06, 24 of the 47 open escalated silent no-shows had a row, and 22 of them met the rule.
+
+No migration. If `OtpDailyRouteStopHour` doesn't exist, the row is simply absent. Merging redeploys and restarts the REST Function App.
+
 ## [1.7.67] - 2026-11-06
 
 - **Integrations & Data Health showed every applied migration as Empty.** A schema row for a migration that is applied reports success and counts no records, and the connection table read "no records" as Empty (amber). Prod's export of 2026-11-05 carried fourteen amber "Database schema · migration N" rows while every one of those migrations was in fact applied. A check that counts nothing now reads **Passed**; a feed that answered with zero records still reads Empty, and a missing migration still reads Failed with the file to run.

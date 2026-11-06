@@ -21,6 +21,7 @@ import {
 import { classifyMissedTripCase } from "./classify";
 import { detectorPromotionWindows } from "./promotion";
 import { caseTripId, decideReview, decideRun } from "./decide";
+import { captureReviewEvidence, writeReviewEvidence } from "./reviewEvidence";
 import { caseKey, loadCase, loadCases, writeDecision } from "./store";
 import type { Actor, CaseAct, CaseKey, CaseRefusal, MissedTripClassification, ObserveReport, RunObservation, StoredReviewOutcome } from "./types";
 
@@ -110,6 +111,11 @@ const OUTCOME_NOTES: Record<StoredReviewOutcome, string> = {
 export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey, act: CaseAct, actor: Actor, now = new Date()): Promise<ActOutcome> {
   // Read before the transaction opens: promotion is the same for every case.
   const promoted = await detectorPromotionWindows(pool);
+  // The evidence the reviewer is deciding on, kept with the review
+  // (reviewEvidence.ts). Read before the case is locked; a failed read is
+  // recorded as failed, never a reason to refuse the review.
+  const before = await loadCase(pool, key.tripId, key.serviceDate, false);
+  const captured = before ? await captureReviewEvidence(pool, before, now) : null;
   const tx = new sql.Transaction(pool);
   await tx.begin();
   try {
@@ -158,6 +164,7 @@ export async function actOnMissedTripCase(pool: sql.ConnectionPool, key: CaseKey
         VALUES (@trip_id, @service_date, @previous_validation_status, @validation_status, @reason_code, @notes, @validated_by,
           @review_kind, @review_reason);
       `);
+    if (captured) await writeReviewEvidence(tx, key, captured, { reviewedBy: actor.name, outcome: review.validation_status });
     const reviewed = await loadCase(tx, key.tripId, key.serviceDate, false);
     const classification = classifyMissedTripCase(reviewed ?? current, promoted, now);
 

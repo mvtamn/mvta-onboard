@@ -187,6 +187,19 @@ test("Avail agreeing with an open case records evidence and changes nothing else
   assert.match(String(set.evidence_json), /"avail"/);
 });
 
+test("a write that replaces the evidence expects the evidence it was decided from", () => {
+  // A review may add its evidence snapshot between the pass's read and its
+  // write (reviewEvidence.ts); the stored evidence is part of what the write
+  // expects, so the next pass decides again instead of dropping the snapshot.
+  const before = JSON.stringify({ review_evidence: [] });
+  const decision = decideRun(stored({ evidence_json: before }), [avail({ kind: "retrospective_missed" })], NOW);
+  assert.equal(decision?.kind, "update");
+  assert.equal(decision?.kind === "update" ? decision.expect.evidence_json : undefined, before);
+  // A write that leaves the evidence alone does not expect it.
+  const closing = decideRun(stored({ evidence_json: before }), [{ ...avail({ kind: "retrospective_missed" }), fact: { kind: "trip_start", at: SCHEDULED } }], NOW);
+  assert.equal(closing?.kind === "update" && "evidence_json" in closing.expect, false);
+});
+
 test("Avail agreeing with a confirmed review is not a conflict", () => {
   const decision = decideRun(
     stored({ validation_status: "confirmed" }),

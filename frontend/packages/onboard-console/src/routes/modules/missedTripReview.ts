@@ -452,6 +452,36 @@ function dispatchDepartureLabel(departure: GtfsCaseEvidence["departure"], time: 
   }
 }
 
+/**
+ * Where the Start evidence on screen came from, said above it - or why there is
+ * none. A reviewed case shows the readings kept at its review, which outlive
+ * their sources; a read that failed is said to have failed, never shown as
+ * "Not recorded" (review item 8, docs/reviews/evidence-and-detours-review.md).
+ * Null for an unreviewed case read live without trouble, and for Spare.
+ */
+export function startEvidenceSource(
+  alert: Pick<MissedTripAlert, "sourceSystem" | "gtfsEvidence" | "reviewEvidence">,
+  time: (iso: string | null) => string,
+  options: { evidenceUnavailable?: boolean } = {},
+): { text: string; tone: "warn" | null } | null {
+  if (alert.sourceSystem === "spare") return null;
+  const kept = alert.reviewEvidence ?? null;
+  const live = alert.gtfsEvidence ?? null;
+  if (kept && !kept.read_failed && live) {
+    return { text: `As ${kept.reviewed_by} saw it at review, ${time(kept.read_at)}. Kept with the decision, so it stays after the feeds are purged.`, tone: null };
+  }
+  if (kept?.read_failed) {
+    const when = `${kept.reviewed_by} reviewed this at ${time(kept.read_at)}`;
+    return live
+      ? { text: `The start evidence could not be read when ${when}, so none was kept. What follows is read now, and the feeds may no longer hold all of it.`, tone: "warn" }
+      : { text: `The start evidence could not be read when ${when}, so none was kept.`, tone: "warn" };
+  }
+  if (!live && options.evidenceUnavailable) {
+    return { text: "The start evidence could not be read just now. Reload before deciding.", tone: "warn" };
+  }
+  return null;
+}
+
 export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: string | null) => string, scheduledAt: string | null = null): EvidenceFact[] {
   const facts: EvidenceFact[] = [];
 
@@ -507,5 +537,42 @@ export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: strin
     });
   }
 
+  const otp = evidence.avail_otp;
+  if (otp) {
+    const hour = hourRange(otp.hour);
+    const trips = `${otp.trips_starting} ${otp.trips_starting === 1 ? "trip" : "trips"} scheduled to start here`;
+    const departures = `${otp.departed} ${otp.departed === 1 ? "departure" : "departures"}`;
+    facts.push(otp.all_left
+      ? {
+        label: "Avail on-time data",
+        value: otp.trips_starting === 1 ? `${hour}: the 1 trip scheduled to start here left` : `${hour}: all ${trips} left`,
+        tone: "good",
+        note: `Avail saw ${departures} and called none missed. It counts the hour, not the trip.`,
+      }
+      : {
+        label: "Avail on-time data",
+        value: `${hour}: Avail saw ${departures} for ${trips}${otp.missed > 0 ? `, and called ${otp.missed} missed` : ""}`,
+        tone: "warn",
+        note: "An hour-level count can't say which trip didn't leave.",
+      });
+  } else if (evidence.avail_otp === null) {
+    facts.push({
+      label: "Avail on-time data",
+      value: "Nothing recorded for this stop and hour",
+      note: "Avail misses departures at some stations, and its data arrives the next day.",
+    });
+  }
+
   return facts;
+}
+
+// "10–11 AM", "11 AM–12 PM": the local hour Avail counted.
+function hourRange(hour: number): string {
+  const label = (h: number) => {
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return { h12, ampm: h % 24 < 12 ? "AM" : "PM" };
+  };
+  const from = label(hour);
+  const to = label(hour + 1);
+  return from.ampm === to.ampm ? `${from.h12}–${to.h12} ${to.ampm}` : `${from.h12} ${from.ampm}–${to.h12} ${to.ampm}`;
 }

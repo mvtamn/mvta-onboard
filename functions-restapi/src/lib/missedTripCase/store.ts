@@ -103,9 +103,17 @@ export async function writeDecision(pool: sql.ConnectionPool, decision: RunDecis
     sets.push(`${column} = @${column}`);
     request.input(column, type(), value);
   }
+  // A write that replaces evidence_json expects the one it was decided from:
+  // a review may have added its evidence snapshot since (reviewEvidence.ts).
+  let expectEvidence = "";
+  if (decision.expect.evidence_json !== undefined) {
+    request.input("expect_evidence", sql.NVarChar(sql.MAX), decision.expect.evidence_json);
+    expectEvidence = `
+      AND (evidence_json = @expect_evidence OR (evidence_json IS NULL AND @expect_evidence IS NULL))`;
+  }
   const result = await request.query(`
     UPDATE MonitoredMissedTrips SET ${sets.join(", ")}
     WHERE trip_id = @trip_id AND service_date = @service_date
-      AND status = @expect_status AND validation_status = @expect_validation`);
+      AND status = @expect_status AND validation_status = @expect_validation${expectEvidence}`);
   return (result.rowsAffected[0] ?? 0) > 0;
 }

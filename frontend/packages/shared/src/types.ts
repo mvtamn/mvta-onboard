@@ -679,10 +679,25 @@ export interface MissedTrip {
   // lib/missedTripCase/caseEvidence.ts). Null on a Spare case and where the
   // evidence could not be read; absent from an API older than 1.6.27.
   gtfs_evidence?: GtfsCaseEvidence | null;
+  /**
+   * The evidence kept at the latest review (lib/missedTripCase/reviewEvidence.ts).
+   * When it holds readings, gtfs_evidence is that copy, not a live read. Null on
+   * an unreviewed case and a review recorded before it; absent before 1.7.70.
+   */
+  review_evidence?: MissedTripReviewEvidence | null;
   /** Whether the case's detector had left Shadow detection on its service date. Absent before 1.6.66. */
   detector_promoted?: boolean;
   /** A Spare case's promised, last-scheduled and actual times. Null on GTFS; absent before 1.6.66. */
   spare_times?: SpareCaseTimes | null;
+}
+
+export interface MissedTripReviewEvidence {
+  /** When the evidence was read, as the review was recorded. */
+  read_at: string;
+  reviewed_by: string;
+  outcome: string;
+  /** Why the review kept no readings: the read failed when it was recorded. */
+  read_failed: string | null;
 }
 
 export interface SpareCaseTimes {
@@ -724,6 +739,13 @@ export interface GtfsCaseEvidence {
     other_cases_ran: number;
     likely_dead_zone: boolean;
   } | null;
+  /**
+   * Avail's next-day OTP Daily at the first stop, in the scheduled start's
+   * local hour (0-23): departures Avail saw and called missed, beside the
+   * trips scheduled to start there. all_left is ADR-0046's Departure observed
+   * at origin. Hour-level, so it can't name the trip. Null when Avail has no row.
+   */
+  avail_otp?: { hour: number; trips_starting: number; departed: number; missed: number; all_left: boolean } | null;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";
