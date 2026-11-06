@@ -396,4 +396,22 @@ describe("missed-trip start evidence", () => {
     expect(none["Block"]).toBeUndefined();
     expect(none["First stop"]).toBeUndefined();
   });
+
+  it("Avail's on-time data that saw every departure that hour reads as good, and says it is hour-level", () => {
+    const f = facts({ ...evidence, avail_otp: { hour: 10, scheduled: 2, departed: 2, missed: 0 } });
+    expect(f["Avail on-time data"].value).toBe("10–11 AM: all 2 scheduled departures from this stop left");
+    expect(f["Avail on-time data"].tone).toBe("good");
+    expect(f["Avail on-time data"].note).toMatch(/hour, not the trip/);
+  });
+
+  it("a departure Avail called missed that hour is a warning with the counts", () => {
+    const f = facts({ ...evidence, avail_otp: { hour: 11, scheduled: 2, departed: 1, missed: 1 } });
+    expect(f["Avail on-time data"].value).toBe("11 AM–12 PM: 1 of 2 scheduled departures from this stop left, 1 missed");
+    expect(f["Avail on-time data"].tone).toBe("warn");
+  });
+
+  it("no Avail row says so, and an older API that sends nothing shows no row", () => {
+    expect(facts({ ...evidence, avail_otp: null })["Avail on-time data"].value).toBe("Nothing recorded for this stop and hour");
+    expect(facts(evidence)["Avail on-time data"]).toBeUndefined();
+  });
 });

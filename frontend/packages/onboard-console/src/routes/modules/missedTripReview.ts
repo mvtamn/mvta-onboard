@@ -507,5 +507,39 @@ export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: strin
     });
   }
 
+  const otp = evidence.avail_otp;
+  if (otp) {
+    const hour = hourRange(otp.hour);
+    facts.push(otp.missed === 0 && otp.departed >= otp.scheduled && otp.scheduled > 0
+      ? {
+        label: "Avail on-time data",
+        value: `${hour}: all ${otp.scheduled} scheduled ${otp.scheduled === 1 ? "departure" : "departures"} from this stop left`,
+        tone: "good",
+        note: "Avail counts the hour, not the trip, so this says every departure that hour left.",
+      }
+      : {
+        label: "Avail on-time data",
+        value: `${hour}: ${otp.departed} of ${otp.scheduled} scheduled departures from this stop left, ${otp.missed} missed`,
+        tone: "warn",
+      });
+  } else if (evidence.avail_otp === null) {
+    facts.push({
+      label: "Avail on-time data",
+      value: "Nothing recorded for this stop and hour",
+      note: "Avail misses departures at some stations, and its data arrives the next day.",
+    });
+  }
+
   return facts;
+}
+
+// "10–11 AM", "11 AM–12 PM": the local hour Avail counted.
+function hourRange(hour: number): string {
+  const label = (h: number) => {
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return { h12, ampm: h % 24 < 12 ? "AM" : "PM" };
+  };
+  const from = label(hour);
+  const to = label(hour + 1);
+  return from.ampm === to.ampm ? `${from.h12}–${to.h12} ${to.ampm}` : `${from.h12} ${from.ampm}–${to.h12} ${to.ampm}`;
 }

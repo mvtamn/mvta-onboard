@@ -14,8 +14,8 @@ import { readDeadZoneBar, readFirstStopRecords } from "./deadZone";
 //   The block and stop records count what they say: the block's trips that
 //   day, and every silent no-show at the stop, whatever its date.
 //
-// Tables are built by hand to the columns the read uses (migrations 011, 027,
-// 094/095). See subscriberResend.db.contract.test.ts on why the contract job
+// Tables are built by hand to the columns the read uses (migrations 011, 020,
+// 027, 094/095). See subscriberResend.db.contract.test.ts on why the contract job
 // runs one file at a time.
 const connectionString = process.env.DECISION_MATRIX_TEST_SQL_CONNECTION_STRING;
 
@@ -24,6 +24,7 @@ IF OBJECT_ID('dbo.MonitoredMissedTrips','U') IS NOT NULL DROP TABLE dbo.Monitore
 IF OBJECT_ID('dbo.TripStartLog','U') IS NOT NULL DROP TABLE dbo.TripStartLog;
 IF OBJECT_ID('dbo.GtfsTripOperationalEvidence','U') IS NOT NULL DROP TABLE dbo.GtfsTripOperationalEvidence;
 IF OBJECT_ID('dbo.AppSettings','U') IS NOT NULL DROP TABLE dbo.AppSettings;
+IF OBJECT_ID('dbo.OtpDailyRouteStopHour','U') IS NOT NULL DROP TABLE dbo.OtpDailyRouteStopHour;
 `;
 
 const CREATE = `
@@ -34,7 +35,7 @@ CREATE TABLE dbo.MonitoredMissedTrips (
   CONSTRAINT PK_MonitoredMissedTrips PRIMARY KEY (trip_id, service_date)
 );
 CREATE TABLE dbo.TripStartLog (
-  service_date CHAR(8) NOT NULL, trip_id NVARCHAR(100) NOT NULL, block_id NVARCHAR(100) NULL,
+  service_date CHAR(8) NOT NULL, trip_id NVARCHAR(100) NOT NULL, route_id NVARCHAR(50) NULL, block_id NVARCHAR(100) NULL,
   origin_stop_id NVARCHAR(100) NULL, origin_stop_name NVARCHAR(200) NULL,
   scheduled_start_at DATETIME2 NOT NULL, actual_start_at DATETIME2 NULL, actual_start_source NVARCHAR(20) NULL,
   predicted_start_at DATETIME2 NULL, actuals_updated_at DATETIME2 NULL,
@@ -64,6 +65,7 @@ interface Seed {
   underway?: Date | null;
   isCase?: boolean;
   quality?: string;
+  route?: string | null;
 }
 
 async function seed(pool: sql.ConnectionPool, s: Seed): Promise<void> {
@@ -75,10 +77,11 @@ async function seed(pool: sql.ConnectionPool, s: Seed): Promise<void> {
     .input("source", sql.NVarChar(20), s.source ?? null).input("predicted", sql.DateTime2, s.predicted ?? null)
     .input("recorded", sql.DateTime2, s.recorded ?? null)
     .input("reported", sql.DateTime2, s.reported ?? null).input("underway", sql.DateTime2, s.underway ?? null)
-    .input("quality", sql.NVarChar(30), s.quality ?? "experimental");
+    .input("quality", sql.NVarChar(30), s.quality ?? "experimental")
+    .input("route", sql.NVarChar(50), s.route ?? null);
   await req.query(`
-    INSERT dbo.TripStartLog (service_date, trip_id, block_id, origin_stop_id, origin_stop_name, scheduled_start_at, actual_start_at, actual_start_source, predicted_start_at, actuals_updated_at)
-    VALUES (@day, @trip, @block, @stop, CASE WHEN @stop IS NULL THEN NULL ELSE N'Savage Park & Ride' END, @scheduled, @actual, @source, @predicted, @recorded);
+    INSERT dbo.TripStartLog (service_date, trip_id, route_id, block_id, origin_stop_id, origin_stop_name, scheduled_start_at, actual_start_at, actual_start_source, predicted_start_at, actuals_updated_at)
+    VALUES (@day, @trip, @route, @block, @stop, CASE WHEN @stop IS NULL THEN NULL ELSE N'Savage Park & Ride' END, @scheduled, @actual, @source, @predicted, @recorded);
     IF @reported IS NOT NULL OR @underway IS NOT NULL
       INSERT dbo.GtfsTripOperationalEvidence (trip_id, service_date, vehicle_id, first_vehicle_position_at, first_underway_at)
       VALUES (@trip, @day, N'4265', @reported, @underway);
@@ -171,6 +174,8 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       // left out); DEPARTED, UNDERWAY, EARLIER1 and EARLIER2 ran. Leaving
       // DEPARTED out: 8 others, 3 of them ran.
       assert.deepEqual(e.origin_stop, { stop_id: "S1", name: "Savage Park & Ride", other_cases: 8, other_cases_ran: 3, likely_dead_zone: false });
+      // No OtpDailyRouteStopHour table yet: no Avail evidence, and no error.
+      assert.equal(e.avail_otp, null);
     });
 
     await t.test("a retired case is judged against the stop's whole record, not one short of it", async () => {
@@ -200,6 +205,35 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
       assert.equal(evidence.get("RETIRED|20260909")?.origin_stop?.likely_dead_zone, false);
       await pool.request().query("UPDATE dbo.AppSettings SET setting_value = N'40' WHERE module = N'missed_trip' AND setting_key = N'dead_zone_ran_percent'");
       assert.equal((await readDeadZoneBar(pool)).ran_percent, 80, "a value outside the declared range is not trusted");
+    });
+
+    await t.test("Avail OTP Daily is read at the first stop, in the local hour and calendar day Avail filed it", async () => {
+      // 15:20Z on 16 Oct is 10:20 CDT. 05:30Z on 17 Oct is 00:30 CDT on the
+      // 17th, still service day 20261016: Avail files it on the 17th, hour 0.
+      await seed(pool, { trip: "OTP_MORNING", route: "475", stop: "51990", scheduled: at("15:20:00") });
+      await seed(pool, { trip: "OTP_AFTER_MIDNIGHT", route: "475", stop: "51990", scheduled: at("05:30:00", "2026-10-17") });
+      await seed(pool, { trip: "OTP_BLIND", route: "475", stop: "40000", scheduled: at("15:20:00") });
+      await pool.request().batch(`
+        CREATE TABLE dbo.OtpDailyRouteStopHour (
+          calendar_date CHAR(8) NOT NULL, hour_of_day TINYINT NOT NULL, route_id INT NOT NULL, stop_id INT NOT NULL,
+          missed INT NULL, actual_departures INT NULL, total INT NULL);
+        INSERT dbo.OtpDailyRouteStopHour VALUES
+          ('20261016', 10, 475, 51990, 0, 2, 2),
+          ('20261016', 11, 475, 51990, 1, 0, 1),
+          ('20261016', 10, 444, 51990, 1, 0, 1),
+          ('20261017', 0, 475, 51990, 1, 0, 1);`);
+      const evidence = await readCaseEvidence(pool, [
+        { trip_id: "OTP_MORNING", service_date: DAY, scheduled_departure_at: at("15:20:00"), grace_deadline_at: at("15:50:00") },
+        { trip_id: "OTP_AFTER_MIDNIGHT", service_date: DAY, scheduled_departure_at: at("05:30:00", "2026-10-17"), grace_deadline_at: at("06:00:00", "2026-10-17") },
+        { trip_id: "OTP_BLIND", service_date: DAY, scheduled_departure_at: at("15:20:00"), grace_deadline_at: at("15:50:00") },
+        { trip_id: "DEPARTED", service_date: DAY, scheduled_departure_at: scheduled, grace_deadline_at: at("23:00:00") },
+      ]);
+      // Its own route, stop and hour only: not route 444's row, not the 11:00 row.
+      assert.deepEqual(evidence.get(`OTP_MORNING|${DAY}`)?.avail_otp, { hour: 10, scheduled: 2, departed: 2, missed: 0 });
+      assert.deepEqual(evidence.get(`OTP_AFTER_MIDNIGHT|${DAY}`)?.avail_otp, { hour: 0, scheduled: 1, departed: 0, missed: 1 });
+      // A stop Avail files nothing for, and a stop id that isn't a number.
+      assert.equal(evidence.get(`OTP_BLIND|${DAY}`)?.avail_otp, null);
+      assert.equal(evidence.get(`DEPARTED|${DAY}`)?.avail_otp, null);
     });
 
     await t.test("a case the Dispatch Log never logged comes back with nothing to say", async () => {

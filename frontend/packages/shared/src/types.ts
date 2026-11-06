@@ -724,6 +724,12 @@ export interface GtfsCaseEvidence {
     other_cases_ran: number;
     likely_dead_zone: boolean;
   } | null;
+  /**
+   * Avail's next-day OTP Daily at the first stop, in the scheduled start's
+   * local hour (0-23): departures Avail expected, saw, and called missed.
+   * Hour-level, so it can't name the trip. Null when Avail has no row.
+   */
+  avail_otp?: { hour: number; scheduled: number; departed: number; missed: number } | null;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";

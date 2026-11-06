@@ -16,6 +16,15 @@
 //   origin stop   how the other silent no-shows at this trip's first stop
 //                 turned out; most of them having run marks a likely GPS
 //                 dead zone
+//   avail otp     what Avail's next-day OTP Daily feed counted at the first
+//                 stop in the trip's local hour: departures it expected,
+//                 saw, and called missed. Avail's own three numbers are
+//                 compared with each other, never with the GTFS schedule, so
+//                 a stop that other patterns pass through cannot inflate it.
+//                 It is hour-level, so it says "every departure that hour
+//                 left", not "this trip left" - evidence for the reviewer,
+//                 never a closure (docs/research/avail-vs-gtfs-rt-missed-trip-
+//                 detection-2026-11-04.md, option 1).
 //
 // Dead zones are read from OnBoard's own history rather than kept as a list:
 // a list needs someone to keep it, and Avail's own stop names ("BVille Ctr")
@@ -50,6 +59,11 @@ export interface CaseEvidenceRow {
   origin_cases_ran: number | null;
   /** Whether this case is itself one of origin_cases. */
   counted_in_origin: boolean;
+  /** OTP Daily at the first stop in the scheduled start's local hour; null when Avail has no row. */
+  otp_hour: number | null;
+  otp_scheduled: number | null;
+  otp_departed: number | null;
+  otp_missed: number | null;
 }
 
 /** What the console shows. Times are ISO strings. */
@@ -68,6 +82,8 @@ export interface GtfsCaseEvidence {
     other_cases_ran: number;
     likely_dead_zone: boolean;
   } | null;
+  /** Avail OTP Daily at the first stop, in the scheduled start's local hour (0-23). */
+  avail_otp: { hour: number; scheduled: number; departed: number; missed: number } | null;
 }
 
 function iso(value: Date | null): string | null {
@@ -107,6 +123,9 @@ export function caseEvidence(r: CaseEvidenceRow, bar: DeadZoneBar = DEFAULT_DEAD
     // CONTEXT.md's Block, the number a dispatcher knows.
     block: r.block_id ? { block_id: workbookBlock(r.block_id) ?? r.block_id, trips: r.block_trips ?? 0, trips_reported: r.block_trips_reported ?? 0 } : null,
     origin_stop: originStop,
+    avail_otp: r.otp_hour !== null && r.otp_scheduled !== null
+      ? { hour: r.otp_hour, scheduled: r.otp_scheduled, departed: r.otp_departed ?? 0, missed: r.otp_missed ?? 0 }
+      : null,
   };
 }
 
@@ -117,10 +136,27 @@ export async function readCaseEvidence(
 ): Promise<Map<string, GtfsCaseEvidence>> {
   const byKey = new Map<string, GtfsCaseEvidence>();
   if (cases.length === 0) return byKey;
-  const ready = await pool.request().query<{ ok: number }>(`
+  const ready = await pool.request().query<{ ok: number; otp: number }>(`
     SELECT CASE WHEN OBJECT_ID('dbo.TripStartLog', 'U') IS NOT NULL
-                 AND OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NOT NULL THEN 1 ELSE 0 END AS ok`);
+                 AND OBJECT_ID('dbo.GtfsTripOperationalEvidence', 'U') IS NOT NULL THEN 1 ELSE 0 END AS ok,
+           CASE WHEN OBJECT_ID('dbo.OtpDailyRouteStopHour', 'U') IS NOT NULL THEN 1 ELSE 0 END AS otp`);
   if (ready.recordset[0]?.ok !== 1) return byKey;
+  // Avail keys its rows by local calendar date and hour, so a trip after
+  // midnight is looked up on the next calendar day, as Avail filed it.
+  const otpApply = ready.recordset[0]?.otp === 1
+    ? `OUTER APPLY (
+        SELECT DATEPART(HOUR, l.local_at) AS otp_hour, SUM(o.total) AS otp_scheduled,
+               SUM(o.actual_departures) AS otp_departed, SUM(o.missed) AS otp_missed
+        FROM (SELECT CAST(i.scheduled_departure_at AS DATETIMEOFFSET) AT TIME ZONE 'Central Standard Time' AS local_at) l
+        JOIN OtpDailyRouteStopHour o
+          ON o.calendar_date = CONVERT(CHAR(8), l.local_at, 112)
+         AND o.hour_of_day = DATEPART(HOUR, l.local_at)
+         AND o.route_id = TRY_CAST(i.origin_route_id AS INT)
+         AND o.stop_id = TRY_CAST(i.origin_stop_id AS INT)
+        GROUP BY DATEPART(HOUR, l.local_at)
+      ) otp`
+    : `OUTER APPLY (SELECT CAST(NULL AS INT) AS otp_hour, CAST(NULL AS INT) AS otp_scheduled,
+                           CAST(NULL AS INT) AS otp_departed, CAST(NULL AS INT) AS otp_missed) otp`;
 
   const keys = cases.map((c) => ({ t: c.trip_id, d: c.service_date, s: c.scheduled_departure_at.toISOString(), g: c.grace_deadline_at.toISOString() }));
   // TripStartLog, not GtfsScheduledTrips, for the block and the first stop:
@@ -139,7 +175,7 @@ export async function readCaseEvidence(
                dl.actual_start_at AS dispatch_start_at, dl.actual_start_source AS dispatch_start_source,
                dl.predicted_start_at AS dispatch_predicted_at, dl.scheduled_start_at AS dispatch_scheduled_at,
                dl.actuals_updated_at AS dispatch_recorded_at,
-               dl.block_id, dl.origin_stop_id, dl.origin_stop_name,
+               dl.block_id, dl.origin_stop_id, dl.origin_stop_name, dl.route_id AS origin_route_id,
                e.first_vehicle_position_at, e.first_underway_at, e.vehicle_id,
                CAST(CASE WHEN self.detection_type = N'silent_no_show'
                           AND self.data_quality_status NOT IN (${UNJUDGEABLE_QUALITY}) THEN 1 ELSE 0 END AS BIT) AS counted_in_origin
@@ -150,7 +186,8 @@ export async function readCaseEvidence(
       ),
       stops AS (${stopRecordsSql("hl.origin_stop_id IN (SELECT origin_stop_id FROM info WHERE origin_stop_id IS NOT NULL)")}
       )
-      SELECT i.*, blk.block_trips, blk.block_trips_reported, s.origin_cases, s.origin_cases_ran
+      SELECT i.*, blk.block_trips, blk.block_trips_reported, s.origin_cases, s.origin_cases_ran,
+             otp.otp_hour, otp.otp_scheduled, otp.otp_departed, otp.otp_missed
       FROM info i
       LEFT JOIN stops s ON s.origin_stop_id = i.origin_stop_id
       OUTER APPLY (
@@ -161,7 +198,8 @@ export async function readCaseEvidence(
           ON be.trip_id = b.trip_id AND be.service_date = CAST(b.service_date AS NVARCHAR(20))
         WHERE i.block_id IS NOT NULL AND b.block_id = i.block_id
           AND CAST(b.service_date AS NVARCHAR(20)) = i.service_date
-      ) blk`);
+      ) blk
+      ${otpApply}`);
   const bar = await readDeadZoneBar(pool);
   for (const row of result.recordset) byKey.set(`${row.trip_id}|${row.service_date}`, caseEvidence(row, bar));
   return byKey;
