@@ -78,6 +78,11 @@ export const SCHEMA_REQUIREMENTS: readonly SchemaRequirement[] = [
     breaks: "The static sync cannot keep the schedule's prediction-risk review",
   },
   {
+    migration: "144",
+    table: "TeamsDeliveryLog",
+    breaks: "Announcement posts to Teams go unrecorded, and a redelivered announcement can post twice",
+  },
+  {
     migration: "145",
     table: "GtfsScheduleReviewRoutes",
     breaks: "The schedule review keeps no evidence per route, so a route's detail cannot be opened",

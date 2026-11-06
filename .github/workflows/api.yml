@@ -9,9 +9,6 @@ on:
       - ".github/workflows/api.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "functions-restapi/**"
-      - "functions-dispatch/**"
   # A push to main deploys dev. Any other environment deploys only from here,
   # and its GitHub environment's protection rules decide who may approve it.
   workflow_dispatch:
@@ -27,7 +24,35 @@ permissions:
   contents: read
 
 jobs:
+  # Every pull request runs this workflow, so the required "api-ci" check
+  # always reports - a path-filtered trigger never starts on a PR that does
+  # not touch these paths, and a required check that never starts strands the
+  # PR (auto-merge waits on it forever). This job decides whether the real
+  # jobs have anything to check; skipped jobs count as passing.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.diff.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          # The PR's merge commit and its first parent (the base tip).
+          fetch-depth: 2
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^1 HEAD | grep -qE '^(functions-restapi|functions-dispatch)/|^\.github/workflows/api\.yml$'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No files this workflow checks changed; its jobs are skipped."
+          fi
+
   migration-numbers:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -41,6 +66,8 @@ jobs:
         run: functions-restapi/scripts/check-migration-numbers.sh origin/main
 
   test:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -65,6 +92,8 @@ jobs:
         run: npm test
 
   decision-matrix-contract:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     services:
       sql:
@@ -191,3 +220,19 @@ jobs:
         with:
           app-name: ${{ matrix.function_app }}-${{ inputs.environment || 'dev' }}
           package: ${{ matrix.app }}
+
+  # The one check main's ruleset requires from this workflow. It passes when
+  # every job it waits on passed or was skipped, and fails on any failure or
+  # cancellation - so adding a job here is how a new check becomes required.
+  api-ci:
+    name: api-ci
+    needs: [changes, migration-numbers, test, decision-matrix-contract]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every check passed or was skipped
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "::error::A required job failed or was cancelled."
+            exit 1
+          fi

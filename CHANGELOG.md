@@ -5,7 +5,7 @@ All notable changes to MVTA OnBoard are documented here. Format follows
 `frontend/packages/onboard-console/package.json` (the staff console's `v`
 badge and footer read this version at build time - see `vite.config.ts`).
 
-## [1.7.51] - 2026-11-05
+## [1.7.57] - 2026-11-06
 
 Count Sheet scan capture, increment S1 of `plans/count-sheet-scan-upload.md` (PR #488): the Burnsville capture pilot. Capture only: nothing handwritten is read and no count is written from a scan; `entered_at` stays the time a person saves the sheet (decision 4).
 
@@ -20,6 +20,22 @@ Count Sheet scan capture, increment S1 of `plans/count-sheet-scan-upload.md` (PR
 - Tests: `scan/pipeline.test.ts` on synthetic sheets from `countSheetPdf.ts` turned into image-only MFP-style PDFs (tilted 2.3° and −1.5°, noisy, 150 dpi), a defaced QR code, a cut-off corner; `scan/identify.test.ts`; `scan/scan.db.contract.test.ts` runs the worker against real SQL with printed runs from `printCountSheets`.
 
 **Restarts the REST app on merge**, and the infra workflow creates a new storage account and queue.
+
+## [1.7.53] - 2026-11-05
+
+- **The Detour Register's CSV could carry a live formula.** `lib/detourSearch.ts`'s `csvCell` quoted every field but did nothing about a leading `=`, `+`, `-` or `@`, so a closure, note or location typed as `=HYPERLINK(...)` ran as a formula in the Excel workbook the export is pasted into. The Access inventory export already guarded against this with `spreadsheetSafeText`; the detour export did not.
+- **One rule for both.** `spreadsheetSafeText` moves from `routes/access/accessData.tsx` to `lib/spreadsheetSafeText.ts` (accessData re-exports it, so its callers are unchanged), and the detour `csvCell` runs every cell through it. Only the file is guarded: the export preview table shows the text as typed.
+- **Trade-off, same as the Access export:** a cell that legitimately starts with `-` (a location like "-3rd St") gets a leading apostrophe in the file. Excel hides the apostrophe in the cell.
+- Found by the reporting module review (`plans/reporting-module-review.md` §3.4).
+
+## [1.7.50] - 2026-11-05
+
+- **"Notify Teams" on a new announcement never sent anything.** The compose form has offered Operations and Customer Service as Teams audiences, and saved the choice in `Messages.channels` as `Teams: <audience>` - but the dispatch app only logged "No Teams connector is configured yet". The form said as much in small print.
+- **The dispatch app now posts one Adaptive Card per audience** (`lib/teamsAnnouncements.ts`): summary, category, severity, routes, zones and the expiry on Central time. Each audience has its own Teams Workflows webhook, `TEAMS_OPERATIONS_WEBHOOK_URL` and `TEAMS_CUSTOMER_SERVICE_WEBHOOK_URL`, declared in `functionapp.bicep` as Key Vault references. The Office 365 Incoming Webhook connector was retired by Microsoft in May 2026; the Workflows template takes the same card body, so the event and detour paths need no code change either - only Workflows URLs in their secrets.
+- **Teams goes first and never throws.** A throw would redeliver the Service Bus message and resend every rider's SMS and email to retry one channel post, so a failed post is recorded as failed and left. An audience with no secret yet is recorded as skipped, and the announcement still reaches riders.
+- **Migration 144** adds `TeamsDeliveryLog`, one row per message and audience. It is also the guard against a double post: the subscriber fan-out can throw after Teams has gone out, and the redelivery skips any audience already logged as sent. Without the migration posts still go out, unrecorded and unguarded, and Integrations & Data Health names migration 144 as missing.
+- **Not done here.** No Workflows webhook exists yet for either audience - see HANDOFF.md for the five steps. A `sent` row means Teams accepted the request (202), not that the card appeared; Workflows reports nothing further back.
+- **Verified.** 6 new dispatch checks: per-audience lookup, an unresolved Key Vault reference read as not configured, the card's content, a post reaching the right webhook, skipped without a request, and rejected or unreachable read as failed. Not yet tried against a real Teams channel.
 
 ## [1.7.49] - 2026-11-05
 
