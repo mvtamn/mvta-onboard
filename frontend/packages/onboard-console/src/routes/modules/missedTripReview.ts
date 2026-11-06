@@ -510,17 +510,20 @@ export function startEvidenceFacts(evidence: GtfsCaseEvidence, time: (iso: strin
   const otp = evidence.avail_otp;
   if (otp) {
     const hour = hourRange(otp.hour);
-    facts.push(otp.missed === 0 && otp.departed >= otp.scheduled && otp.scheduled > 0
+    const trips = `${otp.trips_starting} ${otp.trips_starting === 1 ? "trip" : "trips"} scheduled to start here`;
+    const departures = `${otp.departed} ${otp.departed === 1 ? "departure" : "departures"}`;
+    facts.push(otp.all_left
       ? {
         label: "Avail on-time data",
-        value: `${hour}: all ${otp.scheduled} scheduled ${otp.scheduled === 1 ? "departure" : "departures"} from this stop left`,
+        value: otp.trips_starting === 1 ? `${hour}: the 1 trip scheduled to start here left` : `${hour}: all ${trips} left`,
         tone: "good",
-        note: "Avail counts the hour, not the trip, so this says every departure that hour left.",
+        note: `Avail saw ${departures} and called none missed. It counts the hour, not the trip.`,
       }
       : {
         label: "Avail on-time data",
-        value: `${hour}: ${otp.departed} of ${otp.scheduled} scheduled departures from this stop left, ${otp.missed} missed`,
+        value: `${hour}: Avail saw ${departures} for ${trips}${otp.missed > 0 ? `, and called ${otp.missed} missed` : ""}`,
         tone: "warn",
+        note: "An hour-level count can't say which trip didn't leave.",
       });
   } else if (evidence.avail_otp === null) {
     facts.push({

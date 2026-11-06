@@ -17,14 +17,13 @@
 //                 turned out; most of them having run marks a likely GPS
 //                 dead zone
 //   avail otp     what Avail's next-day OTP Daily feed counted at the first
-//                 stop in the trip's local hour: departures it expected,
-//                 saw, and called missed. Avail's own three numbers are
-//                 compared with each other, never with the GTFS schedule, so
-//                 a stop that other patterns pass through cannot inflate it.
-//                 It is hour-level, so it says "every departure that hour
-//                 left", not "this trip left" - evidence for the reviewer,
-//                 never a closure (docs/research/avail-vs-gtfs-rt-missed-trip-
-//                 detection-2026-11-04.md, option 1).
+//                 stop in the trip's local hour - departures seen and called
+//                 missed - beside the trips the Dispatch Log scheduled to
+//                 start there. The same counts and the same rule as the
+//                 nightly Departure observed at origin (ADR-0046,
+//                 adapters/availOriginDepartures.ts), so the row and the
+//                 case's Evidence conflict never disagree. Hour-level: it
+//                 says every trip starting there that hour left, not which.
 //
 // Dead zones are read from OnBoard's own history rather than kept as a list:
 // a list needs someone to keep it, and Avail's own stop names ("BVille Ctr")
@@ -61,7 +60,8 @@ export interface CaseEvidenceRow {
   counted_in_origin: boolean;
   /** OTP Daily at the first stop in the scheduled start's local hour; null when Avail has no row. */
   otp_hour: number | null;
-  otp_scheduled: number | null;
+  /** Dispatch Log trips on the route scheduled to start at the stop in that local hour. */
+  otp_trips_starting: number | null;
   otp_departed: number | null;
   otp_missed: number | null;
 }
@@ -83,7 +83,7 @@ export interface GtfsCaseEvidence {
     likely_dead_zone: boolean;
   } | null;
   /** Avail OTP Daily at the first stop, in the scheduled start's local hour (0-23). */
-  avail_otp: { hour: number; scheduled: number; departed: number; missed: number } | null;
+  avail_otp: { hour: number; trips_starting: number; departed: number; missed: number; all_left: boolean } | null;
 }
 
 function iso(value: Date | null): string | null {
@@ -123,10 +123,18 @@ export function caseEvidence(r: CaseEvidenceRow, bar: DeadZoneBar = DEFAULT_DEAD
     // CONTEXT.md's Block, the number a dispatcher knows.
     block: r.block_id ? { block_id: workbookBlock(r.block_id) ?? r.block_id, trips: r.block_trips ?? 0, trips_reported: r.block_trips_reported ?? 0 } : null,
     origin_stop: originStop,
-    avail_otp: r.otp_hour !== null && r.otp_scheduled !== null
-      ? { hour: r.otp_hour, scheduled: r.otp_scheduled, departed: r.otp_departed ?? 0, missed: r.otp_missed ?? 0 }
-      : null,
+    avail_otp: r.otp_hour !== null && r.otp_departed !== null ? availOtp(r.otp_hour, r.otp_trips_starting ?? 0, r.otp_departed, r.otp_missed ?? 0) : null,
   };
+}
+
+/**
+ * Every trip scheduled to start at the stop that hour left: Avail called none
+ * missed, and saw at least as many departures as trips start there. The rule
+ * of originDepartureObservation (ADR-0046); both halves are needed, because
+ * OTP Daily also counts trips that only pass through the stop.
+ */
+function availOtp(hour: number, tripsStarting: number, departed: number, missed: number): NonNullable<GtfsCaseEvidence["avail_otp"]> {
+  return { hour, trips_starting: tripsStarting, departed, missed, all_left: tripsStarting > 0 && missed === 0 && departed >= tripsStarting };
 }
 
 /** The evidence for these GTFS cases, by "trip_id|service_date". Empty without the tables it reads. */
@@ -145,17 +153,23 @@ export async function readCaseEvidence(
   // midnight is looked up on the next calendar day, as Avail filed it.
   const otpApply = ready.recordset[0]?.otp === 1
     ? `OUTER APPLY (
-        SELECT DATEPART(HOUR, l.local_at) AS otp_hour, SUM(o.total) AS otp_scheduled,
-               SUM(o.actual_departures) AS otp_departed, SUM(o.missed) AS otp_missed
+        SELECT DATEPART(HOUR, l.local_at) AS otp_hour,
+               SUM(ISNULL(o.actual_departures, 0)) AS otp_departed, SUM(ISNULL(o.missed, 0)) AS otp_missed,
+               (SELECT COUNT(*) FROM TripStartLog x
+                WHERE CAST(x.service_date AS NVARCHAR(20)) = i.service_date AND x.route_id = i.origin_route_id
+                  AND x.origin_stop_id = i.origin_stop_id
+                  AND CONVERT(CHAR(8), CAST(x.scheduled_start_at AS DATETIMEOFFSET) AT TIME ZONE 'Central Standard Time', 112) = CONVERT(CHAR(8), l.local_at, 112)
+                  AND DATEPART(HOUR, CAST(x.scheduled_start_at AS DATETIMEOFFSET) AT TIME ZONE 'Central Standard Time') = DATEPART(HOUR, l.local_at)
+               ) AS otp_trips_starting
         FROM (SELECT CAST(i.scheduled_departure_at AS DATETIMEOFFSET) AT TIME ZONE 'Central Standard Time' AS local_at) l
         JOIN OtpDailyRouteStopHour o
           ON o.calendar_date = CONVERT(CHAR(8), l.local_at, 112)
          AND o.hour_of_day = DATEPART(HOUR, l.local_at)
          AND o.route_id = TRY_CAST(i.origin_route_id AS INT)
          AND o.stop_id = TRY_CAST(i.origin_stop_id AS INT)
-        GROUP BY DATEPART(HOUR, l.local_at)
+        GROUP BY l.local_at
       ) otp`
-    : `OUTER APPLY (SELECT CAST(NULL AS INT) AS otp_hour, CAST(NULL AS INT) AS otp_scheduled,
+    : `OUTER APPLY (SELECT CAST(NULL AS INT) AS otp_hour, CAST(NULL AS INT) AS otp_trips_starting,
                            CAST(NULL AS INT) AS otp_departed, CAST(NULL AS INT) AS otp_missed) otp`;
 
   const keys = cases.map((c) => ({ t: c.trip_id, d: c.service_date, s: c.scheduled_departure_at.toISOString(), g: c.grace_deadline_at.toISOString() }));
@@ -187,7 +201,7 @@ export async function readCaseEvidence(
       stops AS (${stopRecordsSql("hl.origin_stop_id IN (SELECT origin_stop_id FROM info WHERE origin_stop_id IS NOT NULL)")}
       )
       SELECT i.*, blk.block_trips, blk.block_trips_reported, s.origin_cases, s.origin_cases_ran,
-             otp.otp_hour, otp.otp_scheduled, otp.otp_departed, otp.otp_missed
+             otp.otp_hour, otp.otp_trips_starting, otp.otp_departed, otp.otp_missed
       FROM info i
       LEFT JOIN stops s ON s.origin_stop_id = i.origin_stop_id
       OUTER APPLY (

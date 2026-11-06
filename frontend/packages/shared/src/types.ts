@@ -726,10 +726,11 @@ export interface GtfsCaseEvidence {
   } | null;
   /**
    * Avail's next-day OTP Daily at the first stop, in the scheduled start's
-   * local hour (0-23): departures Avail expected, saw, and called missed.
-   * Hour-level, so it can't name the trip. Null when Avail has no row.
+   * local hour (0-23): departures Avail saw and called missed, beside the
+   * trips scheduled to start there. all_left is ADR-0046's Departure observed
+   * at origin. Hour-level, so it can't name the trip. Null when Avail has no row.
    */
-  avail_otp?: { hour: number; scheduled: number; departed: number; missed: number } | null;
+  avail_otp?: { hour: number; trips_starting: number; departed: number; missed: number; all_left: boolean } | null;
 }
 
 export type OccurrenceReviewStatus = "candidate" | "confirmed" | "dismissed";

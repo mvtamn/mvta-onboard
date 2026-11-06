@@ -397,16 +397,18 @@ describe("missed-trip start evidence", () => {
     expect(none["First stop"]).toBeUndefined();
   });
 
-  it("Avail's on-time data that saw every departure that hour reads as good, and says it is hour-level", () => {
-    const f = facts({ ...evidence, avail_otp: { hour: 10, scheduled: 2, departed: 2, missed: 0 } });
-    expect(f["Avail on-time data"].value).toBe("10–11 AM: all 2 scheduled departures from this stop left");
+  it("every trip starting here that hour left reads as good, and says it is hour-level", () => {
+    const f = facts({ ...evidence, avail_otp: { hour: 10, trips_starting: 2, departed: 2, missed: 0, all_left: true } });
+    expect(f["Avail on-time data"].value).toBe("10–11 AM: all 2 trips scheduled to start here left");
     expect(f["Avail on-time data"].tone).toBe("good");
-    expect(f["Avail on-time data"].note).toMatch(/hour, not the trip/);
+    expect(f["Avail on-time data"].note).toBe("Avail saw 2 departures and called none missed. It counts the hour, not the trip.");
+    expect(facts({ ...evidence, avail_otp: { hour: 10, trips_starting: 1, departed: 2, missed: 0, all_left: true } })["Avail on-time data"].value)
+      .toBe("10–11 AM: the 1 trip scheduled to start here left");
   });
 
-  it("a departure Avail called missed that hour is a warning with the counts", () => {
-    const f = facts({ ...evidence, avail_otp: { hour: 11, scheduled: 2, departed: 1, missed: 1 } });
-    expect(f["Avail on-time data"].value).toBe("11 AM–12 PM: 1 of 2 scheduled departures from this stop left, 1 missed");
+  it("a departure Avail called missed is a warning with the counts, whatever the departures", () => {
+    const f = facts({ ...evidence, avail_otp: { hour: 11, trips_starting: 1, departed: 3, missed: 1, all_left: false } });
+    expect(f["Avail on-time data"].value).toBe("11 AM–12 PM: Avail saw 3 departures for 1 trip scheduled to start here, and called 1 missed");
     expect(f["Avail on-time data"].tone).toBe("warn");
   });
 

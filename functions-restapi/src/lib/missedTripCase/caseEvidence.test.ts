@@ -35,7 +35,7 @@ function row(overrides: Partial<CaseEvidenceRow> = {}): CaseEvidenceRow {
     origin_cases_ran: 27,
     counted_in_origin: true,
     otp_hour: null,
-    otp_scheduled: null,
+    otp_trips_starting: null,
     otp_departed: null,
     otp_missed: null,
     ...overrides,
@@ -143,16 +143,26 @@ test("the stop is judged against the bar it is given", () => {
 // Shapes from dev on 2026-11-06: route 475 at Apple Valley Transit Station NB,
 // 10:00 hour, where Avail counted 2 of 2 departures; and Burnsville Center,
 // where Avail files no OTP Daily row at all.
-test("Avail OTP Daily at the first stop is carried as Avail counted it", () => {
-  const evidence = caseEvidence(row({ otp_hour: 10, otp_scheduled: 2, otp_departed: 2, otp_missed: 0 }));
-  assert.deepEqual(evidence.avail_otp, { hour: 10, scheduled: 2, departed: 2, missed: 0 });
+test("every trip starting at the stop that hour left: none missed, and departures cover them", () => {
+  const evidence = caseEvidence(row({ otp_hour: 10, otp_trips_starting: 2, otp_departed: 2, otp_missed: 0 }));
+  assert.deepEqual(evidence.avail_otp, { hour: 10, trips_starting: 2, departed: 2, missed: 0, all_left: true });
+});
+
+// ADR-0046's two halves: OTP Daily also counts trips that only pass through the
+// stop, so a surplus of departures alongside a miss says nothing.
+test("a departure Avail called missed is not all left, however many departures it saw", () => {
+  assert.equal(caseEvidence(row({ otp_hour: 10, otp_trips_starting: 1, otp_departed: 3, otp_missed: 1 })).avail_otp?.all_left, false);
+});
+
+test("fewer departures than trips starting there is not all left", () => {
+  assert.equal(caseEvidence(row({ otp_hour: 10, otp_trips_starting: 2, otp_departed: 1, otp_missed: 0 })).avail_otp?.all_left, false);
 });
 
 test("no OTP Daily row is no Avail evidence, not zero departures", () => {
   assert.equal(caseEvidence(row()).avail_otp, null);
 });
 
-test("a null departure or missed count from Avail reads as zero", () => {
-  const evidence = caseEvidence(row({ otp_hour: 7, otp_scheduled: 1, otp_departed: null, otp_missed: null }));
-  assert.deepEqual(evidence.avail_otp, { hour: 7, scheduled: 1, departed: 0, missed: 0 });
+test("a null missed count or trip count from the read reads as zero", () => {
+  const evidence = caseEvidence(row({ otp_hour: 7, otp_trips_starting: null, otp_departed: 0, otp_missed: null }));
+  assert.deepEqual(evidence.avail_otp, { hour: 7, trips_starting: 0, departed: 0, missed: 0, all_left: false });
 });

@@ -228,9 +228,13 @@ test("Missed-trip case evidence against SQL Server", skip, async (t) => {
         { trip_id: "OTP_BLIND", service_date: DAY, scheduled_departure_at: at("15:20:00"), grace_deadline_at: at("15:50:00") },
         { trip_id: "DEPARTED", service_date: DAY, scheduled_departure_at: scheduled, grace_deadline_at: at("23:00:00") },
       ]);
-      // Its own route, stop and hour only: not route 444's row, not the 11:00 row.
-      assert.deepEqual(evidence.get(`OTP_MORNING|${DAY}`)?.avail_otp, { hour: 10, scheduled: 2, departed: 2, missed: 0 });
-      assert.deepEqual(evidence.get(`OTP_AFTER_MIDNIGHT|${DAY}`)?.avail_otp, { hour: 0, scheduled: 1, departed: 0, missed: 1 });
+      // Its own route, stop and hour only: not route 444's row, not the 11:00
+      // row. OTP_MORNING is the one trip scheduled to start there at 10:00,
+      // and Avail saw 2 departures with none missed.
+      assert.deepEqual(evidence.get(`OTP_MORNING|${DAY}`)?.avail_otp, { hour: 10, trips_starting: 1, departed: 2, missed: 0, all_left: true });
+      // Counted on the 17th, hour 0, the calendar day it falls on - though its
+      // service date is the 16th.
+      assert.deepEqual(evidence.get(`OTP_AFTER_MIDNIGHT|${DAY}`)?.avail_otp, { hour: 0, trips_starting: 1, departed: 0, missed: 1, all_left: false });
       // A stop Avail files nothing for, and a stop id that isn't a number.
       assert.equal(evidence.get(`OTP_BLIND|${DAY}`)?.avail_otp, null);
       assert.equal(evidence.get(`DEPARTED|${DAY}`)?.avail_otp, null);
