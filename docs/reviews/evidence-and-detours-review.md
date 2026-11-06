@@ -581,6 +581,16 @@ glossary terms stay the precise ones and the screens use the plain ones. Add
 
 ## 3. Ranked improvements
 
+**Status, 2026-11-06.** Items 1–6 shipped on 2026-11-01: the missed-trip items
+(1, 2, 4, 6) in #472 (1.6.66) and the detour items (3, 5) in #473 (1.6.67).
+Item 4's label rename is migration 156, applied on dev 2026-11-04. Item 13's
+migration 155 has since been applied on dev and prod, so the dead-zone bar can
+be saved; only the panel's wording, window and links are left. Item 7 (the
+Spare lateness baseline) is still open with the Spare data owner. Items 8–19
+are not started. The missed-trip items that bear on making OnBoard the system
+of record (7, 8 and 12) are carried into
+`docs/handoffs/missed-trips-system-of-record-status-2026-11-06.md`.
+
 Ranked by how much each removes a wrong conclusion or a dead end, against its
 size. S is under a day, M is one to three days, and L is larger. "Migration"
 means a SQL schema or data change.
