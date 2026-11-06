@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useInRouterContext } from "react-router-dom";
-import { ApiError, type PredictionRiskCheckDefinition, type ReviewFlagChange, type ReviewHistoryResponse } from "@mvta/shared";
+import { type PredictionRiskCheckDefinition, type ReviewFlagChange, type ReviewHistoryResponse } from "@mvta/shared";
 import { api } from "../../../config.js";
 import { formatRiskValue, scheduleReviewPath } from "../scheduleReviewPresentation.js";
 import "./scheduleReview.css";
@@ -20,10 +20,7 @@ type Load =
   | { state: "ready"; data: ReviewHistoryResponse }
   | { state: "error"; message: string };
 
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.status === 503) return "No schedule review has been kept yet (migration 143).";
-  return "The schedule review's history could not be loaded. Try again shortly.";
-}
+const LOAD_ERROR = "The schedule review's history could not be loaded. Try again shortly.";
 
 // Always with the day: two moments compared in one sentence must both say when.
 // (whenLabel drops the date for today, which reads as "Oct 14 and 12:10 AM".)
@@ -59,7 +56,7 @@ export function ScheduleReviewChanges({
     let live = true;
     api.getGtfsPredictionRiskHistory(compareWith === null ? {} : { from: compareWith })
       .then((data) => { if (live) setLoad({ state: "ready", data }); })
-      .catch((error: unknown) => { if (live) setLoad({ state: "error", message: errorMessage(error) }); });
+      .catch(() => { if (live) setLoad({ state: "error", message: LOAD_ERROR }); });
     return () => { live = false; };
   }, [compareWith]);
 

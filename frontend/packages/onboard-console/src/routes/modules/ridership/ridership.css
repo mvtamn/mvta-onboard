@@ -116,3 +116,24 @@ kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.
 .ridership-trip-time { font-weight: 600; }
 .ridership-entry .ridership-trip-id { font-size: 0.72rem; color: var(--text-muted); }
 .ridership-trip .ridership-short { margin-top: 3px; }
+
+/* Count Sheet scans (migration 163): Upload scans, and the scan beside the sheet form. */
+.ridership-scan-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-bg); }
+.ridership-scan-card .ridership-problems { margin: 0; }
+.ridership-assign { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.ridership-assign > .ridership-dim { flex-basis: 100%; }
+.ridership-assign input[type="date"] { width: 150px; }
+.ridership-with-scan { display: grid; grid-template-columns: minmax(0, 820px) minmax(280px, 1fr); gap: 16px; align-items: start; }
+.ridership-scan-panel { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--surface-bg); max-height: calc(100vh - 32px); overflow: auto; }
+.ridership-scan-panel p { margin: 0; }
+.ridership-scan-pages { display: flex; gap: 6px; flex-wrap: wrap; }
+.ridership-scan-pages button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--brand-green); }
+.ridership-scan-image { padding: 0; border: 1px solid var(--border); background: #fff; cursor: zoom-in; border-radius: 4px; }
+.ridership-scan-image img { display: block; width: 100%; height: auto; }
+.ridership-scan-image.is-large { cursor: zoom-out; width: 200%; max-width: none; }
+.ridership-scan-image:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ridership-scan-note { font-size: 0.78rem; }
+@media (max-width: 1100px) {
+  .ridership-with-scan { grid-template-columns: minmax(0, 1fr); }
+  .ridership-scan-panel { max-height: none; }
+}

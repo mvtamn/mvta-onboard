@@ -5,9 +5,13 @@
 //   GET /ridership/worklist?from=&to=         - ridership.view
 //     Sheets with their state and garage, late first, and completeness by
 //     garage. Service dates as YYYYMMDD; the default is the last eight days.
+//     Once migration 163 is applied, each sheet also carries its scan marker
+//     (Scanned / Not scanned) and each garage its scan counts.
 //   GET /ridership/sheets/{date}/{block}       - ridership.view
 //     The block's trips and which need a count, Avail's pull-out pre-fill,
-//     what has been saved, and the sheet's history.
+//     what has been saved, and the sheet's history; and, after migration 163,
+//     `scan`: the sheet's scanned pages, and whether the caller may open
+//     their images (ridership.scans.view, through ridershipScans.ts).
 //   PUT /ridership/sheets/{date}/{block}       - ridership.enter
 //     The whole sheet. Every trip that needs a count must have a number, Not
 //     counted or Did not operate. 409 when someone saved it since `version`.
@@ -42,6 +46,7 @@ import {
   saveBlockGarages,
   saveSheet,
 } from "../lib/ridership";
+import { loadScanMarkers, loadSheetScans, scanTablesReady, withScanMarkers } from "../lib/ridership/scan";
 
 const NOT_READY = {
   status: 503,
@@ -106,7 +111,9 @@ app.http("ridershipWorklist", {
     try {
       const pool = await getPool();
       if (!(await ridershipTablesReady(pool))) return NOT_READY;
-      return { status: 200, jsonBody: await buildWorklist(pool, from, to, now) };
+      const worklist = await buildWorklist(pool, from, to, now);
+      if (await scanTablesReady(pool)) withScanMarkers(worklist, await loadScanMarkers(pool, from, to), today);
+      return { status: 200, jsonBody: worklist };
     } catch (err) {
       context.error("GET /ridership/worklist failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };
@@ -131,7 +138,10 @@ app.http("ridershipSheetGet", {
       if (!sheet) {
         return { status: 404, jsonBody: { error: `Block ${address.block} has no trips in the Dispatch Log on ${address.serviceDate}.` } };
       }
-      return { status: 200, jsonBody: sheet };
+      const scan = (await scanTablesReady(pool))
+        ? { pages: await loadSheetScans(pool, address.serviceDate, address.block), can_view_images: auth.access.actions.includes("ridership.scans.view") }
+        : null;
+      return { status: 200, jsonBody: { ...sheet, scan } };
     } catch (err) {
       context.error("GET /ridership/sheets failed:", err);
       return { status: 500, jsonBody: { error: "Internal server error" } };

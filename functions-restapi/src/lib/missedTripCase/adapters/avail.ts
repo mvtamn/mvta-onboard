@@ -3,19 +3,29 @@
 // cases that already exist. ADR-0035.
 //
 // Avail names no trip. A record carries a route, a calendar date, its departure
-// and arrival stops, and a departure trip start time, so the link to a
-// Scheduled-run identity is built from route, local service date and Published
-// Trip start:
+// and arrival stops, and a departure trip start time. That start time is the
+// minute the bus actually LEFT, not the published start (measured on dev
+// 2026-11-06: 90% of the records 1-5 minutes off a scheduled start sat within a
+// minute of the Dispatch Log's actual start; ADR-0047). So a record is placed
+// in two steps:
 //
-//   exact      - route, service date and start time agree to the minute, and
-//                exactly one case matches.
-//   probable   - the start time is absent, or more than one case matches.
-//   unmatched  - no case matches.
+//   1. Resolve it to a trip. Among every trip on that route and service date
+//      (TripStartLog), find the one whose departure fell in Avail's minute -
+//      its actual start where the Dispatch Log has one, its scheduled start
+//      where it has none.
+//   2. Look for a case on that trip.
 //
-// Both sides take their start time from the same published schedule, so a
-// looser tolerance would not recover real matches - it would only manufacture
-// ambiguity on a frequent route. A probable link is reported and counted but
-// produces no observation: it changes nothing until a reviewer confirms it.
+//   exact      - exactly one trip left that minute, and it has a case.
+//   probable   - the start time is absent, or more than one trip left that
+//                minute.
+//   unmatched  - no trip left that minute, or the one that did has no case.
+//
+// Resolving against cases alone would hand a record to whichever case was
+// scheduled that minute, even when that case's bus left late and a different
+// trip left on the minute. A route-day the Dispatch Log does not cover (it
+// starts 2026-08-31) keeps the original rule: a case scheduled that minute.
+// A probable link is reported and counted but produces no observation: it
+// changes nothing until a reviewer confirms it.
 //
 // This adapter never opens a case. Avail is the strongest evidence available
 // for a finished run, which is exactly why it is not allowed to raise a finding
@@ -49,6 +59,15 @@ export interface MatchableCase {
   scheduled_departure_at: Date;
 }
 
+/** A trip scheduled on a route and day, and when the Dispatch Log saw it leave. */
+export interface ScheduledTrip {
+  trip_id: string;
+  service_date: string;
+  route_id: string;
+  scheduled_start_at: Date;
+  actual_start_at: Date | null;
+}
+
 export interface AvailMatchTally {
   reports: number;
   exact: number;
@@ -75,13 +94,50 @@ export interface AvailMatch {
   confidence: EvidenceMatchConfidence;
   /** The single case an exact link names; null for probable and unmatched. */
   matched: MatchableCase | null;
-  /** How many cases the record could have been speaking about. */
+  /** How many cases (or, resolved by trip, trips) the record could have been speaking about. */
   candidates: number;
+  /**
+   * The trip the record was resolved to: a trip id, null when no single trip
+   * left that minute, and absent when the route-day had no trips to resolve
+   * against and the match was made on cases alone.
+   */
+  trip_id?: string | null;
+}
+
+// A reading this far from the schedule is the log's fault, not the bus's:
+// across every dev reading to 2026-11-06 one departure ran 30-60 minutes late
+// and none later, while all 605 readings for 2026-09-09 sat a day late.
+const EARLIEST_PLAUSIBLE_MS = -30 * 60_000;
+const LATEST_PLAUSIBLE_MS = 3 * 60 * 60_000;
+
+// When the trip left, as far as anything recorded: the Dispatch Log's actual
+// start when it is plausible, else the published one.
+export function departedAt(trip: ScheduledTrip): Date {
+  if (!trip.actual_start_at) return trip.scheduled_start_at;
+  const late = trip.actual_start_at.getTime() - trip.scheduled_start_at.getTime();
+  return late >= EARLIEST_PLAUSIBLE_MS && late <= LATEST_PLAUSIBLE_MS ? trip.actual_start_at : trip.scheduled_start_at;
 }
 
 // Avail's route ids are integers; a case carries the GTFS route id as a string.
-export function matchAvailReport(row: AvailMissedTripRow, byRouteDay: ReadonlyMap<string, MatchableCase[]>): AvailMatch {
-  const candidates = byRouteDay.get(`${row.calendar_date}|${row.route_id}`) ?? [];
+export function matchAvailReport(
+  row: AvailMissedTripRow,
+  byRouteDay: ReadonlyMap<string, MatchableCase[]>,
+  tripsByRouteDay: ReadonlyMap<string, ScheduledTrip[]> = new Map(),
+): AvailMatch {
+  const key = `${row.calendar_date}|${row.route_id}`;
+  const trips = tripsByRouteDay.get(key) ?? [];
+  if (trips.length > 0 && row.departure_trip_start_time) {
+    const minute = toMinute(row.departure_trip_start_time);
+    const left = trips.filter((t) => toMinute(departedAt(t)) === minute);
+    if (left.length > 1) return { confidence: "probable", matched: null, candidates: left.length, trip_id: null };
+    if (left.length === 0) return { confidence: "unmatched", matched: null, candidates: trips.length, trip_id: null };
+    const trip = left[0];
+    const theCase = (byRouteDay.get(key) ?? []).find((c) => c.trip_id === trip.trip_id && c.service_date === trip.service_date);
+    return theCase
+      ? { confidence: "exact", matched: theCase, candidates: 1, trip_id: trip.trip_id }
+      : { confidence: "unmatched", matched: null, candidates: 0, trip_id: trip.trip_id };
+  }
+  const candidates = byRouteDay.get(key) ?? [];
   if (candidates.length === 0) return { confidence: "unmatched", matched: null, candidates: 0 };
   if (!row.departure_trip_start_time) {
     // Route and date alone. On a frequent route that is several cases, and even
@@ -143,6 +199,8 @@ export interface AvailDetectionDeps {
   reports: (sinceDays: number) => Promise<AvailMissedTripRow[]>;
   /** Cases those records could be speaking about, by service date and route. */
   casesInWindow: (serviceDates: readonly string[]) => Promise<MatchableCase[]>;
+  /** Every fixed-route trip on those dates, with the Dispatch Log's actual start. */
+  tripsInWindow: (serviceDates: readonly string[]) => Promise<ScheduledTrip[]>;
 }
 
 const LIVE: AvailDetectionDeps = {
@@ -171,6 +229,17 @@ const LIVE: AvailDetectionDeps = {
         -- name and could never match an Avail route id anyway, but saying so
         -- keeps the candidate set honest.
         WHERE ISNULL(m.source_system, N'gtfs') <> N'spare'`);
+    return result.recordset;
+  },
+  tripsInWindow: async (serviceDates) => {
+    if (serviceDates.length === 0) return [];
+    const pool = await getPool();
+    const result = await pool.request()
+      .input("dates", sql.NVarChar(sql.MAX), JSON.stringify(serviceDates))
+      .query<ScheduledTrip>(`
+        SELECT t.trip_id, t.service_date, t.route_id, t.scheduled_start_at, t.actual_start_at
+        FROM OPENJSON(@dates) WITH (d NVARCHAR(20) '$') k
+        JOIN TripStartLog t ON t.service_date = k.d`);
     return result.recordset;
   },
 };
@@ -202,11 +271,20 @@ export async function availObservations(
     list.push(row);
     byRouteDay.set(key, list);
   }
+  // Only a record with a start time can be resolved to a trip.
+  const timedDates = [...new Set(reports.filter((r) => r.departure_trip_start_time).map((r) => r.calendar_date))];
+  const tripsByRouteDay = new Map<string, ScheduledTrip[]>();
+  for (const trip of await deps.tripsInWindow(timedDates)) {
+    const key = caseKeyOf({ route_id: trip.route_id, service_date: trip.service_date });
+    const list = tripsByRouteDay.get(key) ?? [];
+    list.push(trip);
+    tripsByRouteDay.set(key, list);
+  }
 
   const observations: RunObservation[] = [];
   const matches: MatchedAvailReport[] = [];
   for (const row of reports) {
-    const match = matchAvailReport(row, byRouteDay);
+    const match = matchAvailReport(row, byRouteDay, tripsByRouteDay);
     matches.push({ row, match });
     if (match.confidence === "exact" && match.matched) {
       tally.exact++;

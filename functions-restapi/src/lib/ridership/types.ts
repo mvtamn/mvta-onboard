@@ -132,6 +132,14 @@ export interface WorklistSheet {
   entered_by: string | null;
   reconstructed: boolean;
   progress: SheetProgress;
+  /**
+   * The scan capture pilot (migration 163): "scanned" once a page of the sheet
+   * is scanned and matched; "not_scanned" for a sheet of a garage that scans,
+   * whose day has run, with no page yet; null where scanning is not expected,
+   * or before the migration.
+   */
+  scan?: "scanned" | "not_scanned" | null;
+  first_scanned_at?: string | null;
 }
 
 export interface GarageCompleteness {
@@ -146,6 +154,9 @@ export interface GarageCompleteness {
   /** Required trips with no entry at all. */
   missing_trips: number;
   not_counted_trips: number;
+  /** Scanned but not yet entered, and not scanned (migration 163); null for a garage that does not scan. */
+  scanned_open?: number | null;
+  not_scanned?: number | null;
 }
 
 export interface Worklist {
